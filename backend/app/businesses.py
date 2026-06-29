@@ -23,6 +23,7 @@ SEED_BUSINESSES = [
         # Demo key (protects only demo data). Real businesses get a random key
         # generated at onboarding — never a committed constant.
         "api_key": "bizkey_bright_smile_demo",
+        "vertical": "clinic",
     },
     {
         "id": "velvet-hair",
@@ -40,5 +41,41 @@ SEED_BUSINESSES = [
             "hair for color. We sell gift cards. Cancellations within 24 hours may incur a fee."
         ),
         "api_key": "bizkey_velvet_hair_demo",
+        "vertical": "salon",
+    },
+    {
+        "id": "skyline-realty",
+        "name": "Skyline Realty",
+        "type": "real estate agency",
+        "hours": "Daily, 9am to 8pm",
+        "services": "apartments and villas for sale and rent across Dubai",
+        "tone": "polished and proactive",
+        "open_hour": 9,
+        "close_hour": 20,
+        "slot_minutes": 30,
+        "faq": (
+            "We cover Dubai Marina, Downtown, JVC, Business Bay and more, for both sale and rent. "
+            "Viewings are arranged with an agent; bring Emirates ID for paperwork. We can advise on "
+            "mortgages and rental contracts (Ejari). Tell us your budget and area and we'll shortlist."
+        ),
+        "api_key": "bizkey_skyline_realty_demo",
+        "vertical": "real_estate",
+    },
+    {
+        "id": "handy-home",
+        "name": "Handy Home Services",
+        "type": "home maintenance company",
+        "hours": "Sunday to Friday, 8am to 6pm",
+        "services": "AC servicing, plumbing, electrical, handyman, and deep cleaning",
+        "tone": "friendly and dependable",
+        "open_hour": 8,
+        "close_hour": 18,
+        "slot_minutes": 60,
+        "faq": (
+            "We serve all of Dubai. Same-day visits when slots allow. We give a free quote before any "
+            "work. Payment by card or cash on completion. For emergencies, tell us and we'll prioritise."
+        ),
+        "api_key": "bizkey_handy_home_demo",
+        "vertical": "general",
     },
 ]

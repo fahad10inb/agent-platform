@@ -19,6 +19,7 @@ import secrets
 
 from app.dashboard_html import DASHBOARD_HTML
 from app.tools.calendar_tools import make_calendar_tools
+from app.tools.leads_tools import make_lead_tools
 from app.tools.memory_tools import make_memory_tools
 from app.widget_html import WIDGET_HTML
 
@@ -85,6 +86,7 @@ class BusinessSettings(BaseModel):
     open_hour: int | None = None
     close_hour: int | None = None
     slot_minutes: int | None = None
+    vertical: str | None = None
 
 
 class NewBusiness(BaseModel):
@@ -100,6 +102,7 @@ class NewBusiness(BaseModel):
     open_hour: int = 9
     close_hour: int = 17
     slot_minutes: int = 30
+    vertical: str = "general"
 
 
 # Tools are now built PER REQUEST (scoped to the caller's business) inside the
@@ -134,7 +137,11 @@ async def chat(req: ChatRequest, request: Request):
 
     # 3. Build this business's tools (each scoped to its own data via the
     #    business_id closure), then send the whole conversation to the AI.
-    tools = make_calendar_tools(business) + make_memory_tools(req.business_id)
+    tools = (
+        make_calendar_tools(business)
+        + make_memory_tools(req.business_id)
+        + make_lead_tools(req.business_id)
+    )
     try:
         reply = await generate_reply(system_prompt, history, tools=tools)
     except Exception as e:
@@ -173,7 +180,7 @@ def manage_get(business_id: str, x_api_key: str | None = Header(default=None)):
     if biz is None:
         raise HTTPException(status_code=404, detail="Unknown business.")
     fields = ["id", "name", "type", "hours", "services", "tone", "faq",
-              "open_hour", "close_hour", "slot_minutes"]
+              "open_hour", "close_hour", "slot_minutes", "vertical"]
     return {k: biz.get(k) for k in fields}
 
 
@@ -225,3 +232,10 @@ def bookings(business_id: str = "bright-smile", x_api_key: str | None = Header(d
     """
     security.check_business_access(business_id, x_api_key)
     return db.list_bookings(business_id)
+
+
+@app.get("/leads")
+def leads(business_id: str = "bright-smile", x_api_key: str | None = Header(default=None)):
+    """List ONE business's captured leads/enquiries. PROTECTED (business or admin key)."""
+    security.check_business_access(business_id, x_api_key)
+    return db.list_leads(business_id)

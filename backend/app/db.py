@@ -67,14 +67,31 @@ def init_db() -> None:
                 close_hour   INTEGER,
                 slot_minutes INTEGER,
                 faq          TEXT,
-                api_key      TEXT
+                api_key      TEXT,
+                vertical     TEXT
             )
             """
         )
-        # Migrations for businesses tables created before these columns existed.
+        # Sales leads / enquiries (real estate and general businesses capture these
+        # instead of — or alongside — appointments).
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS leads (
+                id           SERIAL PRIMARY KEY,
+                business_id  TEXT,
+                name         TEXT,
+                phone        TEXT,
+                interest     TEXT,
+                notes        TEXT,
+                created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+            """
+        )
+        # Migrations for tables created before these columns existed.
         # Postgres supports IF NOT EXISTS here, so it's safe to run every startup.
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS faq TEXT")
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS api_key TEXT")
+        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS vertical TEXT")
         # Booking now captures mobile number + reason for visit (UAE clinics take both).
         conn.execute("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS phone TEXT")
         conn.execute("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reason TEXT")
@@ -194,16 +211,17 @@ def upsert_business(b: dict) -> None:
         conn.execute(
             """
             INSERT INTO businesses
-                (id, name, type, hours, services, tone, open_hour, close_hour, slot_minutes, faq, api_key)
+                (id, name, type, hours, services, tone, open_hour, close_hour, slot_minutes, faq, api_key, vertical)
             VALUES
                 (%(id)s, %(name)s, %(type)s, %(hours)s, %(services)s, %(tone)s,
-                 %(open_hour)s, %(close_hour)s, %(slot_minutes)s, %(faq)s, %(api_key)s)
+                 %(open_hour)s, %(close_hour)s, %(slot_minutes)s, %(faq)s, %(api_key)s, %(vertical)s)
             ON CONFLICT (id) DO UPDATE SET
                 name=EXCLUDED.name, type=EXCLUDED.type, hours=EXCLUDED.hours,
                 services=EXCLUDED.services, tone=EXCLUDED.tone,
                 open_hour=EXCLUDED.open_hour, close_hour=EXCLUDED.close_hour,
                 slot_minutes=EXCLUDED.slot_minutes, faq=EXCLUDED.faq,
-                api_key=COALESCE(EXCLUDED.api_key, businesses.api_key)
+                api_key=COALESCE(EXCLUDED.api_key, businesses.api_key),
+                vertical=EXCLUDED.vertical
             """,
             {
                 "id": b["id"],
@@ -217,14 +235,37 @@ def upsert_business(b: dict) -> None:
                 "slot_minutes": b.get("slot_minutes", 30),
                 "faq": b.get("faq", ""),
                 "api_key": b.get("api_key"),
+                "vertical": b.get("vertical", "general"),
             },
         )
 
 
 _EDITABLE_BUSINESS_FIELDS = {
     "name", "type", "hours", "services", "tone", "faq",
-    "open_hour", "close_hour", "slot_minutes",
+    "open_hour", "close_hour", "slot_minutes", "vertical",
 }
+
+
+def save_lead(business_id: str, name: str, phone: str, interest: str, notes: str = "") -> int:
+    """Insert a sales lead / enquiry for a business; return its new id."""
+    with _connect() as conn:
+        row = conn.execute(
+            "INSERT INTO leads (business_id, name, phone, interest, notes) "
+            "VALUES (%s, %s, %s, %s, %s) RETURNING id",
+            (business_id, name, phone, interest, notes),
+        ).fetchone()
+    return row["id"]
+
+
+def list_leads(business_id: str) -> list[dict]:
+    """Return one business's captured leads, newest first (scoped by business_id)."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, name, phone, interest, notes, created_at FROM leads "
+            "WHERE business_id = %s ORDER BY id DESC",
+            (business_id,),
+        ).fetchall()
+    return rows
 
 
 def update_business_settings(business_id: str, fields: dict) -> None:

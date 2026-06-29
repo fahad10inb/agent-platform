@@ -81,4 +81,29 @@ def build_system_prompt(business: dict) -> str:
         "one they mean, then call reschedule_appointment or cancel_appointment."
     )
 
-    return f"{who}\n{date_line}\n\n{facts_block}\n{info_block}\n\n{voice}\n\n{behavior}".strip()
+    # 5) VERTICAL — tailor the job to the kind of business.
+    vertical = (business.get("vertical") or "general").strip().lower()
+    if vertical == "real_estate":
+        vertical_line = (
+            "This is a real estate business, so your main job is enquiries: when a "
+            "caller is interested, capture their lead with capture_lead (their name, "
+            "mobile number, and what they want — buy or rent, area, budget, bedrooms). "
+            "Answer area/listing questions only from what you actually know — never "
+            "invent specific properties, prices, or availability. Offer to schedule a "
+            "viewing, using book_appointment for the date and time."
+        )
+    elif vertical == "salon":
+        vertical_line = (
+            "This is a salon: help callers book services and answer questions about "
+            "services and timing; note the service they want when booking."
+        )
+    elif vertical == "clinic":
+        vertical_line = ""  # the default receptionist behaviour already fits clinics
+    else:  # general small business
+        vertical_line = (
+            "Help the caller however fits best: answer their question, book an "
+            "appointment if that's what they need, or take their details with "
+            "capture_lead so the team can follow up."
+        )
+
+    return f"{who}\n{date_line}\n\n{facts_block}\n{info_block}\n\n{voice}\n\n{behavior}\n{vertical_line}".strip()

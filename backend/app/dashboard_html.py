@@ -96,6 +96,7 @@ DASHBOARD_HTML = """<!doctype html>
       <div id="bizPanel" class="hidden">
         <div class="tabs">
           <div class="tab active" data-tab="bookings" onclick="setTab('bookings')">Bookings</div>
+          <div class="tab" data-tab="leads" onclick="setTab('leads')">Leads</div>
           <div class="tab" data-tab="settings" onclick="setTab('settings')">Settings</div>
           <div class="tab" data-tab="widget" onclick="setTab('widget')">Widget</div>
         </div>
@@ -165,6 +166,7 @@ DASHBOARD_HTML = """<!doctype html>
       <div><label>Name</label><input id="o_name" placeholder="Velvet Hair Studio"></div></div>
       <div class="row2"><div><label>Type</label><input id="o_type" placeholder="hair salon"></div>
       <div><label>Tone</label><input id="o_tone" placeholder="warm and friendly"></div></div>
+      <label>Vertical</label><select id="o_vertical"><option value="general">general</option><option value="clinic">clinic</option><option value="salon">salon</option><option value="real_estate">real_estate</option></select>
       <label>Hours (display)</label><input id="o_hours" placeholder="Mon-Fri 9am-5pm">
       <label>Services</label><input id="o_services" placeholder="checkups, cleanings...">
       <label>FAQ / knowledge</label><textarea id="o_faq" rows="3" placeholder="Insurance, parking, policies..."></textarea>
@@ -177,7 +179,8 @@ DASHBOARD_HTML = """<!doctype html>
   async function doOnboard(){
     const body = { id:val("o_id").trim(), name:val("o_name").trim(), type:val("o_type").trim(),
       tone:val("o_tone").trim()||"warm and professional", hours:val("o_hours").trim(), services:val("o_services").trim(),
-      faq:val("o_faq").trim(), open_hour:+val("o_open"), close_hour:+val("o_close"), slot_minutes:+val("o_slot") };
+      faq:val("o_faq").trim(), open_hour:+val("o_open"), close_hour:+val("o_close"), slot_minutes:+val("o_slot"),
+      vertical:val("o_vertical") };
     if(!body.id||!body.name||!body.type){ toast("ID, name and type are required."); return; }
     const r = await api("/admin/businesses", { method:"POST", body: JSON.stringify(body) });
     const d = await r.json();
@@ -208,6 +211,13 @@ DASHBOARD_HTML = """<!doctype html>
       body.innerHTML = rows.length ? `<table><thead><tr><th>Date</th><th>Time</th><th>Patient</th><th>Phone</th><th>Reason</th></tr></thead>
         <tbody>${rows.map(b=>`<tr><td>${esc(b.date)}</td><td>${esc(b.time)}</td><td>${esc(b.patient_name)}</td><td>${esc(b.phone)}</td><td>${esc(b.reason)}</td></tr>`).join("")}</tbody></table>`
         : "<div class='empty'>No bookings yet.</div>";
+    } else if(TAB==="leads"){
+      const r = await api("/leads?business_id="+encodeURIComponent(CURRENT));
+      if(!r.ok){ body.innerHTML="<div class='empty'>Could not load leads.</div>"; return; }
+      const rows = await r.json();
+      body.innerHTML = rows.length ? `<table><thead><tr><th>Name</th><th>Phone</th><th>Interest</th><th>Notes</th></tr></thead>
+        <tbody>${rows.map(l=>`<tr><td>${esc(l.name)}</td><td>${esc(l.phone)}</td><td>${esc(l.interest)}</td><td>${esc(l.notes)}</td></tr>`).join("")}</tbody></table>`
+        : "<div class='empty'>No leads yet.</div>";
     } else if(TAB==="settings"){
       const r = await api("/manage/"+encodeURIComponent(CURRENT));
       if(!r.ok){ body.innerHTML="<div class='empty'>Could not load settings.</div>"; return; }
@@ -215,6 +225,8 @@ DASHBOARD_HTML = """<!doctype html>
       body.innerHTML = `<h3 style="margin-top:0">Settings</h3>
         <div class="row2"><div><label>Name</label><input id="s_name" value="${esc(b.name)}"></div>
         <div><label>Type</label><input id="s_type" value="${esc(b.type)}"></div></div>
+        <label>Vertical (drives the agent's behaviour)</label>
+        <select id="s_vertical"><option value="clinic">clinic</option><option value="salon">salon</option><option value="real_estate">real_estate</option><option value="general">general</option></select>
         <label>Tone</label><input id="s_tone" value="${esc(b.tone)}">
         <label>Hours (display)</label><input id="s_hours" value="${esc(b.hours)}">
         <label>Services</label><input id="s_services" value="${esc(b.services)}">
@@ -223,6 +235,7 @@ DASHBOARD_HTML = """<!doctype html>
         <div><label>Close hour</label><input id="s_close" type="number" value="${esc(b.close_hour)}"></div>
         <div><label>Slot mins</label><input id="s_slot" type="number" value="${esc(b.slot_minutes)}"></div></div>
         <div style="margin-top:16px"><button class="btn" onclick="saveSettings()">Save changes</button></div>`;
+      $("s_vertical").value = b.vertical || "general";
     } else {
       const url = location.origin + "/widget?business_id=" + encodeURIComponent(CURRENT);
       body.innerHTML = `<h3 style="margin-top:0">Patient widget</h3>
@@ -236,7 +249,8 @@ DASHBOARD_HTML = """<!doctype html>
 
   async function saveSettings(){
     const body = { name:val("s_name"), type:val("s_type"), tone:val("s_tone"), hours:val("s_hours"),
-      services:val("s_services"), faq:val("s_faq"), open_hour:+val("s_open"), close_hour:+val("s_close"), slot_minutes:+val("s_slot") };
+      services:val("s_services"), faq:val("s_faq"), open_hour:+val("s_open"), close_hour:+val("s_close"),
+      slot_minutes:+val("s_slot"), vertical:val("s_vertical") };
     const r = await api("/manage/"+encodeURIComponent(CURRENT), { method:"POST", body: JSON.stringify(body) });
     toast(r.ok ? "Saved ✓" : "Save failed");
   }
