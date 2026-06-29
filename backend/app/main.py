@@ -7,6 +7,7 @@ so we can confirm the server is alive.
 """
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from app import db
@@ -16,6 +17,7 @@ from app.llm_service import generate_reply
 from app.prompt_service import build_system_prompt
 from app.tools.calendar_tools import make_calendar_tools
 from app.tools.memory_tools import make_memory_tools
+from app.widget_html import WIDGET_HTML
 
 # Load our settings once at startup.
 settings = get_settings()
@@ -109,6 +111,14 @@ async def chat(req: ChatRequest):
     # 4. Remember the AI's reply too, so the next turn has the full context.
     history.append({"role": "model", "text": reply})
     return ChatResponse(reply=reply)
+
+
+@app.get("/widget", response_class=HTMLResponse)
+def widget():
+    """The patient-facing chat page. A clinic links to /widget?business_id=<id>;
+    the page reads that id and talks to /chat. Served by the backend itself, so
+    there's no separate frontend to deploy."""
+    return WIDGET_HTML
 
 
 @app.get("/businesses")
