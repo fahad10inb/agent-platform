@@ -3,6 +3,10 @@
 An AI receptionist/booking agent platform. Separate project from the companion
 app — its own repo, its own database, its own deploys.
 
+**Live:** https://agent-platform-mivq.onrender.com
+(`/health` · `/docs` · `/businesses` · `POST /chat`) — backend on Render,
+database on Supabase Postgres. Render auto-redeploys on every push to `main`.
+
 ## Backend — run it (Part 1: the server breathes)
 
 From `backend/`:
