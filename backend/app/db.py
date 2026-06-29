@@ -64,13 +64,15 @@ def init_db() -> None:
                 open_hour    INTEGER,
                 close_hour   INTEGER,
                 slot_minutes INTEGER,
-                faq          TEXT
+                faq          TEXT,
+                api_key      TEXT
             )
             """
         )
-        # Migration for businesses tables created before `faq` existed. Postgres
-        # supports IF NOT EXISTS here, so it's safe to run on every startup.
+        # Migrations for businesses tables created before these columns existed.
+        # Postgres supports IF NOT EXISTS here, so it's safe to run every startup.
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS faq TEXT")
+        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS api_key TEXT")
 
 
 # --- bookings ----------------------------------------------------------------
@@ -183,15 +185,16 @@ def upsert_business(b: dict) -> None:
         conn.execute(
             """
             INSERT INTO businesses
-                (id, name, type, hours, services, tone, open_hour, close_hour, slot_minutes, faq)
+                (id, name, type, hours, services, tone, open_hour, close_hour, slot_minutes, faq, api_key)
             VALUES
                 (%(id)s, %(name)s, %(type)s, %(hours)s, %(services)s, %(tone)s,
-                 %(open_hour)s, %(close_hour)s, %(slot_minutes)s, %(faq)s)
+                 %(open_hour)s, %(close_hour)s, %(slot_minutes)s, %(faq)s, %(api_key)s)
             ON CONFLICT (id) DO UPDATE SET
                 name=EXCLUDED.name, type=EXCLUDED.type, hours=EXCLUDED.hours,
                 services=EXCLUDED.services, tone=EXCLUDED.tone,
                 open_hour=EXCLUDED.open_hour, close_hour=EXCLUDED.close_hour,
-                slot_minutes=EXCLUDED.slot_minutes, faq=EXCLUDED.faq
+                slot_minutes=EXCLUDED.slot_minutes, faq=EXCLUDED.faq,
+                api_key=COALESCE(EXCLUDED.api_key, businesses.api_key)
             """,
             {
                 "id": b["id"],
@@ -204,6 +207,7 @@ def upsert_business(b: dict) -> None:
                 "close_hour": b.get("close_hour", 17),
                 "slot_minutes": b.get("slot_minutes", 30),
                 "faq": b.get("faq", ""),
+                "api_key": b.get("api_key"),
             },
         )
 

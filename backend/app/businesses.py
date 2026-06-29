@@ -20,6 +20,9 @@ SEED_BUSINESSES = [
             "Free parking is available behind the building. We welcome children and offer family "
             "appointments. First visits take about 45 minutes. Emergencies: call and we'll fit you in."
         ),
+        # Demo key (protects only demo data). Real businesses get a random key
+        # generated at onboarding — never a committed constant.
+        "api_key": "bizkey_bright_smile_demo",
     },
     {
         "id": "velvet-hair",
@@ -36,5 +39,6 @@ SEED_BUSINESSES = [
             "or the garage next door. Balayage takes 2-3 hours; please arrive with dry, unwashed "
             "hair for color. We sell gift cards. Cancellations within 24 hours may incur a fee."
         ),
+        "api_key": "bizkey_velvet_hair_demo",
     },
 ]

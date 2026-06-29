@@ -6,11 +6,11 @@ the outside world can call. For Part 1 there is just one route: a health check
 so we can confirm the server is alive.
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from app import db
+from app import db, security
 from app.businesses import SEED_BUSINESSES
 from app.config import get_settings
 from app.llm_service import generate_reply
@@ -80,12 +80,16 @@ _conversations: dict[str, list[dict]] = {}
 
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat(req: ChatRequest):
+async def chat(req: ChatRequest, request: Request):
     """Take the caller's message, ask the AI (with memory + tools), return its reply.
 
     POST (not GET) because the caller sends a body of data. `async` because we
-    `await` the (slow) AI call inside.
+    `await` the (slow) AI call inside. Public (patients use it) but rate-limited
+    so it can't be spammed into a huge Gemini bill.
     """
+    # 0. Abuse / cost guard: cap requests per IP.
+    security.rate_limit(request)
+
     # 1. Look up WHICH business this request is for, and build its persona.
     business = db.get_business(req.business_id)
     if business is None:
@@ -121,17 +125,29 @@ def widget():
     return WIDGET_HTML
 
 
+@app.get("/business/{business_id}")
+def business_public(business_id: str):
+    """PUBLIC display info for one business (name + type only — no secrets).
+    The patient widget uses this to show the clinic's name in the header."""
+    biz = db.get_business(business_id)
+    if biz is None:
+        raise HTTPException(status_code=404, detail="Unknown business.")
+    return {"id": biz["id"], "name": biz["name"], "type": biz["type"]}
+
+
 @app.get("/businesses")
-def businesses():
-    """List the businesses this platform serves (proof multi-tenancy is live)."""
+def businesses(x_api_key: str | None = Header(default=None)):
+    """List all client businesses — ADMIN ONLY (your client list is sensitive)."""
+    security.check_admin(x_api_key)
     return db.list_businesses()
 
 
 @app.get("/bookings")
-def bookings(business_id: str = "bright-smile"):
+def bookings(business_id: str = "bright-smile", x_api_key: str | None = Header(default=None)):
     """List ONE business's bookings (pass ?business_id=...), newest first.
 
-    Scoped by business_id — it never returns another business's rows. This is
-    both the persistence proof (survives restart) and the isolation proof.
+    PROTECTED: requires that business's api_key (or the admin key) in the
+    X-API-Key header. This is patient data — never open.
     """
+    security.check_business_access(business_id, x_api_key)
     return db.list_bookings(business_id)

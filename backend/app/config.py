@@ -26,10 +26,13 @@ class Settings(BaseSettings):
     app_name: str = "agent-platform"
     environment: str = "development"  # "development" or "production"
 
-    # --- Secrets (placeholders — not used until later lessons) ---
-    # Empty for now. We'll fill these when we add the AI brain and the database.
+    # --- Secrets ---
     gemini_api_key: str = ""
     database_url: str = ""
+    # Master key for admin endpoints (listing all businesses, reading any
+    # business's bookings). Set ADMIN_API_KEY in the environment. Empty = admin
+    # endpoints are locked (secure by default).
+    admin_api_key: str = ""
 
 
 @lru_cache

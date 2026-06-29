@@ -106,11 +106,10 @@ WIDGET_HTML = """<!doctype html>
   const m = document.getElementById("m");
   const send = document.getElementById("send");
 
-  // Pull the real business name for the header (nice touch; falls back quietly).
-  fetch("/businesses").then(r => r.json()).then(list => {
-    const biz = (list || []).find(b => b.id === businessId);
-    if (biz) { document.getElementById("title").textContent = biz.name; document.title = biz.name; }
-    document.getElementById("sub").textContent = biz ? "online" : businessId;
+  // Pull the real business name for the header (public endpoint; falls back quietly).
+  fetch("/business/" + encodeURIComponent(businessId)).then(r => r.ok ? r.json() : null).then(biz => {
+    if (biz && biz.name) { document.getElementById("title").textContent = biz.name; document.title = biz.name; }
+    document.getElementById("sub").textContent = (biz && biz.name) ? "online" : businessId;
   }).catch(() => {});
 
   function row(text, who) {
