@@ -212,6 +212,27 @@ def upsert_business(b: dict) -> None:
         )
 
 
+_EDITABLE_BUSINESS_FIELDS = {
+    "name", "type", "hours", "services", "tone", "faq",
+    "open_hour", "close_hour", "slot_minutes",
+}
+
+
+def update_business_settings(business_id: str, fields: dict) -> None:
+    """Update only the editable columns of a business (never id or api_key).
+
+    Column names come from a fixed whitelist (not user input), so building the
+    SET clause is safe; values are still passed as parameters.
+    """
+    cols = {k: v for k, v in fields.items() if k in _EDITABLE_BUSINESS_FIELDS}
+    if not cols:
+        return
+    set_clause = ", ".join(f"{k} = %({k})s" for k in cols)
+    params = {**cols, "_bid": business_id}
+    with _connect() as conn:
+        conn.execute(f"UPDATE businesses SET {set_clause} WHERE id = %(_bid)s", params)
+
+
 def get_business(business_id: str) -> dict | None:
     """Return one business's config by id, or None if there's no such business."""
     with _connect() as conn:

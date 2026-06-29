@@ -15,6 +15,9 @@ from app.businesses import SEED_BUSINESSES
 from app.config import get_settings
 from app.llm_service import generate_reply
 from app.prompt_service import build_system_prompt
+import secrets
+
+from app.dashboard_html import DASHBOARD_HTML
 from app.tools.calendar_tools import make_calendar_tools
 from app.tools.memory_tools import make_memory_tools
 from app.widget_html import WIDGET_HTML
@@ -70,6 +73,35 @@ class ChatResponse(BaseModel):
     reply: str
 
 
+class BusinessSettings(BaseModel):
+    """Editable business fields (all optional — only the ones sent get updated)."""
+
+    name: str | None = None
+    type: str | None = None
+    hours: str | None = None
+    services: str | None = None
+    tone: str | None = None
+    faq: str | None = None
+    open_hour: int | None = None
+    close_hour: int | None = None
+    slot_minutes: int | None = None
+
+
+class NewBusiness(BaseModel):
+    """Payload to onboard a new business (admin only)."""
+
+    id: str
+    name: str
+    type: str
+    hours: str = ""
+    services: str = ""
+    tone: str = "warm and professional"
+    faq: str = ""
+    open_hour: int = 9
+    close_hour: int = 17
+    slot_minutes: int = 30
+
+
 # Tools are now built PER REQUEST (scoped to the caller's business) inside the
 # /chat handler, so each business only ever touches its own data.
 
@@ -123,6 +155,48 @@ def widget():
     the page reads that id and talks to /chat. Served by the backend itself, so
     there's no separate frontend to deploy."""
     return WIDGET_HTML
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+def dashboard():
+    """The management dashboard page (clinic + admin). It's just the app shell;
+    every data call from it requires an API key entered at login."""
+    return DASHBOARD_HTML
+
+
+@app.get("/manage/{business_id}")
+def manage_get(business_id: str, x_api_key: str | None = Header(default=None)):
+    """Return a business's EDITABLE config (no secrets). Requires that business's
+    key or the admin key — used to pre-fill the settings form."""
+    security.check_business_access(business_id, x_api_key)
+    biz = db.get_business(business_id)
+    if biz is None:
+        raise HTTPException(status_code=404, detail="Unknown business.")
+    fields = ["id", "name", "type", "hours", "services", "tone", "faq",
+              "open_hour", "close_hour", "slot_minutes"]
+    return {k: biz.get(k) for k in fields}
+
+
+@app.post("/manage/{business_id}")
+def manage_update(business_id: str, settings_in: BusinessSettings, x_api_key: str | None = Header(default=None)):
+    """Update a business's settings. Requires that business's key or admin key."""
+    security.check_business_access(business_id, x_api_key)
+    fields = {k: v for k, v in settings_in.model_dump().items() if v is not None}
+    db.update_business_settings(business_id, fields)
+    return {"status": "saved", "business_id": business_id}
+
+
+@app.post("/admin/businesses")
+def admin_create_business(payload: NewBusiness, x_api_key: str | None = Header(default=None)):
+    """Onboard a new business (ADMIN ONLY) — generates and returns its api_key."""
+    security.check_admin(x_api_key)
+    if db.get_business(payload.id) is not None:
+        raise HTTPException(status_code=409, detail="A business with that id already exists.")
+    api_key = "bizkey_" + secrets.token_urlsafe(24)
+    data = payload.model_dump()
+    data["api_key"] = api_key
+    db.upsert_business(data)
+    return {"status": "created", "id": payload.id, "api_key": api_key}
 
 
 @app.get("/business/{business_id}")
