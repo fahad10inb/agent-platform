@@ -48,15 +48,21 @@ def make_calendar_tools(business: dict) -> list:
         print(f"  TOOL -> check_availability(date={date!r}) [biz={business_id}] free={len(free)}")
         return {"date": date, "available_slots": free}
 
-    def book_appointment(date: str, time: str, patient_name: str) -> dict:
+    def book_appointment(
+        date: str, time: str, patient_name: str, phone: str = "", reason: str = ""
+    ) -> dict:
         """Book an appointment in a specific slot, if it's still free.
 
-        Only call this once you know all three details — ask for any missing first.
+        Collect the caller's full name AND mobile number, and the reason for the
+        visit, before booking (ask for whatever's missing). UAE clinics take all
+        three. Date and time are required; phone/reason strongly preferred.
 
         Args:
             date: The day of the appointment (a concrete date like "2026-07-01").
             time: The exact slot (must match an available one, e.g. "2:00 PM").
             patient_name: The caller's full name.
+            phone: The caller's mobile number.
+            reason: The reason for the visit (e.g. "cleaning", "toothache").
 
         Returns:
             A confirmation dict, or status "unavailable" if that slot is taken.
@@ -65,8 +71,8 @@ def make_calendar_tools(business: dict) -> list:
             print(f"  TOOL -> book_appointment DENIED (taken) date={date!r} time={time!r} [biz={business_id}]")
             return {"status": "unavailable", "reason": f"{time} on {date} is already booked", "date": date, "time": time}
 
-        print(f"  TOOL -> book_appointment(date={date!r}, time={time!r}, name={patient_name!r}) [biz={business_id}]")
-        booking_id = db.save_booking(business_id, date, time, patient_name)
+        print(f"  TOOL -> book_appointment(date={date!r}, time={time!r}, name={patient_name!r}, phone={phone!r}, reason={reason!r}) [biz={business_id}]")
+        booking_id = db.save_booking(business_id, date, time, patient_name, phone, reason)
         return {
             "status": "confirmed",
             "booking_id": booking_id,

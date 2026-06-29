@@ -37,6 +37,8 @@ def init_db() -> None:
                 date          TEXT NOT NULL,
                 time          TEXT NOT NULL,
                 patient_name  TEXT NOT NULL,
+                phone         TEXT,
+                reason        TEXT,
                 created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
             )
             """
@@ -73,20 +75,27 @@ def init_db() -> None:
         # Postgres supports IF NOT EXISTS here, so it's safe to run every startup.
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS faq TEXT")
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS api_key TEXT")
+        # Booking now captures mobile number + reason for visit (UAE clinics take both).
+        conn.execute("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS phone TEXT")
+        conn.execute("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reason TEXT")
 
 
 # --- bookings ----------------------------------------------------------------
-def save_booking(business_id: str, date: str, time: str, patient_name: str) -> int:
+def save_booking(
+    business_id: str, date: str, time: str, patient_name: str,
+    phone: str = "", reason: str = "",
+) -> int:
     """Insert one booking for a business and return its new id.
 
-    %s placeholders let Postgres insert the values safely (never glue values
-    into SQL — that's SQL injection). RETURNING id hands back the new row's id.
+    Captures mobile number + reason for visit (what UAE front desks take), both
+    optional. %s placeholders keep it injection-safe; RETURNING id hands back the
+    new row's id.
     """
     with _connect() as conn:
         row = conn.execute(
-            "INSERT INTO bookings (business_id, date, time, patient_name) "
-            "VALUES (%s, %s, %s, %s) RETURNING id",
-            (business_id, date, time, patient_name),
+            "INSERT INTO bookings (business_id, date, time, patient_name, phone, reason) "
+            "VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
+            (business_id, date, time, patient_name, phone, reason),
         ).fetchone()
     return row["id"]
 
@@ -96,7 +105,7 @@ def list_bookings(business_id: str) -> list[dict]:
     isolation wall — never returns another business's rows."""
     with _connect() as conn:
         rows = conn.execute(
-            "SELECT id, date, time, patient_name, created_at FROM bookings "
+            "SELECT id, date, time, patient_name, phone, reason, created_at FROM bookings "
             "WHERE business_id = %s ORDER BY id DESC",
             (business_id,),
         ).fetchall()

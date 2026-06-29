@@ -205,8 +205,8 @@ DASHBOARD_HTML = """<!doctype html>
       const r = await api("/bookings?business_id="+encodeURIComponent(CURRENT));
       if(!r.ok){ body.innerHTML="<div class='empty'>Could not load bookings.</div>"; return; }
       const rows = await r.json();
-      body.innerHTML = rows.length ? `<table><thead><tr><th>Date</th><th>Time</th><th>Patient</th><th>Booked</th></tr></thead>
-        <tbody>${rows.map(b=>`<tr><td>${esc(b.date)}</td><td>${esc(b.time)}</td><td>${esc(b.patient_name)}</td><td>${esc((b.created_at||"").toString().slice(0,16).replace("T"," "))}</td></tr>`).join("")}</tbody></table>`
+      body.innerHTML = rows.length ? `<table><thead><tr><th>Date</th><th>Time</th><th>Patient</th><th>Phone</th><th>Reason</th></tr></thead>
+        <tbody>${rows.map(b=>`<tr><td>${esc(b.date)}</td><td>${esc(b.time)}</td><td>${esc(b.patient_name)}</td><td>${esc(b.phone)}</td><td>${esc(b.reason)}</td></tr>`).join("")}</tbody></table>`
         : "<div class='empty'>No bookings yet.</div>";
     } else if(TAB==="settings"){
       const r = await api("/manage/"+encodeURIComponent(CURRENT));
