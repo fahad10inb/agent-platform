@@ -19,7 +19,11 @@ DASHBOARD_HTML = """<!doctype html>
   :root{ --a1:#6366f1; --a2:#8b5cf6; --a3:#ec4899; --ink:#1b1830; --muted:#7c7896; --line:#ece9f5; --bg:#f4f3fb; --card:#fff; }
   *{box-sizing:border-box;}
   body{margin:0; font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-    color:var(--ink); background:linear-gradient(135deg,#6366f1 0%, #8b5cf6 52%, #ec4899 100%); background-attachment:fixed; min-height:100vh;}
+    color:var(--ink); min-height:100vh; background-attachment:fixed;
+    background:
+      radial-gradient(820px 460px at 12% -8%, #eef0ff 0%, transparent 60%),
+      radial-gradient(820px 460px at 100% 108%, #fdeaf4 0%, transparent 58%),
+      #f7f7fb;}
   .hidden{display:none !important;}
   button{font:inherit; cursor:pointer; border:none; border-radius:10px; padding:10px 16px; font-weight:600;}
   .btn{background:linear-gradient(135deg,var(--a1),var(--a2)); color:#fff; box-shadow:0 6px 16px rgba(99,102,241,.32);}
