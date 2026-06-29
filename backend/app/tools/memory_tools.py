@@ -12,19 +12,24 @@ def make_memory_tools(business_id: str) -> list:
     """Return [recall_caller, remember_about_caller] bound to this business."""
 
     def recall_caller(name: str) -> dict:
-        """Look up what we already know about a caller (past visits, preferences, worries).
+        """Look up a caller's full profile: what we remember about them AND their
+        appointments (past + upcoming).
 
         Call this as soon as you learn who you're speaking with, so you can greet
-        a returning caller warmly instead of treating them as new.
+        a returning caller warmly and personally — referencing a past concern or
+        an upcoming appointment — instead of treating them as new.
 
         Args:
             name: The caller's name.
 
         Returns:
-            A dict with the name and a list of remembered notes (empty if new).
+            A dict with the name, remembered notes, and their appointments
+            (both empty if they're new).
         """
-        print(f"  TOOL -> recall_caller({name!r}) [biz={business_id}]")
-        return {"name": name, "known_notes": db.get_caller_memory(business_id, name)}
+        notes = db.get_caller_memory(business_id, name)
+        appts = db.find_bookings(business_id, name)
+        print(f"  TOOL -> recall_caller({name!r}) [biz={business_id}] notes={len(notes)} appts={len(appts)}")
+        return {"name": name, "known_notes": notes, "appointments": appts}
 
     def remember_about_caller(name: str, note: str) -> dict:
         """Save a useful fact about a caller so you remember it on their next call.
