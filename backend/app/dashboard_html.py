@@ -16,17 +16,17 @@ DASHBOARD_HTML = """<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Dashboard · Agent Platform</title>
 <style>
-  :root{ --a1:#14b8a6; --a2:#0f766e; --ink:#0f172a; --muted:#64748b; --line:#e6ebf0; --bg:#eef2f6; --card:#fff; }
+  :root{ --a1:#6366f1; --a2:#8b5cf6; --a3:#ec4899; --ink:#1b1830; --muted:#7c7896; --line:#ece9f5; --bg:#f4f3fb; --card:#fff; }
   *{box-sizing:border-box;}
-  body{margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-    color:var(--ink); background:radial-gradient(1000px 500px at 50% -10%, #e7f4f2, transparent 60%), var(--bg); min-height:100vh;}
+  body{margin:0; font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink); background:linear-gradient(135deg,#6366f1 0%, #8b5cf6 52%, #ec4899 100%); background-attachment:fixed; min-height:100vh;}
   .hidden{display:none !important;}
   button{font:inherit; cursor:pointer; border:none; border-radius:10px; padding:10px 16px; font-weight:600;}
-  .btn{background:linear-gradient(135deg,var(--a1),var(--a2)); color:#fff; box-shadow:0 4px 12px rgba(13,148,136,.25);}
+  .btn{background:linear-gradient(135deg,var(--a1),var(--a2)); color:#fff; box-shadow:0 6px 16px rgba(99,102,241,.32);}
   .btn:active{transform:translateY(1px);}
   .btn.ghost{background:#fff; color:var(--a2); border:1px solid var(--line); box-shadow:none;}
   input,textarea,select{font:inherit; width:100%; padding:10px 12px; border:1px solid #d7dee4; border-radius:10px; outline:none; background:#fff;}
-  input:focus,textarea:focus{border-color:var(--a1); box-shadow:0 0 0 3px rgba(20,184,166,.14);}
+  input:focus,textarea:focus,select:focus{border-color:var(--a2); box-shadow:0 0 0 4px rgba(139,92,246,.16);}
   label{display:block; font-size:13px; font-weight:600; color:var(--muted); margin:12px 0 5px;}
   .card{background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 8px 30px rgba(15,23,42,.06);}
   /* login */
@@ -37,13 +37,13 @@ DASHBOARD_HTML = """<!doctype html>
   /* app */
   #app{max-width:1000px; margin:0 auto; padding:18px;}
   .topbar{display:flex; align-items:center; gap:12px; margin-bottom:18px;}
-  .orb{width:34px;height:34px;border-radius:50%;background:radial-gradient(circle at 32% 30%,#fff,#c9fff6 20%,var(--a1) 60%,var(--a2));box-shadow:0 2px 8px rgba(13,148,136,.4);}
+  .orb{width:36px;height:36px;border-radius:11px;background:linear-gradient(135deg,var(--a1),var(--a2) 55%,var(--a3));box-shadow:0 6px 16px rgba(124,58,237,.45);}
   .topbar b{font-size:18px;} .grow{flex:1;}
   .layout{display:flex; gap:18px; align-items:flex-start;}
   .side{width:260px; flex:none;}
   .side .card{padding:12px;}
   .biz-item{padding:10px 12px; border-radius:10px; cursor:pointer; display:flex; flex-direction:column;}
-  .biz-item:hover{background:#f1f5f9;} .biz-item.active{background:#e7f4f2;}
+  .biz-item:hover{background:#f5f3fc;} .biz-item.active{background:#f0edfb;}
   .biz-item b{font-size:14px;} .biz-item small{color:var(--muted);}
   .main{flex:1; min-width:0;}
   .tabs{display:flex; gap:6px; margin-bottom:14px;}
