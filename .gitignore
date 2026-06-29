@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Local secrets — NEVER commit real keys. We commit .env.example instead.
+.env
+
+# Local database file (data, not code)
+*.db
+
+# Editor / OS
+.DS_Store
+.idea/

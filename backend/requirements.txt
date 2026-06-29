@@ -1,0 +1,17 @@
+# Part 1 dependencies — kept tiny on purpose. We add more as we need them.
+#
+# fastapi  : the web framework — lets us define "routes" (URLs the server answers).
+# uvicorn  : the server that actually runs our app and listens for requests.
+#            [standard] pulls in a few helpers (auto-reload, faster networking).
+# pydantic-settings : reads our config from environment variables / a .env file.
+
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30,<1
+pydantic-settings>=2.4,<3
+
+# google-genai : the official Gemini SDK (the AI brain). We use its async client.
+google-genai>=2.0,<3
+
+# psycopg : the Postgres driver — lets db.py talk to Supabase. [binary] ships a
+# precompiled build so there's nothing to compile locally.
+psycopg[binary]>=3.1,<4
