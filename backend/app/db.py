@@ -63,10 +63,14 @@ def init_db() -> None:
                 tone         TEXT,
                 open_hour    INTEGER,
                 close_hour   INTEGER,
-                slot_minutes INTEGER
+                slot_minutes INTEGER,
+                faq          TEXT
             )
             """
         )
+        # Migration for businesses tables created before `faq` existed. Postgres
+        # supports IF NOT EXISTS here, so it's safe to run on every startup.
+        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS faq TEXT")
 
 
 # --- bookings ----------------------------------------------------------------
@@ -108,6 +112,43 @@ def booked_times(business_id: str, date: str) -> list[str]:
     return [r["time"] for r in rows]
 
 
+def find_bookings(business_id: str, patient_name: str) -> list[dict]:
+    """Find a patient's bookings at a business (case-insensitive name match)."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, date, time, patient_name FROM bookings "
+            "WHERE business_id = %s AND LOWER(patient_name) = LOWER(%s) ORDER BY date, time",
+            (business_id, (patient_name or "").strip()),
+        ).fetchall()
+    return rows
+
+
+def cancel_booking(business_id: str, patient_name: str, date: str, time: str) -> bool:
+    """Delete a specific booking. Returns True if a row was actually removed."""
+    with _connect() as conn:
+        cur = conn.execute(
+            "DELETE FROM bookings WHERE business_id = %s AND LOWER(patient_name) = LOWER(%s) "
+            "AND date = %s AND time = %s",
+            (business_id, (patient_name or "").strip(), date, time),
+        )
+        removed = cur.rowcount
+    return removed > 0
+
+
+def reschedule_booking(
+    business_id: str, patient_name: str, old_date: str, old_time: str, new_date: str, new_time: str
+) -> bool:
+    """Move a booking to a new date/time. Returns True if a row was updated."""
+    with _connect() as conn:
+        cur = conn.execute(
+            "UPDATE bookings SET date = %s, time = %s "
+            "WHERE business_id = %s AND LOWER(patient_name) = LOWER(%s) AND date = %s AND time = %s",
+            (new_date, new_time, business_id, (patient_name or "").strip(), old_date, old_time),
+        )
+        updated = cur.rowcount
+    return updated > 0
+
+
 # --- caller memory -----------------------------------------------------------
 def _norm(name: str) -> str:
     """Normalize a caller name for matching ('Sarah Lee' == 'sarah lee ')."""
@@ -142,15 +183,15 @@ def upsert_business(b: dict) -> None:
         conn.execute(
             """
             INSERT INTO businesses
-                (id, name, type, hours, services, tone, open_hour, close_hour, slot_minutes)
+                (id, name, type, hours, services, tone, open_hour, close_hour, slot_minutes, faq)
             VALUES
                 (%(id)s, %(name)s, %(type)s, %(hours)s, %(services)s, %(tone)s,
-                 %(open_hour)s, %(close_hour)s, %(slot_minutes)s)
+                 %(open_hour)s, %(close_hour)s, %(slot_minutes)s, %(faq)s)
             ON CONFLICT (id) DO UPDATE SET
                 name=EXCLUDED.name, type=EXCLUDED.type, hours=EXCLUDED.hours,
                 services=EXCLUDED.services, tone=EXCLUDED.tone,
                 open_hour=EXCLUDED.open_hour, close_hour=EXCLUDED.close_hour,
-                slot_minutes=EXCLUDED.slot_minutes
+                slot_minutes=EXCLUDED.slot_minutes, faq=EXCLUDED.faq
             """,
             {
                 "id": b["id"],
@@ -162,6 +203,7 @@ def upsert_business(b: dict) -> None:
                 "open_hour": b.get("open_hour", 9),
                 "close_hour": b.get("close_hour", 17),
                 "slot_minutes": b.get("slot_minutes", 30),
+                "faq": b.get("faq", ""),
             },
         )
 

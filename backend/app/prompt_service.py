@@ -41,6 +41,12 @@ def build_system_prompt(business: dict) -> str:
         facts.append(f"Services offered: {services}.")
     facts_block = " ".join(facts)
 
+    # 2b) KNOWLEDGE — free-form info the business gave us (insurance, parking,
+    # policies…). The agent draws on this to answer real questions instead of
+    # guessing or saying "I don't know."
+    faq = (business.get("faq") or "").strip()
+    info_block = f"Useful info you can share when it's relevant: {faq}" if faq else ""
+
     # 3) HUMAN VOICE — the companion's craft, adapted to a phone receptionist.
     #    This is what makes it NOT sound like every other booking bot.
     voice = (
@@ -60,7 +66,10 @@ def build_system_prompt(business: dict) -> str:
         "don't announce that you're saving. For availability, USE "
         "check_availability and never invent times. To book you need the date, "
         "the time, and the caller's full name; ask for anything missing, then "
-        "call book_appointment and confirm it."
+        "call book_appointment and confirm it. "
+        "If a caller wants to change or cancel a visit, first call "
+        "find_my_appointments with their name to see what they have, confirm which "
+        "one they mean, then call reschedule_appointment or cancel_appointment."
     )
 
-    return f"{who}\n{date_line}\n\n{facts_block}\n\n{voice}\n\n{behavior}".strip()
+    return f"{who}\n{date_line}\n\n{facts_block}\n{info_block}\n\n{voice}\n\n{behavior}".strip()

@@ -75,4 +75,66 @@ def make_calendar_tools(business: dict) -> list:
             "patient_name": patient_name,
         }
 
-    return [check_availability, book_appointment]
+    def find_my_appointments(patient_name: str) -> dict:
+        """Look up a caller's existing appointments by name.
+
+        Call this before cancelling or rescheduling, so you know which booking
+        they mean (and can confirm the details back to them).
+
+        Args:
+            patient_name: The caller's full name.
+
+        Returns:
+            A dict with the list of their appointments (date + time).
+        """
+        appts = db.find_bookings(business_id, patient_name)
+        print(f"  TOOL -> find_my_appointments({patient_name!r}) [biz={business_id}] found={len(appts)}")
+        return {"patient_name": patient_name, "appointments": appts}
+
+    def cancel_appointment(patient_name: str, date: str, time: str) -> dict:
+        """Cancel a caller's appointment. Confirm the exact date and time first.
+
+        Args:
+            patient_name: The caller's full name.
+            date: The appointment's date.
+            time: The appointment's time slot.
+
+        Returns:
+            A dict with status "cancelled" or "not_found".
+        """
+        ok = db.cancel_booking(business_id, patient_name, date, time)
+        print(f"  TOOL -> cancel_appointment({patient_name!r}, {date!r}, {time!r}) [biz={business_id}] ok={ok}")
+        return {"status": "cancelled" if ok else "not_found", "date": date, "time": time}
+
+    def reschedule_appointment(
+        patient_name: str, old_date: str, old_time: str, new_date: str, new_time: str
+    ) -> dict:
+        """Move a caller's appointment to a new slot (the new slot must be free).
+
+        Args:
+            patient_name: The caller's full name.
+            old_date: The current appointment date.
+            old_time: The current appointment time.
+            new_date: The desired new date.
+            new_time: The desired new time.
+
+        Returns:
+            A dict with status "rescheduled", "unavailable" (new slot taken), or "not_found".
+        """
+        if new_time in set(db.booked_times(business_id, new_date)):
+            print(f"  TOOL -> reschedule DENIED (new slot taken) [biz={business_id}]")
+            return {"status": "unavailable", "reason": f"{new_time} on {new_date} is already booked"}
+        ok = db.reschedule_booking(business_id, patient_name, old_date, old_time, new_date, new_time)
+        print(
+            f"  TOOL -> reschedule_appointment({patient_name!r}: {old_date} {old_time} "
+            f"-> {new_date} {new_time}) [biz={business_id}] ok={ok}"
+        )
+        return {"status": "rescheduled" if ok else "not_found", "new_date": new_date, "new_time": new_time}
+
+    return [
+        check_availability,
+        book_appointment,
+        find_my_appointments,
+        cancel_appointment,
+        reschedule_appointment,
+    ]

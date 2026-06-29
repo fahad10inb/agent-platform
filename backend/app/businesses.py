@@ -15,6 +15,11 @@ SEED_BUSINESSES = [
         "open_hour": 9,  # 9am
         "close_hour": 17,  # 5pm (last slot starts before this)
         "slot_minutes": 30,
+        "faq": (
+            "We accept most major insurance plans; bring your card and we'll verify on arrival. "
+            "Free parking is available behind the building. We welcome children and offer family "
+            "appointments. First visits take about 45 minutes. Emergencies: call and we'll fit you in."
+        ),
     },
     {
         "id": "velvet-hair",
@@ -26,5 +31,10 @@ SEED_BUSINESSES = [
         "open_hour": 10,  # 10am
         "close_hour": 19,  # 7pm
         "slot_minutes": 30,
+        "faq": (
+            "Walk-ins welcome when we have space, but booking is best. Parking is on the street "
+            "or the garage next door. Balayage takes 2-3 hours; please arrive with dry, unwashed "
+            "hair for color. We sell gift cards. Cancellations within 24 hours may incur a fee."
+        ),
     },
 ]
