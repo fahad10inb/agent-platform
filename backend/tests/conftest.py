@@ -78,7 +78,8 @@ def _fake_booked_times(business_id, date):
 def _fake_find_bookings(business_id, patient_name):
     name = (patient_name or "").strip().lower()
     return [
-        {"id": r["id"], "date": r["date"], "time": r["time"], "patient_name": r["patient_name"]}
+        {"id": r["id"], "date": r["date"], "time": r["time"],
+         "patient_name": r["patient_name"], "phone": r["phone"]}
         for r in _S["bookings"]
         if r["business_id"] == business_id and r["patient_name"].lower() == name
     ]

@@ -162,7 +162,7 @@ def find_bookings(business_id: str, patient_name: str) -> list[dict]:
     """Find a patient's bookings at a business (case-insensitive name match)."""
     with _connect() as conn:
         rows = conn.execute(
-            "SELECT id, date, time, patient_name FROM bookings "
+            "SELECT id, date, time, patient_name, phone FROM bookings "
             "WHERE business_id = %s AND LOWER(patient_name) = LOWER(%s) ORDER BY date, time",
             (business_id, (patient_name or "").strip()),
         ).fetchall()

@@ -70,12 +70,17 @@ def build_system_prompt(business: dict) -> str:
 
     # 4) BEHAVIOR — how to use the tools (memory + scheduling).
     behavior = (
-        "As soon as you learn the caller's name, call recall_caller — it returns "
-        "what you remember about them AND their appointments. If they're a "
-        "returning caller, OPEN your next reply by warmly referencing something "
-        "specific you know (a past concern, their last visit, or an upcoming "
-        "appointment) so they feel recognized and don't have to re-explain "
-        "themselves. Learn their PREFERENCES as you go and save each one with "
+        "The moment you learn the caller's name — BEFORE answering anything else, "
+        "even an availability question — call recall_caller; it returns what you "
+        "remember about them AND their appointments. If they're a returning "
+        "caller, OPEN your very next reply by warmly recognizing them and "
+        "referencing something specific (their usual service, a past concern, or "
+        "an upcoming appointment). If they already have an UPCOMING appointment, "
+        "mention it before booking a new one. If their notes show a usual service "
+        "or preferred staff member, offer it by default instead of asking what "
+        "they want. If a phone number is on file from a past booking, confirm "
+        "it ('still on 050...123?') instead of asking for it again. "
+        "Learn their PREFERENCES as you go and save each one with "
         "remember_about_caller — preferred staff member, usual service, preferred "
         "days or times, language preference ('prefers Arabic') — so next time you "
         "can offer 'the usual' like a receptionist who truly knows them. Save "
