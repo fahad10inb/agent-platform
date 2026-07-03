@@ -119,7 +119,17 @@ DASHBOARD_HTML = """<!doctype html>
   const $ = id => document.getElementById(id);
   const val = id => $(id).value;
   function toast(t){ const el=$("toast"); el.textContent=t; el.classList.add("show"); setTimeout(()=>el.classList.remove("show"),2200); }
-  function esc(s){ return (s==null?"":String(s)).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;"}[c])); }
+  function esc(s){ return (s==null?"":String(s)).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;","'":"&#39;"}[c])); }
+  // FastAPI sends validation failures (422) as a LIST of {loc, msg} — format it
+  // readably instead of toasting "[object Object]".
+  function apiErr(d, fallback){
+    if(!d || !d.detail) return fallback;
+    if(typeof d.detail === "string") return d.detail;
+    if(Array.isArray(d.detail)) return d.detail.map(e=>{
+      const f=(e.loc||[]).slice(1).join("."); return (f?f+": ":"")+(e.msg||"invalid value");
+    }).join(" · ");
+    return fallback;
+  }
 
   function api(path, opts){
     opts = opts || {};
@@ -166,7 +176,7 @@ DASHBOARD_HTML = """<!doctype html>
     $("bizPanel").classList.add("hidden"); $("adminHome").classList.add("hidden");
     const p = $("onboardPanel"); p.classList.remove("hidden");
     p.innerHTML = `<h3 style="margin-top:0">Onboard a new clinic</h3>
-      <div class="row2"><div><label>Business ID</label><input id="o_id" placeholder="velvet-hair"></div>
+      <div class="row2"><div><label>Business ID (lowercase-and-dashes)</label><input id="o_id" placeholder="velvet-hair"></div>
       <div><label>Name</label><input id="o_name" placeholder="Velvet Hair Studio"></div></div>
       <div class="row2"><div><label>Type</label><input id="o_type" placeholder="hair salon"></div>
       <div><label>Tone</label><input id="o_tone" placeholder="warm and friendly"></div></div>
@@ -174,9 +184,9 @@ DASHBOARD_HTML = """<!doctype html>
       <label>Hours (display)</label><input id="o_hours" placeholder="Mon-Fri 9am-5pm">
       <label>Services</label><input id="o_services" placeholder="checkups, cleanings...">
       <label>FAQ / knowledge</label><textarea id="o_faq" rows="3" placeholder="Insurance, parking, policies..."></textarea>
-      <div class="row2"><div><label>Open hour (0-23)</label><input id="o_open" type="number" value="9"></div>
-      <div><label>Close hour (0-23)</label><input id="o_close" type="number" value="17"></div>
-      <div><label>Slot mins</label><input id="o_slot" type="number" value="30"></div></div>
+      <div class="row2"><div><label>Open hour (0-23)</label><input id="o_open" type="number" min="0" max="23" value="9"></div>
+      <div><label>Close hour (1-24)</label><input id="o_close" type="number" min="1" max="24" value="17"></div>
+      <div><label>Slot mins (5-240)</label><input id="o_slot" type="number" min="5" max="240" value="30"></div></div>
       <div style="margin-top:16px"><button class="btn" onclick="doOnboard()">Create clinic</button></div>
       <div id="onboardResult"></div>`;
   }
@@ -188,7 +198,7 @@ DASHBOARD_HTML = """<!doctype html>
     if(!body.id||!body.name||!body.type){ toast("ID, name and type are required."); return; }
     const r = await api("/admin/businesses", { method:"POST", body: JSON.stringify(body) });
     const d = await r.json();
-    if(!r.ok){ toast(d.detail || "Could not create."); return; }
+    if(!r.ok){ toast(apiErr(d, "Could not create.")); return; }
     $("onboardResult").innerHTML = `<div class="note" style="margin-top:14px">Clinic created. Give them this key (shown once):</div>
       <div class="keybox">${esc(d.api_key)}</div>
       <div class="note">Widget link: <code>/widget?business_id=${esc(d.id)}</code></div>`;
@@ -235,9 +245,9 @@ DASHBOARD_HTML = """<!doctype html>
         <label>Hours (display)</label><input id="s_hours" value="${esc(b.hours)}">
         <label>Services</label><input id="s_services" value="${esc(b.services)}">
         <label>FAQ / knowledge the agent can use</label><textarea id="s_faq" rows="4">${esc(b.faq)}</textarea>
-        <div class="row2"><div><label>Open hour</label><input id="s_open" type="number" value="${esc(b.open_hour)}"></div>
-        <div><label>Close hour</label><input id="s_close" type="number" value="${esc(b.close_hour)}"></div>
-        <div><label>Slot mins</label><input id="s_slot" type="number" value="${esc(b.slot_minutes)}"></div></div>
+        <div class="row2"><div><label>Open hour (0-23)</label><input id="s_open" type="number" min="0" max="23" value="${esc(b.open_hour)}"></div>
+        <div><label>Close hour (1-24)</label><input id="s_close" type="number" min="1" max="24" value="${esc(b.close_hour)}"></div>
+        <div><label>Slot mins (5-240)</label><input id="s_slot" type="number" min="5" max="240" value="${esc(b.slot_minutes)}"></div></div>
         <div style="margin-top:16px"><button class="btn" onclick="saveSettings()">Save changes</button></div>`;
       $("s_vertical").value = b.vertical || "general";
     } else {
@@ -256,7 +266,9 @@ DASHBOARD_HTML = """<!doctype html>
       services:val("s_services"), faq:val("s_faq"), open_hour:+val("s_open"), close_hour:+val("s_close"),
       slot_minutes:+val("s_slot"), vertical:val("s_vertical") };
     const r = await api("/manage/"+encodeURIComponent(CURRENT), { method:"POST", body: JSON.stringify(body) });
-    toast(r.ok ? "Saved ✓" : "Save failed");
+    if(r.ok){ toast("Saved ✓"); return; }
+    let d=null; try{ d = await r.json(); }catch(e){}
+    toast(apiErr(d, "Save failed"));
   }
 </script>
 </body>
