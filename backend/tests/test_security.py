@@ -52,6 +52,38 @@ def test_settings_bounds_reject_hostile_values(client):
     assert r.status_code == 422
 
 
+def test_unknown_business_is_not_distinguishable(client):
+    """403 for unknown business AND for wrong key — a 404 here would let anyone
+    enumerate which business ids exist."""
+    ghost = client.get("/bookings?business_id=ghost-biz", headers=VELVET)
+    wrong = client.get("/bookings?business_id=bright-smile", headers=VELVET)
+    assert ghost.status_code == wrong.status_code == 403
+
+
+def test_manage_signin_is_throttled(client):
+    """Key brute-forcing on /manage gets rate limited."""
+    codes = [
+        client.get("/manage/bright-smile", headers={"X-API-Key": f"guess-{i}"}).status_code
+        for i in range(25)
+    ]
+    assert codes[0] == 403  # wrong key, but allowed through the limiter
+    assert 429 in codes  # ...until the throttle kicks in
+
+
+def test_unhandled_errors_return_clean_500(client, monkeypatch):
+    """A crash inside a route must never leak a stack trace to the caller."""
+    from app import db
+
+    def _boom(_bid):
+        raise RuntimeError("secret internal detail")
+
+    monkeypatch.setattr(db, "list_bookings", _boom)
+    r = client.get("/bookings?business_id=bright-smile", headers=BRIGHT)
+    assert r.status_code == 500
+    assert "secret internal detail" not in r.text
+    assert r.headers.get("x-content-type-options") == "nosniff"
+
+
 def test_seed_does_not_clobber_edits(client, state):
     """Re-running the seed loop must not revert a business's saved settings."""
     from app.businesses import SEED_BUSINESSES

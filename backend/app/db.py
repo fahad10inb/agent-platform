@@ -15,15 +15,36 @@ Differences from the SQLite version (the Postgres dialect):
 
 import psycopg
 from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
 
 from app.config import get_settings
 
+# One shared pool per process. Before this, EVERY db call opened a fresh TLS
+# connection to Supabase (a full handshake per query — the dominant latency tax
+# on every tool call). The pool keeps warm connections and validates them on
+# checkout, so an idle-dropped connection is replaced instead of erroring.
+_pool: ConnectionPool | None = None
+
+
+def _get_pool() -> ConnectionPool:
+    global _pool
+    if _pool is None:
+        _pool = ConnectionPool(
+            get_settings().database_url,
+            min_size=1,
+            max_size=8,
+            kwargs={"row_factory": dict_row},
+            check=ConnectionPool.check_connection,
+            open=True,
+        )
+    return _pool
+
 
 def _connect():
-    """Open a Postgres connection to Supabase. `dict_row` makes rows behave like
-    dicts (row["date"]). Used with `with _connect() as conn:` which commits on
-    success and closes the connection automatically."""
-    return psycopg.connect(get_settings().database_url, row_factory=dict_row)
+    """A pooled Postgres connection as a context manager — a drop-in for the old
+    per-call connect: `with _connect() as conn:` still commits on success and
+    returns the connection (to the pool) automatically."""
+    return _get_pool().connection()
 
 
 def init_db() -> None:
@@ -95,6 +116,11 @@ def init_db() -> None:
         # Booking now captures mobile number + reason for visit (UAE clinics take both).
         conn.execute("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS phone TEXT")
         conn.execute("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reason TEXT")
+        # Every hot query filters on these — without indexes each is a full
+        # table scan that grows linearly with every tenant's data combined.
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_bookings_biz_date ON bookings (business_id, date)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_caller_memory_biz ON caller_memory (business_id, caller)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_leads_biz ON leads (business_id)")
     # One slot = one booking, enforced by the DATABASE — the tool's check-then-
     # insert has a race window (two simultaneous callers both pass the check);
     # this unique index is what actually guarantees no double-booking. Separate

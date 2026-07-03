@@ -152,11 +152,15 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def _clean_state():
-    """Fresh rows + fresh conversations per test; keep the seeded businesses."""
+    """Fresh rows, conversations and rate-limit buckets per test; keep the
+    seeded businesses."""
+    from app import security
+
     _S["bookings"].clear()
     _S["memory"].clear()
     _S["leads"].clear()
     main_module._conversations.clear()
+    security._hits.clear()
     yield
 
 

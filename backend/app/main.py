@@ -9,7 +9,7 @@ so we can confirm the server is alive.
 import logging
 
 from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from app import db, security
@@ -52,6 +52,23 @@ app = FastAPI(
     redoc_url="/redoc" if _dev else None,
     openapi_url="/openapi.json" if _dev else None,
 )
+
+
+@app.middleware("http")
+async def _hardening(request: Request, call_next):
+    """Last-resort error net + baseline security headers on every response.
+
+    Any exception that escapes a route (a DB hiccup, a bug) becomes a clean,
+    generic 500 with the real traceback in the LOGS — never a raw stack trace
+    in the caller's browser."""
+    try:
+        response = await call_next(request)
+    except Exception:  # noqa: BLE001 — the whole point is catching everything
+        logger.exception("unhandled error on %s %s", request.method, request.url.path)
+        response = JSONResponse(status_code=500, content={"detail": "Something went wrong on our side. Please try again."})
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    return response
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -208,9 +225,11 @@ def dashboard():
 
 
 @app.get("/manage/{business_id}")
-def manage_get(business_id: str, x_api_key: str | None = Header(default=None)):
+def manage_get(business_id: str, request: Request, x_api_key: str | None = Header(default=None)):
     """Return a business's EDITABLE config (no secrets). Requires that business's
     key or the admin key — used to pre-fill the settings form."""
+    # Sign-in attempts hit this first — throttle so keys can't be brute-forced.
+    security.rate_limit(request, limit=20, window=60, bucket="manage")
     security.check_business_access(business_id, x_api_key)
     biz = db.get_business(business_id)
     if biz is None:
@@ -221,8 +240,14 @@ def manage_get(business_id: str, x_api_key: str | None = Header(default=None)):
 
 
 @app.post("/manage/{business_id}")
-def manage_update(business_id: str, settings_in: BusinessSettings, x_api_key: str | None = Header(default=None)):
+def manage_update(
+    business_id: str,
+    settings_in: BusinessSettings,
+    request: Request,
+    x_api_key: str | None = Header(default=None),
+):
     """Update a business's settings. Requires that business's key or admin key."""
+    security.rate_limit(request, limit=20, window=60, bucket="manage")
     security.check_business_access(business_id, x_api_key)
     fields = {k: v for k, v in settings_in.model_dump().items() if v is not None}
     db.update_business_settings(business_id, fields)

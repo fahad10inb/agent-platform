@@ -25,12 +25,19 @@ from app.config import get_settings
 _hits: dict[str, list[float]] = {}
 
 
-def rate_limit(request: Request, limit: int = 30, window: int = 60) -> None:
-    """Allow at most `limit` requests per `window` seconds per client IP."""
+def rate_limit(request: Request, limit: int = 30, window: int = 60, bucket: str = "chat") -> None:
+    """Allow at most `limit` requests per `window` seconds per client IP.
+
+    The client IP is the LAST x-forwarded-for hop — that's the one appended by
+    our own proxy (Render), so it can't be spoofed by the caller. The FIRST hop
+    is client-supplied: trusting it let anyone reset their own limit per request.
+    `bucket` keeps differently-limited endpoints from sharing one counter.
+    """
     fwd = request.headers.get("x-forwarded-for", "")
-    ip = fwd.split(",")[0].strip() or (request.client.host if request.client else "unknown")
+    hops = [h.strip() for h in fwd.split(",") if h.strip()]
+    ip = hops[-1] if hops else (request.client.host if request.client else "unknown")
     now = time.time()
-    arr = _hits.setdefault(ip, [])
+    arr = _hits.setdefault(f"{bucket}:{ip}", [])
     cutoff = now - window
     arr[:] = [t for t in arr if t > cutoff]  # drop old hits
     if len(arr) >= limit:
@@ -62,9 +69,9 @@ def check_business_access(business_id: str, x_api_key: str | None) -> None:
     if admin and secrets.compare_digest(x_api_key, admin):
         return  # admin can read any business
     biz = db.get_business(business_id)
-    if biz is None:
-        raise HTTPException(status_code=404, detail="Unknown business.")
-    if not biz.get("api_key") or not secrets.compare_digest(x_api_key, biz["api_key"]):
+    # Unknown business and wrong key answer IDENTICALLY (403): a distinct 404
+    # here let anyone with any key enumerate which business ids exist.
+    if biz is None or not biz.get("api_key") or not secrets.compare_digest(x_api_key, biz["api_key"]):
         raise HTTPException(status_code=403, detail="API key does not match this business.")
 
 

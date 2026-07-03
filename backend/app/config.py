@@ -26,6 +26,15 @@ class Settings(BaseSettings):
     app_name: str = "agent-platform"
     environment: str = "development"  # "development" or "production"
 
+    # --- LLM tuning (env-tunable; no deploy needed to dial the voice) ---
+    gemini_model: str = "gemini-2.5-flash"
+    gemini_temperature: float = 0.7
+    # A receptionist answers in a couple of sentences; this cap stops a runaway
+    # generation from producing (and billing) an essay.
+    gemini_max_output_tokens: int = 1024
+    # Hard ceiling on one model call (seconds), including its tool round-trips.
+    llm_timeout_seconds: float = 45.0
+
     # --- Secrets ---
     gemini_api_key: str = ""
     database_url: str = ""

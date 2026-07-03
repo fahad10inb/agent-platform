@@ -7,6 +7,8 @@ place means the rest of the app never has to know how the SDK works — if we ev
 swap models or providers, we change only this file.
 """
 
+import asyncio
+import logging
 from functools import lru_cache
 
 from google import genai
@@ -14,8 +16,7 @@ from google.genai import types
 
 from app.config import get_settings
 
-# The chat model. Flash is fast and cheap — right for a snappy receptionist.
-_MODEL = "gemini-2.5-flash"
+logger = logging.getLogger("agent-platform.llm")
 
 
 @lru_cache
@@ -64,13 +65,41 @@ async def generate_reply(
         for turn in history
     ]
 
-    response = await _get_client().aio.models.generate_content(
-        model=_MODEL,
-        contents=contents,
-        config=types.GenerateContentConfig(
-            system_instruction=system_prompt,
-            temperature=0.7,  # a little warmth/variety; 0 = robotic, 1 = wilder
-            tools=tools,  # None = no tools; a list = the AI may call them
-        ),
+    settings = get_settings()
+    config = types.GenerateContentConfig(
+        system_instruction=system_prompt,
+        # A little warmth/variety; 0 = robotic, 1 = wilder. Env-tunable so the
+        # voice can be dialed on Render without a deploy.
+        temperature=settings.gemini_temperature,
+        # A receptionist reply is a couple of sentences — cap the output so a
+        # runaway generation can't produce (and bill) an essay.
+        max_output_tokens=settings.gemini_max_output_tokens,
+        tools=tools,  # None = no tools; a list = the AI may call them
     )
-    return (response.text or "").strip()
+
+    # Resilience: a hard timeout (a hung upstream call must not hold the caller
+    # hostage) and ONE retry on transient failure (blip-shaped errors are common;
+    # systematic ones will fail twice and surface properly). Retrying with tools
+    # is safe: the destructive tools are idempotent under retry (booking twice
+    # hits the unique slot index → "unavailable"; a second cancel → "not_found").
+    last_exc: Exception | None = None
+    for attempt in (1, 2):
+        try:
+            response = await asyncio.wait_for(
+                _get_client().aio.models.generate_content(
+                    model=settings.gemini_model,
+                    contents=contents,
+                    config=config,
+                ),
+                timeout=settings.llm_timeout_seconds,
+            )
+            return (response.text or "").strip()
+        except asyncio.TimeoutError as exc:
+            last_exc = exc
+            logger.warning("gemini call timed out (attempt %d/2, %ss)", attempt, settings.llm_timeout_seconds)
+        except Exception as exc:  # transient 5xx/network — retry once
+            last_exc = exc
+            logger.warning("gemini call failed (attempt %d/2): %s", attempt, str(exc)[:200])
+        if attempt == 1:
+            await asyncio.sleep(0.6)
+    raise last_exc if last_exc else RuntimeError("gemini call failed")
