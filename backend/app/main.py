@@ -6,9 +6,11 @@ the outside world can call. For Part 1 there is just one route: a health check
 so we can confirm the server is alive.
 """
 
+import logging
+
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app import db, security
 from app.businesses import SEED_BUSINESSES
@@ -18,6 +20,7 @@ from app.prompt_service import build_system_prompt
 import secrets
 
 from app.dashboard_html import DASHBOARD_HTML
+from app.landing_html import LANDING_HTML
 from app.tools.calendar_tools import make_calendar_tools
 from app.tools.leads_tools import make_lead_tools
 from app.tools.memory_tools import make_memory_tools
@@ -29,14 +32,32 @@ settings = get_settings()
 # Create the database tables if they don't exist yet (safe to run every start).
 db.init_db()
 
-# Seed the demo businesses so there's data to test with. upsert = safe to re-run.
+# Seed the demo businesses ONLY if they don't exist yet. (An unconditional upsert
+# here silently reverted every dashboard edit to the demo tenants on each deploy.)
 for _b in SEED_BUSINESSES:
-    db.upsert_business(_b)
+    if db.get_business(_b["id"]) is None:
+        db.upsert_business(_b)
+
+logger = logging.getLogger("agent-platform")
 
 # `app` is THE application object. When we run `uvicorn app.main:app`, that
 # command literally means: "find the variable `app` inside app/main.py and run
 # it." FastAPI also uses `title` to label the auto-generated docs page.
-app = FastAPI(title=settings.app_name)
+# In production the interactive /docs page is off — the full API schema
+# (including admin routes) is a map we don't hand to strangers.
+_dev = settings.environment == "development"
+app = FastAPI(
+    title=settings.app_name,
+    docs_url="/docs" if _dev else None,
+    redoc_url="/redoc" if _dev else None,
+    openapi_url="/openapi.json" if _dev else None,
+)
+
+
+@app.get("/", response_class=HTMLResponse)
+def landing():
+    """The public landing page — the product's front door (was a bare 404)."""
+    return LANDING_HTML
 
 
 @app.get("/health")
@@ -59,13 +80,14 @@ def health():
 # JSON body, checks it matches this model, and hands us a tidy `req` object.
 # If a caller sends the wrong shape, FastAPI auto-replies with a clear error.
 class ChatRequest(BaseModel):
-    message: str
+    # Bounded so one request can't carry megabytes into Gemini (cost guard).
+    message: str = Field(min_length=1, max_length=4000)
     # Ties messages into ONE ongoing conversation so the agent remembers context.
     # Send the same id across a back-and-forth; defaults to "default" for easy testing.
-    conversation_id: str = "default"
+    conversation_id: str = Field(default="default", max_length=100)
     # Which business this request is for. Defaults to the dental demo so testing
     # is easy; in real use every caller's request carries their business's id.
-    business_id: str = "bright-smile"
+    business_id: str = Field(default="bright-smile", max_length=60)
 
 
 # The shape of what /chat SENDS BACK. Declaring it documents the API and keeps
@@ -77,32 +99,35 @@ class ChatResponse(BaseModel):
 class BusinessSettings(BaseModel):
     """Editable business fields (all optional — only the ones sent get updated)."""
 
-    name: str | None = None
-    type: str | None = None
-    hours: str | None = None
-    services: str | None = None
-    tone: str | None = None
-    faq: str | None = None
-    open_hour: int | None = None
-    close_hour: int | None = None
-    slot_minutes: int | None = None
-    vertical: str | None = None
+    name: str | None = Field(default=None, max_length=120)
+    type: str | None = Field(default=None, max_length=60)
+    hours: str | None = Field(default=None, max_length=500)
+    services: str | None = Field(default=None, max_length=2000)
+    tone: str | None = Field(default=None, max_length=200)
+    faq: str | None = Field(default=None, max_length=8000)
+    # Bounded hours/slot so a bad value can't hang slot generation (an infinite
+    # loop when slot_minutes <= 0) or produce a nonsense calendar.
+    open_hour: int | None = Field(default=None, ge=0, le=23)
+    close_hour: int | None = Field(default=None, ge=1, le=24)
+    slot_minutes: int | None = Field(default=None, ge=5, le=240)
+    vertical: str | None = Field(default=None, max_length=40)
 
 
 class NewBusiness(BaseModel):
     """Payload to onboard a new business (admin only)."""
 
-    id: str
-    name: str
-    type: str
-    hours: str = ""
-    services: str = ""
-    tone: str = "warm and professional"
-    faq: str = ""
-    open_hour: int = 9
-    close_hour: int = 17
-    slot_minutes: int = 30
-    vertical: str = "general"
+    # URL-safe slug (it lands in widget links and JS) — lowercase, digits, dashes.
+    id: str = Field(min_length=2, max_length=50, pattern=r"^[a-z0-9][a-z0-9-]*$")
+    name: str = Field(min_length=1, max_length=120)
+    type: str = Field(min_length=1, max_length=60)
+    hours: str = Field(default="", max_length=500)
+    services: str = Field(default="", max_length=2000)
+    tone: str = Field(default="warm and professional", max_length=200)
+    faq: str = Field(default="", max_length=8000)
+    open_hour: int = Field(default=9, ge=0, le=23)
+    close_hour: int = Field(default=17, ge=1, le=24)
+    slot_minutes: int = Field(default=30, ge=5, le=240)
+    vertical: str = Field(default="general", max_length=40)
 
 
 # Tools are now built PER REQUEST (scoped to the caller's business) inside the
@@ -132,8 +157,13 @@ async def chat(req: ChatRequest, request: Request):
     system_prompt = build_system_prompt(business)
 
     # 2. Find (or start) this conversation's history, then add the new message.
-    history = _conversations.setdefault(req.conversation_id, [])
+    # The key includes the business_id: the same conversation_id at two different
+    # businesses must NEVER share history (cross-tenant context bleed).
+    history = _conversations.setdefault(f"{req.business_id}:{req.conversation_id}", [])
     history.append({"role": "user", "text": req.message})
+    # Cap remembered turns so a marathon conversation can't grow tokens unbounded.
+    if len(history) > 40:
+        del history[:-40]
 
     # 3. Build this business's tools (each scoped to its own data via the
     #    business_id closure), then send the whole conversation to the AI.
@@ -145,11 +175,17 @@ async def chat(req: ChatRequest, request: Request):
     try:
         reply = await generate_reply(system_prompt, history, tools=tools)
     except Exception as e:
-        # Surface the real cause in the response instead of a blank 500 — very
-        # handy while learning. (In production you'd log it and return a generic
-        # message so you don't leak internals.) `from e` keeps the original
-        # error chained for cleaner tracebacks.
-        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}") from e
+        # The failed user turn must not linger in history (the model never saw it).
+        history.pop()
+        # Log the real cause; tell the public only in development. Leaking
+        # internals (key names, stack details) to an open endpoint is a gift
+        # to attackers in production.
+        logger.exception("chat failed for business=%s", req.business_id)
+        if settings.environment == "development":
+            raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}") from e
+        raise HTTPException(
+            status_code=500, detail="Sorry — something went wrong. Please try again."
+        ) from e
 
     # 4. Remember the AI's reply too, so the next turn has the full context.
     history.append({"role": "model", "text": reply})

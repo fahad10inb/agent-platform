@@ -11,6 +11,7 @@ Access model:
 Secure by default: if no key matches, access is denied.
 """
 
+import secrets
 import time
 
 from fastapi import Header, HTTPException, Request
@@ -47,7 +48,9 @@ def check_admin(x_api_key: str | None) -> None:
     admin = _admin_key()
     if not admin:
         raise HTTPException(status_code=503, detail="Admin API key not configured on the server.")
-    if x_api_key != admin:
+    # compare_digest = constant-time comparison (a plain != leaks key length /
+    # prefix timing to an attacker probing the admin endpoint).
+    if not secrets.compare_digest(x_api_key or "", admin):
         raise HTTPException(status_code=401, detail="Invalid or missing admin API key.")
 
 
@@ -56,12 +59,12 @@ def check_business_access(business_id: str, x_api_key: str | None) -> None:
     if not x_api_key:
         raise HTTPException(status_code=401, detail="Missing API key.")
     admin = _admin_key()
-    if admin and x_api_key == admin:
+    if admin and secrets.compare_digest(x_api_key, admin):
         return  # admin can read any business
     biz = db.get_business(business_id)
     if biz is None:
         raise HTTPException(status_code=404, detail="Unknown business.")
-    if not biz.get("api_key") or x_api_key != biz["api_key"]:
+    if not biz.get("api_key") or not secrets.compare_digest(x_api_key, biz["api_key"]):
         raise HTTPException(status_code=403, detail="API key does not match this business.")
 
 

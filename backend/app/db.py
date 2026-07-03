@@ -95,25 +95,43 @@ def init_db() -> None:
         # Booking now captures mobile number + reason for visit (UAE clinics take both).
         conn.execute("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS phone TEXT")
         conn.execute("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reason TEXT")
+    # One slot = one booking, enforced by the DATABASE — the tool's check-then-
+    # insert has a race window (two simultaneous callers both pass the check);
+    # this unique index is what actually guarantees no double-booking. Separate
+    # connection + best-effort: if legacy duplicate rows block index creation,
+    # the app still starts (the tool-level check still applies).
+    try:
+        with _connect() as conn:
+            conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_booking_slot "
+                "ON bookings (business_id, date, time)"
+            )
+    except Exception:
+        pass
 
 
 # --- bookings ----------------------------------------------------------------
 def save_booking(
     business_id: str, date: str, time: str, patient_name: str,
     phone: str = "", reason: str = "",
-) -> int:
-    """Insert one booking for a business and return its new id.
+) -> int | None:
+    """Insert one booking for a business and return its new id — or None if the
+    slot was taken in the race window between the tool's check and this insert
+    (the unique index is the real no-double-booking guarantee).
 
     Captures mobile number + reason for visit (what UAE front desks take), both
     optional. %s placeholders keep it injection-safe; RETURNING id hands back the
     new row's id.
     """
-    with _connect() as conn:
-        row = conn.execute(
-            "INSERT INTO bookings (business_id, date, time, patient_name, phone, reason) "
-            "VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
-            (business_id, date, time, patient_name, phone, reason),
-        ).fetchone()
+    try:
+        with _connect() as conn:
+            row = conn.execute(
+                "INSERT INTO bookings (business_id, date, time, patient_name, phone, reason) "
+                "VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
+                (business_id, date, time, patient_name, phone, reason),
+            ).fetchone()
+    except psycopg.errors.UniqueViolation:
+        return None
     return row["id"]
 
 
@@ -165,15 +183,20 @@ def cancel_booking(business_id: str, patient_name: str, date: str, time: str) ->
 
 def reschedule_booking(
     business_id: str, patient_name: str, old_date: str, old_time: str, new_date: str, new_time: str
-) -> bool:
-    """Move a booking to a new date/time. Returns True if a row was updated."""
-    with _connect() as conn:
-        cur = conn.execute(
-            "UPDATE bookings SET date = %s, time = %s "
-            "WHERE business_id = %s AND LOWER(patient_name) = LOWER(%s) AND date = %s AND time = %s",
-            (new_date, new_time, business_id, (patient_name or "").strip(), old_date, old_time),
-        )
-        updated = cur.rowcount
+) -> bool | None:
+    """Move a booking to a new date/time. Returns True if a row was updated,
+    False if no matching booking exists, or None if the new slot was grabbed
+    in the race window (unique index)."""
+    try:
+        with _connect() as conn:
+            cur = conn.execute(
+                "UPDATE bookings SET date = %s, time = %s "
+                "WHERE business_id = %s AND LOWER(patient_name) = LOWER(%s) AND date = %s AND time = %s",
+                (new_date, new_time, business_id, (patient_name or "").strip(), old_date, old_time),
+            )
+            updated = cur.rowcount
+    except psycopg.errors.UniqueViolation:
+        return None
     return updated > 0
 
 

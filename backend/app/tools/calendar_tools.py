@@ -10,7 +10,31 @@ Still a closure factory (make_calendar_tools) so each tool acts only on its own
 business's data without the AI ever handling the business_id.
 """
 
+import re
+
 from app import db
+
+
+def _norm_time(t: str) -> str:
+    """Canonicalize a caller-provided time to slot format: '2:00 pm', '2 PM' and
+    '14:00' all become '2:00 PM'. Without this the taken-slot check compares raw
+    strings, and a lowercase or 24-hour variant books a duplicate of a taken slot.
+    Unparseable input comes back stripped so exact matches still work."""
+    s = (t or "").strip().upper().replace(".", "")
+    m = re.match(r"^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?$", s)
+    if not m:
+        return (t or "").strip()
+    h, mins, suffix = int(m.group(1)), int(m.group(2) or 0), m.group(3)
+    if h > 24 or mins > 59:
+        return (t or "").strip()
+    if suffix is None:  # 24-hour input like "14:00"
+        suffix = "AM" if h < 12 or h == 24 else "PM"
+        h = h % 12 or 12
+    elif h > 12:  # "14:00 PM" — trust the 24-hour digits
+        h -= 12
+    elif h == 0:
+        h = 12
+    return f"{h}:{mins:02d} {suffix}"
 
 
 def _all_slots(open_hour: int, close_hour: int, slot_minutes: int) -> list[str]:
@@ -33,6 +57,13 @@ def make_calendar_tools(business: dict) -> list:
     open_hour = business.get("open_hour") or 9
     close_hour = business.get("close_hour") or 17
     slot_minutes = business.get("slot_minutes") or 30
+    # Guard against bad stored values (rows may predate API validation): a
+    # non-positive slot length makes slot generation loop forever, and inverted
+    # hours produce an empty or nonsense day. Fall back to sane defaults.
+    if slot_minutes <= 0:
+        slot_minutes = 30
+    if not (0 <= open_hour < close_hour <= 24):
+        open_hour, close_hour = 9, 17
 
     def check_availability(date: str) -> dict:
         """Check which appointment times are still FREE on a given date.
@@ -67,12 +98,27 @@ def make_calendar_tools(business: dict) -> list:
         Returns:
             A confirmation dict, or status "unavailable" if that slot is taken.
         """
+        time = _norm_time(time)
         if time in set(db.booked_times(business_id, date)):
             print(f"  TOOL -> book_appointment DENIED (taken) date={date!r} time={time!r} [biz={business_id}]")
             return {"status": "unavailable", "reason": f"{time} on {date} is already booked", "date": date, "time": time}
 
-        print(f"  TOOL -> book_appointment(date={date!r}, time={time!r}, name={patient_name!r}, phone={phone!r}, reason={reason!r}) [biz={business_id}]")
+        # No PII (name/phone) in server logs — Render keeps them.
+        print(f"  TOOL -> book_appointment(date={date!r}, time={time!r}) [biz={business_id}]")
         booking_id = db.save_booking(business_id, date, time, patient_name, phone, reason)
+        if booking_id is None:
+            # Two callers raced for the same slot; the DB's unique index kept
+            # exactly one. Tell this caller it's taken.
+            return {"status": "unavailable", "reason": f"{time} on {date} is already booked", "date": date, "time": time}
+        # Automatic visit memory: the platform remembers every visit by itself,
+        # so a returning caller is recognized even if the model never thought to
+        # call remember_about_caller. Best-effort — a memory failure must never
+        # break the booking that just succeeded.
+        if reason:
+            try:
+                db.save_caller_memory(business_id, patient_name, f"came in for {reason} ({date})")
+            except Exception:
+                pass
         return {
             "status": "confirmed",
             "booking_id": booking_id,
@@ -94,7 +140,7 @@ def make_calendar_tools(business: dict) -> list:
             A dict with the list of their appointments (date + time).
         """
         appts = db.find_bookings(business_id, patient_name)
-        print(f"  TOOL -> find_my_appointments({patient_name!r}) [biz={business_id}] found={len(appts)}")
+        print(f"  TOOL -> find_my_appointments [biz={business_id}] found={len(appts)}")
         return {"patient_name": patient_name, "appointments": appts}
 
     def cancel_appointment(patient_name: str, date: str, time: str) -> dict:
@@ -108,8 +154,9 @@ def make_calendar_tools(business: dict) -> list:
         Returns:
             A dict with status "cancelled" or "not_found".
         """
+        time = _norm_time(time)
         ok = db.cancel_booking(business_id, patient_name, date, time)
-        print(f"  TOOL -> cancel_appointment({patient_name!r}, {date!r}, {time!r}) [biz={business_id}] ok={ok}")
+        print(f"  TOOL -> cancel_appointment({date!r}, {time!r}) [biz={business_id}] ok={ok}")
         return {"status": "cancelled" if ok else "not_found", "date": date, "time": time}
 
     def reschedule_appointment(
@@ -127,14 +174,17 @@ def make_calendar_tools(business: dict) -> list:
         Returns:
             A dict with status "rescheduled", "unavailable" (new slot taken), or "not_found".
         """
+        old_time, new_time = _norm_time(old_time), _norm_time(new_time)
         if new_time in set(db.booked_times(business_id, new_date)):
             print(f"  TOOL -> reschedule DENIED (new slot taken) [biz={business_id}]")
             return {"status": "unavailable", "reason": f"{new_time} on {new_date} is already booked"}
         ok = db.reschedule_booking(business_id, patient_name, old_date, old_time, new_date, new_time)
         print(
-            f"  TOOL -> reschedule_appointment({patient_name!r}: {old_date} {old_time} "
+            f"  TOOL -> reschedule_appointment({old_date} {old_time} "
             f"-> {new_date} {new_time}) [biz={business_id}] ok={ok}"
         )
+        if ok is None:  # new slot grabbed in the race window (unique index)
+            return {"status": "unavailable", "reason": f"{new_time} on {new_date} is already booked"}
         return {"status": "rescheduled" if ok else "not_found", "new_date": new_date, "new_time": new_time}
 
     return [

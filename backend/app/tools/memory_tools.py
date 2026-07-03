@@ -28,8 +28,16 @@ def make_memory_tools(business_id: str) -> list:
         """
         notes = db.get_caller_memory(business_id, name)
         appts = db.find_bookings(business_id, name)
-        print(f"  TOOL -> recall_caller({name!r}) [biz={business_id}] notes={len(notes)} appts={len(appts)}")
-        return {"name": name, "known_notes": notes, "appointments": appts}
+        print(f"  TOOL -> recall_caller [biz={business_id}] notes={len(notes)} appts={len(appts)}")
+        return {
+            "name": name,
+            "known_notes": notes,
+            "appointments": appts,
+            # A tiny profile so you can greet like a human who remembers them:
+            # "welcome back!" beats "how can I help you today?" every time.
+            "returning_caller": bool(notes or appts),
+            "visit_count": len(appts),
+        }
 
     def remember_about_caller(name: str, note: str) -> dict:
         """Save a useful fact about a caller so you remember it on their next call.
@@ -44,7 +52,13 @@ def make_memory_tools(business_id: str) -> list:
         Returns:
             A confirmation dict.
         """
-        print(f"  TOOL -> remember_about_caller({name!r}, {note!r}) [biz={business_id}]")
+        # Skip exact repeats — an append-only log of "prefers Rana" x5 reads as
+        # junk when recalled. (Same lesson as the companion's memory dedup.)
+        existing = {n.strip().lower() for n in db.get_caller_memory(business_id, name)}
+        if (note or "").strip().lower() in existing:
+            print(f"  TOOL -> remember_about_caller SKIPPED (duplicate) [biz={business_id}]")
+            return {"status": "already_known", "name": name}
+        print(f"  TOOL -> remember_about_caller [biz={business_id}]")
         db.save_caller_memory(business_id, name, note)
         return {"status": "saved", "name": name, "note": note}
 

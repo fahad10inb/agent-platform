@@ -9,6 +9,11 @@ different persona for every client.
 """
 
 import datetime
+import zoneinfo
+
+# The product serves UAE businesses; the server runs in UTC. Without pinning the
+# zone, "tomorrow" resolves to the WRONG DATE from midnight to 4am Gulf time.
+_UAE_TZ = zoneinfo.ZoneInfo("Asia/Dubai")
 
 
 def build_system_prompt(business: dict) -> str:
@@ -26,7 +31,7 @@ def build_system_prompt(business: dict) -> str:
     # Booking + availability match on the exact date string, so concrete dates
     # keep them consistent. (Normal app code can read the clock; this isn't a
     # workflow script.)
-    today = datetime.date.today()
+    today = datetime.datetime.now(_UAE_TZ).date()
     date_line = (
         f"Today is {today:%A, %B %d, %Y}. When a caller says 'tomorrow', a weekday, "
         f"or 'next week', work out the actual calendar date and use the YYYY-MM-DD "
@@ -68,10 +73,13 @@ def build_system_prompt(business: dict) -> str:
         "As soon as you learn the caller's name, call recall_caller — it returns "
         "what you remember about them AND their appointments. If they're a "
         "returning caller, OPEN your next reply by warmly referencing something "
-        "specific you know (a past concern, or an upcoming appointment) so they "
-        "feel recognized and don't have to re-explain themselves. Save anything "
-        "worth keeping for next time with remember_about_caller, naturally — "
-        "don't announce that you're saving. For availability, USE "
+        "specific you know (a past concern, their last visit, or an upcoming "
+        "appointment) so they feel recognized and don't have to re-explain "
+        "themselves. Learn their PREFERENCES as you go and save each one with "
+        "remember_about_caller — preferred staff member, usual service, preferred "
+        "days or times, language preference ('prefers Arabic') — so next time you "
+        "can offer 'the usual' like a receptionist who truly knows them. Save "
+        "naturally; don't announce that you're saving. For availability, USE "
         "check_availability and never invent times. To book you need the date, "
         "the time, the caller's full name, their mobile number, and the reason "
         "for the visit; ask for whatever's missing, then call book_appointment "

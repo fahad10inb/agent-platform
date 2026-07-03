@@ -15,3 +15,7 @@ google-genai>=2.0,<3
 # psycopg : the Postgres driver — lets db.py talk to Supabase. [binary] ships a
 # precompiled build so there's nothing to compile locally.
 psycopg[binary]>=3.1,<4
+
+# tzdata : timezone database so zoneinfo("Asia/Dubai") works on any host —
+# the agent must think in Gulf time, not the server's UTC.
+tzdata>=2024.1
