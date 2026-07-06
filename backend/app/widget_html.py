@@ -23,7 +23,7 @@ WIDGET_HTML = """<!doctype html>
 <style>
   :root{
     --canvas:#fdfdff; --surface:#f7f6fb; --surface-2:#f1effa; --card:#ffffff;
-    --hairline:#e9e7f2; --ink:#17151f; --body:#4e4b5c; --muted:#8a8798;
+    --hairline:#e9e7f2; --hairline-2:#dcd8ea; --ink:#16141d; --body:#4c4a58; --muted:#716e80;
     --accent:#7c5cff; --accent-deep:#6847e6; --accent-soft:#efeaff;
     --focus:rgba(124,92,255,.35);
     --shadow-card:0 0 0 1px rgba(23,21,31,.04),0 1px 1px rgba(46,26,110,.03),0 2px 4px rgba(46,26,110,.04),0 8px 16px -4px rgba(46,26,110,.06);
@@ -62,7 +62,7 @@ WIDGET_HTML = """<!doctype html>
   .b{max-width:78%;padding:10px 14px;border-radius:16px;font-size:15px;line-height:1.45;
     white-space:pre-wrap;word-wrap:break-word;animation:msgin .18s cubic-bezier(.16,1,.3,1)}
   @keyframes msgin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-  .ai .b{background:#f1eff8;color:var(--ink);border-bottom-left-radius:6px}
+  .ai .b{background:var(--surface-2);color:var(--ink);border-bottom-left-radius:6px}
   .me .b{background:linear-gradient(135deg,#8f6fff,#6847e6);color:#fff;border-bottom-right-radius:6px}
   /* typing indicator */
   .typing{display:flex;gap:5px;padding:13px 14px}
@@ -90,6 +90,9 @@ WIDGET_HTML = """<!doctype html>
   #send:disabled{opacity:.5;cursor:default}
   #send svg{width:18px;height:18px;fill:#fff}
   .foot{flex:none;text-align:center;font-size:11px;color:var(--muted);padding:0 0 8px;background:var(--card)}
+  .foot a{color:var(--muted);text-decoration:none}
+  .foot a b{font-weight:600;color:var(--body)}
+  .foot a:hover b{color:var(--accent-deep)}
   @media (prefers-reduced-motion: reduce){
     *{animation:none !important;transition:none !important}
     .typing span{opacity:.6}
@@ -102,7 +105,7 @@ WIDGET_HTML = """<!doctype html>
     <div class="avatar" id="avatar">R</div>
     <div class="htext">
       <b id="title">Reception</b>
-      <div class="status"><span class="dot"></span><span id="sub">Typically replies instantly</span></div>
+      <div class="status"><span class="dot"></span><span id="sub">Online — replies in seconds</span></div>
     </div>
   </header>
   <div id="chat" role="log" aria-live="polite" aria-label="Conversation"></div>
@@ -110,7 +113,7 @@ WIDGET_HTML = """<!doctype html>
     <textarea id="m" placeholder="Type your message…" rows="1" enterkeyhint="send" aria-label="Type your message"></textarea>
     <button id="send" type="submit" aria-label="Send"><svg viewBox="0 0 24 24"><path d="M3 11l18-8-8 18-2.5-7.5L3 11z"/></svg></button>
   </form>
-  <div class="foot">Powered by ReceptionAI</div>
+  <div class="foot"><a href="/" target="_blank" rel="noopener">Powered by <b>ReceptionAI</b></a></div>
 </div>
 <script>
   const params = new URLSearchParams(location.search);
