@@ -204,6 +204,14 @@ async def chat(req: ChatRequest, request: Request):
             status_code=500, detail="Sorry — something went wrong. Please try again."
         ) from e
 
+    # Guard: the model occasionally acts (calls tools) but returns EMPTY text —
+    # the customer would see a blank bubble while things happened invisibly.
+    if not reply.strip():
+        reply = (
+            "Sorry — I lost my words for a second there. Could you say that "
+            "again? I'll double-check everything before confirming."
+        )
+
     # 4. Persist BOTH turns only now that the reply succeeded, and meter the
     # turn against the business's daily usage (the future billing/quota data).
     db.save_message(req.business_id, req.conversation_id, "user", req.message)
