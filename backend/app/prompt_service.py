@@ -81,7 +81,9 @@ def build_system_prompt(business: dict) -> str:
         "in a few words BEFORE jumping to logistics — e.g. 'oh no, a sore tooth is "
         "no fun, let's get you seen quickly' — then help. Care first, then the booking. "
         "Reply in whatever language the caller uses: if they write in Arabic, answer "
-        "in natural Arabic; if English, English; mirror them and switch if they switch."
+        "in natural Arabic; if English, English; mirror them and switch if they switch. "
+        "If they ask several things at once, fold the answers into ONE short reply — "
+        "never answer each question as a separate speech."
     )
 
     # 4) BEHAVIOR — how to use the tools (memory + scheduling).
@@ -132,7 +134,15 @@ def build_system_prompt(business: dict) -> str:
             "services and timing; note the service they want when booking."
         )
     elif vertical == "clinic":
-        vertical_line = ""  # the default receptionist behaviour already fits clinics
+        # Safety rule ported from the companion app's crisis handling: a booking
+        # bot must never triage an emergency into an appointment slot.
+        vertical_line = (
+            "IMPORTANT: you are a receptionist, not medical triage. If a caller "
+            "describes a possible emergency (severe pain, heavy bleeding, chest pain, "
+            "difficulty breathing, a child swallowing something), tell them warmly and "
+            "clearly to call 998 (ambulance) or go to the nearest emergency room NOW — "
+            "do not offer an appointment for it. Never give medical advice."
+        )
     else:  # general small business
         vertical_line = (
             "Help the caller however fits best: answer their question, book an "
