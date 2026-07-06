@@ -33,7 +33,16 @@ def _get_pool() -> ConnectionPool:
             get_settings().database_url,
             min_size=1,
             max_size=8,
-            kwargs={"row_factory": dict_row},
+            # prepare_threshold=None: Supabase's pooler (pgbouncer, transaction
+            # mode) doesn't support prepared statements — psycopg auto-prepares
+            # any query on its 5th use, which then crashes with
+            # DuplicatePreparedStatement under real load (found by the QA bot).
+            kwargs={"row_factory": dict_row, "prepare_threshold": None},
+            # Supabase's pooler kills idle connections quickly; recycle ours
+            # FIRST so a query never lands on a half-dead socket ("server
+            # closed the connection unexpectedly" — also found by the QA bot).
+            max_idle=45,
+            max_lifetime=600,
             check=ConnectionPool.check_connection,
             open=True,
         )
@@ -360,6 +369,25 @@ def get_caller_memory(business_id: str, name: str) -> list[str]:
             (business_id, _norm(name)),
         ).fetchall()
     return [r["note"] for r in rows]
+
+
+def replace_caller_memory(business_id: str, name: str, notes: list[str]) -> None:
+    """Swap ALL of one caller's notes for a new (consolidated) set — atomically.
+
+    DELETE + INSERTs happen inside ONE connection context, i.e. one transaction:
+    if any insert fails the delete rolls back too, so a crash mid-replace can
+    never leave the caller with an empty memory. That guarantee is why this
+    lives here and not as delete+save calls in the consolidation code."""
+    with _connect() as conn:
+        conn.execute(
+            "DELETE FROM caller_memory WHERE business_id = %s AND caller = %s",
+            (business_id, _norm(name)),
+        )
+        for note in notes:
+            conn.execute(
+                "INSERT INTO caller_memory (business_id, caller, note) VALUES (%s, %s, %s)",
+                (business_id, _norm(name), note),
+            )
 
 
 # --- businesses (multi-tenancy) ----------------------------------------------

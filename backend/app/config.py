@@ -35,6 +35,14 @@ class Settings(BaseSettings):
     # Hard ceiling on one model call (seconds), including its tool round-trips.
     llm_timeout_seconds: float = 45.0
 
+    # --- Background memory passes (kill switches, no deploy needed) ---
+    # Distillation re-reads a finished-ish conversation and files durable caller
+    # preferences into memory; consolidation merges a caller's pile of notes into
+    # a few crisp ones. Both are best-effort background work — these flags exist
+    # so a misbehaving pass can be switched off from the environment instantly.
+    distill_enabled: bool = True
+    consolidate_enabled: bool = True
+
     # --- Secrets ---
     gemini_api_key: str = ""
     database_url: str = ""

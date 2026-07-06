@@ -8,11 +8,11 @@ so we can confirm the server is alive.
 
 import logging
 
-from fastapi import FastAPI, Header, HTTPException, Query, Request
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
-from app import db, security
+from app import db, distill_service, security
 from app.businesses import SEED_BUSINESSES
 from app.config import get_settings
 from app.llm_service import generate_reply
@@ -168,7 +168,7 @@ class NewBusiness(BaseModel):
 
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat(req: ChatRequest, request: Request):
+async def chat(req: ChatRequest, request: Request, background_tasks: BackgroundTasks):
     """Take the caller's message, ask the AI (with memory + tools), return its reply.
 
     POST (not GET) because the caller sends a body of data. `async` because we
@@ -225,6 +225,18 @@ async def chat(req: ChatRequest, request: Request):
     db.save_message(req.business_id, req.conversation_id, "user", req.message)
     db.save_message(req.business_id, req.conversation_id, "model", reply)
     db.bump_usage(req.business_id)
+
+    # 5. Every 6th caller message, distill the conversation into durable caller
+    # memory — AFTER the response is sent (BackgroundTasks), so the caller never
+    # waits on it. `history` already includes this turn's message, so counting
+    # it counts the conversation as it now stands. The service is flag-gated
+    # (DISTILL_ENABLED) and swallows its own errors — it can't break /chat.
+    every_n = distill_service.DISTILL_EVERY_N_USER_MESSAGES
+    user_turns = sum(1 for t in history if t["role"] == "user")
+    if user_turns >= every_n and user_turns % every_n == 0:
+        background_tasks.add_task(
+            distill_service.distill_conversation, req.business_id, req.conversation_id
+        )
     return ChatResponse(reply=reply)
 
 

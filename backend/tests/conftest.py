@@ -155,6 +155,17 @@ def _fake_get_caller_memory(business_id, name):
     return [m["note"] for m in _S["memory"] if m["business_id"] == business_id and m["caller"] == key]
 
 
+def _fake_replace_caller_memory(business_id, name, notes):
+    # The real layer does DELETE + INSERTs in one transaction; in memory that's
+    # simply a filter-then-extend.
+    key = db._norm(name)
+    _S["memory"][:] = [
+        m for m in _S["memory"] if not (m["business_id"] == business_id and m["caller"] == key)
+    ]
+    for note in notes:
+        _S["memory"].append({"business_id": business_id, "caller": key, "note": note})
+
+
 def _fake_save_lead(business_id, name, phone, interest, notes=""):
     row = {"id": _nid(), "business_id": business_id, "name": name,
            "phone": phone, "interest": interest, "notes": notes}
@@ -181,6 +192,7 @@ db.cancel_booking = _fake_cancel_booking
 db.reschedule_booking = _fake_reschedule_booking
 db.save_caller_memory = _fake_save_caller_memory
 db.get_caller_memory = _fake_get_caller_memory
+db.replace_caller_memory = _fake_replace_caller_memory
 db.save_lead = _fake_save_lead
 db.list_leads = _fake_list_leads
 db.save_message = _fake_save_message
