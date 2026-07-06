@@ -171,9 +171,12 @@ DASHBOARD_HTML = """<!doctype html>
     </div>
     <div id="bizPanel" class="hidden">
       <div class="stats">
-        <div class="kpi"><span class="klabel">Upcoming bookings</span><span class="knum" id="statUpcoming">–</span></div>
-        <div class="kpi"><span class="klabel">Total bookings</span><span class="knum" id="statTotal">–</span></div>
-        <div class="kpi"><span class="klabel">Leads</span><span class="knum" id="statLeads">–</span></div>
+        <div class="kpi"><span class="klabel">Chats today</span><span class="knum" id="mToday">–</span></div>
+        <div class="kpi"><span class="klabel">Chats · 30 days</span><span class="knum" id="mChats">–</span></div>
+        <div class="kpi"><span class="klabel">Questions answered</span><span class="knum" id="mMsgs">–</span></div>
+        <div class="kpi"><span class="klabel">Bookings · 30 days</span><span class="knum" id="mBookings">–</span></div>
+        <div class="kpi"><span class="klabel">Leads · 30 days</span><span class="knum" id="mLeads">–</span></div>
+        <div class="kpi"><span class="klabel">Staff hours saved <span class="soft">(est.)</span></span><span class="knum" id="mHours">–</span></div>
       </div>
       <div class="tabs">
         <div class="tab active" data-tab="bookings" onclick="setTab('bookings')">Bookings</div>
@@ -225,24 +228,20 @@ DASHBOARD_HTML = """<!doctype html>
     const t=new Date();
     return t.getFullYear()+"-"+String(t.getMonth()+1).padStart(2,"0")+"-"+String(t.getDate()).padStart(2,"0");
   }
-  function statsFromBookings(rows){
-    $("statTotal").textContent = rows.length;
-    const iso = todayISO();
-    $("statUpcoming").textContent = rows.filter(b => String(b.date||"") >= iso).length;
-  }
-  // one extra read of the two already-authorized endpoints when a business opens —
-  // no new backend surface, numbers are computed entirely client-side.
+  // The owner's value-proof row: one authorized /metrics call fills all six.
   async function loadStats(){
     const biz = CURRENT;
-    $("statUpcoming").textContent="–"; $("statTotal").textContent="–"; $("statLeads").textContent="–";
+    ["mToday","mChats","mMsgs","mBookings","mLeads","mHours"].forEach(id => $(id).textContent="–");
     try{
-      const [rb, rl] = await Promise.all([
-        api("/bookings?business_id="+encodeURIComponent(biz)),
-        api("/leads?business_id="+encodeURIComponent(biz))
-      ]);
-      if(biz !== CURRENT) return;
-      if(rb.ok) statsFromBookings(await rb.json());
-      if(rl.ok){ const rows = await rl.json(); $("statLeads").textContent = rows.length; }
+      const r = await api("/metrics?business_id="+encodeURIComponent(biz));
+      if(biz !== CURRENT || !r.ok) return;
+      const m = await r.json();
+      $("mToday").textContent = m.conversations_today;
+      $("mChats").textContent = m.conversations_30d;
+      $("mMsgs").textContent = m.messages_30d;
+      $("mBookings").textContent = m.bookings_30d;
+      $("mLeads").textContent = m.leads_30d;
+      $("mHours").textContent = "~" + m.hours_saved_30d_estimate + "h";
     }catch(e){}
   }
 
@@ -361,7 +360,7 @@ DASHBOARD_HTML = """<!doctype html>
       const r = await api("/bookings?business_id="+encodeURIComponent(CURRENT));
       if(!r.ok){ body.innerHTML="<div class='empty'>Could not load bookings.</div>"; return; }
       const rows = await r.json();
-      statsFromBookings(rows);
+      loadStats();
       body.innerHTML = rows.length ? `<div class="tablewrap"><table><thead><tr><th>Patient</th><th>Date</th><th>Time</th><th>Phone</th><th>Reason</th></tr></thead>
         <tbody>${rows.map(b=>`<tr><td>${who(b.patient_name)}</td><td class="num">${esc(b.date)}</td><td class="num">${esc(b.time)}</td><td class="num">${esc(b.phone)}</td><td>${esc(b.reason)}</td></tr>`).join("")}</tbody></table></div>`
         : estate("📅","No bookings yet","Share your widget link so customers can book.");
@@ -369,7 +368,7 @@ DASHBOARD_HTML = """<!doctype html>
       const r = await api("/leads?business_id="+encodeURIComponent(CURRENT));
       if(!r.ok){ body.innerHTML="<div class='empty'>Could not load leads.</div>"; return; }
       const rows = await r.json();
-      $("statLeads").textContent = rows.length;
+      loadStats();
       body.innerHTML = rows.length ? `<div class="tablewrap"><table><thead><tr><th>Name</th><th>Phone</th><th>Interest</th><th>Notes</th></tr></thead>
         <tbody>${rows.map(l=>`<tr><td>${who(l.name)}</td><td class="num">${esc(l.phone)}</td><td>${l.interest?`<span class="chip new">${esc(l.interest)}</span>`:""}</td><td>${esc(l.notes)}</td></tr>`).join("")}</tbody></table></div>`
         : estate("📥","No leads yet","Every enquiry the agent captures will land here.");

@@ -91,6 +91,18 @@ def _fake_bump_usage(business_id, messages=1):
     _S["usage"][business_id] = _S["usage"].get(business_id, 0) + messages
 
 
+def _fake_get_metrics(business_id):
+    convs = {m["conversation_id"] for m in _S["messages"] if m["business_id"] == business_id and m["role"] == "user"}
+    msgs = sum(1 for m in _S["messages"] if m["business_id"] == business_id and m["role"] == "user")
+    return {
+        "conversations_today": len(convs),
+        "conversations_30d": len(convs),
+        "messages_30d": msgs,
+        "bookings_30d": sum(1 for b in _S["bookings"] if b["business_id"] == business_id),
+        "leads_30d": sum(1 for r in _S["leads"] if r["business_id"] == business_id),
+    }
+
+
 def _fake_get_usage(business_id, days=30):
     n = _S["usage"].get(business_id, 0)
     return [{"day": "today", "messages": n}] if n else []
@@ -175,6 +187,7 @@ db.save_message = _fake_save_message
 db.get_history = _fake_get_history
 db.bump_usage = _fake_bump_usage
 db.get_usage = _fake_get_usage
+db.get_metrics = _fake_get_metrics
 
 from app import main as main_module  # noqa: E402  (imports AFTER the swap)
 from fastapi.testclient import TestClient  # noqa: E402

@@ -242,6 +242,36 @@ def bump_usage(business_id: str, messages: int = 1) -> None:
         )
 
 
+def get_metrics(business_id: str) -> dict:
+    """The owner's value-proof numbers: today + last 30 days, in one round trip.
+    Conversations = distinct chat threads; messages = every question handled."""
+    with _connect() as conn:
+        m = conn.execute(
+            "SELECT COUNT(DISTINCT conversation_id) AS convs_30d, COUNT(*) AS msgs_30d, "
+            "COUNT(DISTINCT conversation_id) FILTER (WHERE created_at::date = CURRENT_DATE) AS convs_today "
+            "FROM messages WHERE business_id = %s AND role = 'user' "
+            "AND created_at > now() - interval '30 days'",
+            (business_id,),
+        ).fetchone()
+        b = conn.execute(
+            "SELECT COUNT(*) AS n FROM bookings WHERE business_id = %s "
+            "AND created_at > now() - interval '30 days'",
+            (business_id,),
+        ).fetchone()
+        led = conn.execute(
+            "SELECT COUNT(*) AS n FROM leads WHERE business_id = %s "
+            "AND created_at > now() - interval '30 days'",
+            (business_id,),
+        ).fetchone()
+    return {
+        "conversations_today": m["convs_today"],
+        "conversations_30d": m["convs_30d"],
+        "messages_30d": m["msgs_30d"],
+        "bookings_30d": b["n"],
+        "leads_30d": led["n"],
+    }
+
+
 def get_usage(business_id: str, days: int = 30) -> list[dict]:
     """Per-day message counts for the last `days` days, newest first."""
     with _connect() as conn:

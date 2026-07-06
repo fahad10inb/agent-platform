@@ -347,6 +347,17 @@ def leads(
     return db.list_leads(business_id, limit=limit, offset=offset)
 
 
+@app.get("/metrics")
+def metrics(business_id: str = "bright-smile", x_api_key: str | None = Header(default=None)):
+    """The owner's dashboard numbers (today + 30 days) incl. an ESTIMATED
+    staff-hours-saved figure: each handled conversation ≈ 4 minutes a human
+    would have spent on the phone or front desk. Clearly labeled an estimate."""
+    security.check_business_access(business_id, x_api_key)
+    m = db.get_metrics(business_id)
+    m["hours_saved_30d_estimate"] = round(m["conversations_30d"] * 4 / 60, 1)
+    return m
+
+
 @app.get("/usage")
 def usage(
     business_id: str = "bright-smile",
