@@ -43,6 +43,45 @@ def test_memory_is_isolated_per_business(client):
     assert other["returning_caller"] is False
 
 
+def test_appointments_hidden_without_phone_verification(client):
+    """Anti-IDOR: typing a name into the public widget must not expose that
+    person's appointment details — until the caller proves the number on file."""
+    _cal()["book_appointment"]("2026-08-01", "9:00 AM", "Mariam", "0501234567", "cleaning")
+    stranger = _mem()["recall_caller"]("Mariam")
+    assert stranger["identity_verified"] is False
+    assert stranger["appointments"] == "hidden — verify with phone_last4 first"
+    owner = _mem()["recall_caller"]("Mariam", phone_last4="4567")
+    assert owner["identity_verified"] is True
+    assert owner["appointments"][0]["date"] == "2026-08-01"
+
+
+def test_find_and_cancel_require_verification(client):
+    cal = _cal()
+    cal["book_appointment"]("2026-08-01", "9:00 AM", "Mariam", "0501234567", "cleaning")
+    assert cal["find_my_appointments"]("Mariam")["status"] == "verification_needed"
+    assert cal["cancel_appointment"]("Mariam", "2026-08-01", "9:00 AM")["status"] == "verification_needed"
+    assert (
+        cal["cancel_appointment"]("Mariam", "2026-08-01", "9:00 AM", phone_last4="4567")["status"]
+        == "cancelled"
+    )
+
+
+def test_caller_without_phone_on_file_is_not_locked_out(client):
+    cal = _cal()
+    cal["book_appointment"]("2026-08-01", "9:00 AM", "Omar")  # booked without a phone
+    assert cal["find_my_appointments"]("Omar")["appointments"]
+
+
+def test_history_endpoint_serves_the_widget(client, state):
+    from app import db
+
+    db.save_message("bright-smile", "web-abc12345", "user", "hi")
+    db.save_message("bright-smile", "web-abc12345", "model", "hello!")
+    r = client.get("/chat/history?business_id=bright-smile&conversation_id=web-abc12345")
+    assert r.status_code == 200
+    assert [t["role"] for t in r.json()] == ["user", "model"]
+
+
 def test_landing_page_serves_the_pitch(client):
     r = client.get("/")
     assert r.status_code == 200

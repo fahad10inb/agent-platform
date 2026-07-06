@@ -127,42 +127,74 @@ def make_calendar_tools(business: dict) -> list:
             "patient_name": patient_name,
         }
 
-    def find_my_appointments(patient_name: str) -> dict:
-        """Look up a caller's existing appointments by name.
+    def find_my_appointments(patient_name: str, phone_last4: str = "") -> dict:
+        """Look up a caller's existing appointments by name, after verifying
+        their identity with the last 4 digits of the mobile number they booked with.
 
-        Call this before cancelling or rescheduling, so you know which booking
-        they mean (and can confirm the details back to them).
+        Call this before cancelling or rescheduling. If it returns
+        "verification_needed", ask the caller for their mobile number and call
+        again with its last 4 digits — never guess.
 
         Args:
             patient_name: The caller's full name.
+            phone_last4: Last 4 digits of the mobile number used when booking.
 
         Returns:
-            A dict with the list of their appointments (date + time).
+            A dict with their appointments (date + time), or verification_needed.
         """
         appts = db.find_bookings(business_id, patient_name)
-        print(f"  TOOL -> find_my_appointments [biz={business_id}] found={len(appts)}")
-        return {"patient_name": patient_name, "appointments": appts}
+        on_file = [(r.get("phone") or "") for r in appts if r.get("phone")]
+        verified = bool(phone_last4) and any(p.endswith(phone_last4[-4:]) for p in on_file)
+        print(f"  TOOL -> find_my_appointments [biz={business_id}] found={len(appts)} verified={verified}")
+        if on_file and not verified:
+            # Anti-IDOR: names are public knowledge; the number on file is not.
+            return {
+                "patient_name": patient_name,
+                "status": "verification_needed",
+                "message": "Ask the caller for the mobile number they booked with, then call again with its last 4 digits.",
+            }
+        return {
+            "patient_name": patient_name,
+            "appointments": [{"id": r["id"], "date": r["date"], "time": r["time"]} for r in appts],
+        }
 
-    def cancel_appointment(patient_name: str, date: str, time: str) -> dict:
-        """Cancel a caller's appointment. Confirm the exact date and time first.
+    def _verified(patient_name: str, phone_last4: str):
+        """True = last-4 match; None = no phone on file (nothing to check);
+        False = mismatch or not provided. Matching happens HERE — the stored
+        number is never shown to the model or the caller."""
+        on_file = [(r.get("phone") or "") for r in db.find_bookings(business_id, patient_name) if r.get("phone")]
+        if not on_file:
+            return None
+        return bool(phone_last4) and any(p.endswith(phone_last4[-4:]) for p in on_file)
+
+    _VERIFY_MSG = "Ask the caller for the mobile number they booked with, then retry with its last 4 digits."
+
+    def cancel_appointment(patient_name: str, date: str, time: str, phone_last4: str = "") -> dict:
+        """Cancel a caller's appointment. Confirm the exact date and time first,
+        and verify identity with the last 4 digits of their booking mobile number.
 
         Args:
             patient_name: The caller's full name.
             date: The appointment's date.
             time: The appointment's time slot.
+            phone_last4: Last 4 digits of the mobile number used when booking.
 
         Returns:
-            A dict with status "cancelled" or "not_found".
+            A dict with status "cancelled", "not_found", or "verification_needed".
         """
+        if _verified(patient_name, phone_last4) is False:
+            return {"status": "verification_needed", "message": _VERIFY_MSG}
         time = _norm_time(time)
         ok = db.cancel_booking(business_id, patient_name, date, time)
         print(f"  TOOL -> cancel_appointment({date!r}, {time!r}) [biz={business_id}] ok={ok}")
         return {"status": "cancelled" if ok else "not_found", "date": date, "time": time}
 
     def reschedule_appointment(
-        patient_name: str, old_date: str, old_time: str, new_date: str, new_time: str
+        patient_name: str, old_date: str, old_time: str, new_date: str, new_time: str,
+        phone_last4: str = "",
     ) -> dict:
         """Move a caller's appointment to a new slot (the new slot must be free).
+        Verify identity with the last 4 digits of their booking mobile number.
 
         Args:
             patient_name: The caller's full name.
@@ -170,10 +202,14 @@ def make_calendar_tools(business: dict) -> list:
             old_time: The current appointment time.
             new_date: The desired new date.
             new_time: The desired new time.
+            phone_last4: Last 4 digits of the mobile number used when booking.
 
         Returns:
-            A dict with status "rescheduled", "unavailable" (new slot taken), or "not_found".
+            A dict with status "rescheduled", "unavailable" (new slot taken),
+            "not_found", or "verification_needed".
         """
+        if _verified(patient_name, phone_last4) is False:
+            return {"status": "verification_needed", "message": _VERIFY_MSG}
         old_time, new_time = _norm_time(old_time), _norm_time(new_time)
         if new_time in set(db.booked_times(business_id, new_date)):
             print(f"  TOOL -> reschedule DENIED (new slot taken) [biz={business_id}]")

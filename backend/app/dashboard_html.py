@@ -261,6 +261,7 @@ DASHBOARD_HTML = """<!doctype html>
       const r = await api("/manage/"+encodeURIComponent(bid));
       if(!r.ok){ $("loginErr").textContent = r.status===403||r.status===401 ? "Wrong Business ID or key." : "Could not sign in."; return; }
       MODE="clinic"; CURRENT=bid;
+      try{ sessionStorage.setItem("ra_key",key); sessionStorage.setItem("ra_bid",bid); }catch(e){}
       const biz = await r.json();
       enterApp(biz.name || bid);
       $("side").classList.add("hidden");
@@ -269,6 +270,7 @@ DASHBOARD_HTML = """<!doctype html>
       const r = await api("/businesses");
       if(!r.ok){ $("loginErr").textContent = r.status===503 ? "Admin not configured on the server." : "Invalid admin key."; return; }
       MODE="admin";
+      try{ sessionStorage.setItem("ra_key",key); sessionStorage.setItem("ra_bid",""); }catch(e){}
       enterApp("Admin");
       $("side").classList.remove("hidden");
       $("adminHome").classList.remove("hidden");
@@ -277,7 +279,21 @@ DASHBOARD_HTML = """<!doctype html>
   }
 
   function enterApp(title){ $("login").classList.add("hidden"); $("app").classList.remove("hidden"); $("appTitle").textContent = title; }
-  function signOut(){ KEY=null; MODE=null; CURRENT=null; location.reload(); }
+  function signOut(){
+    try{ sessionStorage.removeItem("ra_key"); sessionStorage.removeItem("ra_bid"); }catch(e){}
+    KEY=null; MODE=null; CURRENT=null; location.reload();
+  }
+  // Survive F5 (industry-standard admin behavior): re-validate the stored
+  // session key against the server instead of dumping the user at login.
+  // sessionStorage = per-tab, cleared when the tab closes — deliberate choice
+  // for a key-based login (localStorage would outlive the visit).
+  (function restoreSession(){
+    let k=null, b=null;
+    try{ k=sessionStorage.getItem("ra_key"); b=sessionStorage.getItem("ra_bid"); }catch(e){}
+    if(!k) return;
+    $("key").value = k; $("bid").value = b || "";
+    signIn();
+  })();
 
   // ---- admin: list + onboard ----
   function renderBizList(list){

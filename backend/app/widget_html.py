@@ -15,7 +15,7 @@ WIDGET_HTML = """<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Reception</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -105,9 +105,9 @@ WIDGET_HTML = """<!doctype html>
       <div class="status"><span class="dot"></span><span id="sub">Typically replies instantly</span></div>
     </div>
   </header>
-  <div id="chat"></div>
+  <div id="chat" role="log" aria-live="polite" aria-label="Conversation"></div>
   <form id="f" autocomplete="off">
-    <textarea id="m" placeholder="Type your message…" rows="1" enterkeyhint="send"></textarea>
+    <textarea id="m" placeholder="Type your message…" rows="1" enterkeyhint="send" aria-label="Type your message"></textarea>
     <button id="send" type="submit" aria-label="Send"><svg viewBox="0 0 24 24"><path d="M3 11l18-8-8 18-2.5-7.5L3 11z"/></svg></button>
   </form>
   <div class="foot">Powered by ReceptionAI</div>
@@ -115,7 +115,15 @@ WIDGET_HTML = """<!doctype html>
 <script>
   const params = new URLSearchParams(location.search);
   const businessId = params.get("business_id") || "bright-smile";
-  const convId = "web-" + Math.random().toString(36).slice(2);
+  // A conversation SURVIVES page reloads (industry-standard widget behavior):
+  // one random unguessable id per business, kept in localStorage.
+  const convKey = "receptionai_conv_" + businessId;
+  let convId = null;
+  try { convId = localStorage.getItem(convKey); } catch (e) {}
+  if (!convId) {
+    convId = "web-" + (self.crypto && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36));
+    try { localStorage.setItem(convKey, convId); } catch (e) {}
+  }
   const chat = document.getElementById("chat"), f = document.getElementById("f"), m = document.getElementById("m"), send = document.getElementById("send");
 
   fetch("/business/" + encodeURIComponent(businessId)).then(r => r.ok ? r.json() : null).then(biz => {
@@ -148,18 +156,30 @@ WIDGET_HTML = """<!doctype html>
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); f.requestSubmit(); }
   });
 
-  row("Hi! How can I help you today?", "ai");
+  function freshStart() {
+    row("Hi! How can I help you today?", "ai");
+    // quick-reply starter chips — purely visual, removed after the first message
+    const chipBox = document.createElement("div");
+    chipBox.id = "chips"; chipBox.className = "chips";
+    ["Book an appointment", "What are your hours?", "أتحدث العربية"].forEach(t => {
+      const c = document.createElement("button");
+      c.type = "button"; c.className = "chipbtn"; c.textContent = t;
+      c.addEventListener("click", () => { m.value = t; f.requestSubmit(); });
+      chipBox.appendChild(c);
+    });
+    chat.appendChild(chipBox);
+  }
 
-  // quick-reply starter chips — purely visual, removed after the first message
-  const chipBox = document.createElement("div");
-  chipBox.id = "chips"; chipBox.className = "chips";
-  ["Book an appointment", "What are your hours?", "أتحدث العربية"].forEach(t => {
-    const c = document.createElement("button");
-    c.type = "button"; c.className = "chipbtn"; c.textContent = t;
-    c.addEventListener("click", () => { m.value = t; f.requestSubmit(); });
-    chipBox.appendChild(c);
-  });
-  chat.appendChild(chipBox);
+  // Restore the conversation after a reload; fresh greeting only when there
+  // is genuinely nothing to restore (or history is unreachable).
+  fetch("/chat/history?business_id=" + encodeURIComponent(businessId) + "&conversation_id=" + encodeURIComponent(convId))
+    .then(r => r.ok ? r.json() : [])
+    .then(hist => {
+      if (Array.isArray(hist) && hist.length) {
+        hist.forEach(t => row(t.text, t.role === "user" ? "me" : "ai"));
+      } else { freshStart(); }
+    })
+    .catch(() => freshStart());
 
   grow(); syncSend(); m.focus();
 

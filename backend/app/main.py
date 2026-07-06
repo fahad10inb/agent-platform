@@ -212,6 +212,20 @@ async def chat(req: ChatRequest, request: Request):
     return ChatResponse(reply=reply)
 
 
+@app.get("/chat/history")
+def chat_history(
+    request: Request,
+    business_id: str = Query(max_length=60),
+    conversation_id: str = Query(min_length=8, max_length=100),
+):
+    """The last turns of ONE conversation, for the widget to restore after a
+    page reload. Public like /chat itself: the conversation_id is a random
+    unguessable token minted by the widget (the industry-standard chat-widget
+    model), and it's rate-limited against scraping."""
+    security.rate_limit(request, limit=30, window=60, bucket="history")
+    return db.get_history(business_id, conversation_id, limit=40)
+
+
 @app.get("/widget", response_class=HTMLResponse)
 def widget():
     """The patient-facing chat page. A clinic links to /widget?business_id=<id>;

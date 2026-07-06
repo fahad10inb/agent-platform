@@ -11,7 +11,7 @@ from app import db
 def make_memory_tools(business_id: str) -> list:
     """Return [recall_caller, remember_about_caller] bound to this business."""
 
-    def recall_caller(name: str) -> dict:
+    def recall_caller(name: str, phone_last4: str = "") -> dict:
         """Look up a caller's full profile: what we remember about them AND their
         appointments (past + upcoming).
 
@@ -28,11 +28,22 @@ def make_memory_tools(business_id: str) -> list:
         """
         notes = db.get_caller_memory(business_id, name)
         appts = db.find_bookings(business_id, name)
-        print(f"  TOOL -> recall_caller [biz={business_id}] notes={len(notes)} appts={len(appts)}")
+        # Identity gate (anti-IDOR): anyone can TYPE a name into the public
+        # widget, so appointment dates/times are only revealed after the caller
+        # proves the mobile number on file (last 4 digits, matched HERE — the
+        # model never sees the stored number). Warm recognition (notes, visit
+        # count) stays available so a regular still feels remembered.
+        on_file = [(r.get("phone") or "") for r in appts if r.get("phone")]
+        verified = bool(phone_last4) and any(p.endswith(phone_last4[-4:]) for p in on_file)
+        shown = [
+            {"date": r["date"], "time": r["time"]} for r in appts
+        ] if (verified or not on_file) else "hidden — verify with phone_last4 first"
+        print(f"  TOOL -> recall_caller [biz={business_id}] notes={len(notes)} appts={len(appts)} verified={verified}")
         return {
             "name": name,
             "known_notes": notes,
-            "appointments": appts,
+            "appointments": shown,
+            "identity_verified": verified or not on_file,
             # A tiny profile so you can greet like a human who remembers them:
             # "welcome back!" beats "how can I help you today?" every time.
             "returning_caller": bool(notes or appts),
