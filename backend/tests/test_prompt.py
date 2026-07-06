@@ -23,6 +23,21 @@ def test_real_estate_vertical_steers_to_leads():
     assert "capture_lead" in p
 
 
+def test_personalization_trio_lands_in_the_prompt():
+    p = build_system_prompt({
+        "name": "X", "type": "salon",
+        "staff": "Marwan — fades specialist",
+        "location": "Al Barsha 1, free parking behind",
+        "policies": "Reschedule up to 2h before",
+    })
+    assert "Marwan" in p and "specialty" in p
+    assert "Al Barsha 1" in p
+    assert "Reschedule up to 2h before" in p
+    # And absent fields add nothing (no empty headers).
+    bare = build_system_prompt({"name": "X", "type": "salon"})
+    assert "specialties" not in bare and "House policies" not in bare
+
+
 def test_faq_lands_in_the_prompt():
     p = build_system_prompt({"name": "X", "type": "clinic", "faq": "We accept Daman insurance."})
     assert "Daman" in p

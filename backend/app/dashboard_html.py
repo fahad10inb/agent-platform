@@ -314,7 +314,13 @@ DASHBOARD_HTML = """<!doctype html>
       <label>Vertical</label><select id="o_vertical"><option value="general">general</option><option value="clinic">clinic</option><option value="salon">salon</option><option value="real_estate">real_estate</option></select>
       <label>Hours (display)</label><input id="o_hours" placeholder="Mon-Fri 9am-5pm">
       <label>Services</label><input id="o_services" placeholder="checkups, cleanings...">
-      <label>FAQ / knowledge</label><textarea id="o_faq" rows="3" placeholder="Insurance, parking, policies..."></textarea>
+      <label>Team &amp; specialties <span class="soft">(so callers can ask for the right person)</span></label>
+      <input id="o_staff" placeholder="Marwan — fades specialist · Tony — classic cuts &amp; beards">
+      <label>Location &amp; directions</label>
+      <input id="o_location" placeholder="Al Barsha 1, near MoE metro exit 2 — free parking behind the building">
+      <label>Policies <span class="soft">(cancellations, walk-ins, payments, deposits)</span></label>
+      <textarea id="o_policies" rows="2" placeholder="Reschedule up to 2h before. Walk-ins welcome, bookings get priority. Cash &amp; card."></textarea>
+      <label>FAQ / extra knowledge</label><textarea id="o_faq" rows="3" placeholder="Prices, insurance, loyalty program..."></textarea>
       <div class="row2"><div><label>Open hour (0-23)</label><input id="o_open" type="number" min="0" max="23" value="9"></div>
       <div><label>Close hour (1-24)</label><input id="o_close" type="number" min="1" max="24" value="17"></div>
       <div><label>Slot mins (5-240)</label><input id="o_slot" type="number" min="5" max="240" value="30"></div></div>
@@ -324,7 +330,8 @@ DASHBOARD_HTML = """<!doctype html>
   async function doOnboard(){
     const body = { id:val("o_id").trim(), name:val("o_name").trim(), type:val("o_type").trim(),
       tone:val("o_tone").trim()||"warm and professional", hours:val("o_hours").trim(), services:val("o_services").trim(),
-      faq:val("o_faq").trim(), open_hour:+val("o_open"), close_hour:+val("o_close"), slot_minutes:+val("o_slot"),
+      faq:val("o_faq").trim(), staff:val("o_staff").trim(), location:val("o_location").trim(),
+      policies:val("o_policies").trim(), open_hour:+val("o_open"), close_hour:+val("o_close"), slot_minutes:+val("o_slot"),
       vertical:val("o_vertical") };
     if(!body.id||!body.name||!body.type){ toast("ID, name and type are required."); return; }
     const r = await api("/admin/businesses", { method:"POST", body: JSON.stringify(body) });
@@ -378,7 +385,10 @@ DASHBOARD_HTML = """<!doctype html>
         <label>Tone</label><input id="s_tone" value="${esc(b.tone)}">
         <label>Hours (display)</label><input id="s_hours" value="${esc(b.hours)}">
         <label>Services</label><input id="s_services" value="${esc(b.services)}">
-        <label>FAQ / knowledge the agent can use</label><textarea id="s_faq" rows="4">${esc(b.faq)}</textarea>
+        <label>Team &amp; specialties</label><input id="s_staff" value="${esc(b.staff)}" placeholder="Marwan — fades · Tony — beards">
+        <label>Location &amp; directions</label><input id="s_location" value="${esc(b.location)}" placeholder="Area, landmark, parking">
+        <label>Policies</label><textarea id="s_policies" rows="2" placeholder="Cancellations, walk-ins, payments">${esc(b.policies)}</textarea>
+        <label>FAQ / extra knowledge the agent can use</label><textarea id="s_faq" rows="4">${esc(b.faq)}</textarea>
         <div class="row2"><div><label>Open hour (0-23)</label><input id="s_open" type="number" min="0" max="23" value="${esc(b.open_hour)}"></div>
         <div><label>Close hour (1-24)</label><input id="s_close" type="number" min="1" max="24" value="${esc(b.close_hour)}"></div>
         <div><label>Slot mins (5-240)</label><input id="s_slot" type="number" min="5" max="240" value="${esc(b.slot_minutes)}"></div></div>
@@ -397,7 +407,8 @@ DASHBOARD_HTML = """<!doctype html>
 
   async function saveSettings(){
     const body = { name:val("s_name"), type:val("s_type"), tone:val("s_tone"), hours:val("s_hours"),
-      services:val("s_services"), faq:val("s_faq"), open_hour:+val("s_open"), close_hour:+val("s_close"),
+      services:val("s_services"), faq:val("s_faq"), staff:val("s_staff"), location:val("s_location"),
+      policies:val("s_policies"), open_hour:+val("s_open"), close_hour:+val("s_close"),
       slot_minutes:+val("s_slot"), vertical:val("s_vertical") };
     const r = await api("/manage/"+encodeURIComponent(CURRENT), { method:"POST", body: JSON.stringify(body) });
     if(r.ok){ toast("Saved ✓"); return; }

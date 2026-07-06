@@ -113,6 +113,12 @@ def init_db() -> None:
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS faq TEXT")
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS api_key TEXT")
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS vertical TEXT")
+        # Structured personalization fields (what competitors collect as first-
+        # class data, not buried in an FAQ blob): the team and who's-good-at-what
+        # ("with Marwan?"), where to find/park, and the house rules.
+        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS staff TEXT")
+        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS location TEXT")
+        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS policies TEXT")
         # Booking now captures mobile number + reason for visit (UAE clinics take both).
         conn.execute("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS phone TEXT")
         conn.execute("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reason TEXT")
@@ -334,17 +340,20 @@ def upsert_business(b: dict) -> None:
         conn.execute(
             """
             INSERT INTO businesses
-                (id, name, type, hours, services, tone, open_hour, close_hour, slot_minutes, faq, api_key, vertical)
+                (id, name, type, hours, services, tone, open_hour, close_hour, slot_minutes, faq, api_key, vertical,
+                 staff, location, policies)
             VALUES
                 (%(id)s, %(name)s, %(type)s, %(hours)s, %(services)s, %(tone)s,
-                 %(open_hour)s, %(close_hour)s, %(slot_minutes)s, %(faq)s, %(api_key)s, %(vertical)s)
+                 %(open_hour)s, %(close_hour)s, %(slot_minutes)s, %(faq)s, %(api_key)s, %(vertical)s,
+                 %(staff)s, %(location)s, %(policies)s)
             ON CONFLICT (id) DO UPDATE SET
                 name=EXCLUDED.name, type=EXCLUDED.type, hours=EXCLUDED.hours,
                 services=EXCLUDED.services, tone=EXCLUDED.tone,
                 open_hour=EXCLUDED.open_hour, close_hour=EXCLUDED.close_hour,
                 slot_minutes=EXCLUDED.slot_minutes, faq=EXCLUDED.faq,
                 api_key=COALESCE(EXCLUDED.api_key, businesses.api_key),
-                vertical=EXCLUDED.vertical
+                vertical=EXCLUDED.vertical,
+                staff=EXCLUDED.staff, location=EXCLUDED.location, policies=EXCLUDED.policies
             """,
             {
                 "id": b["id"],
@@ -359,6 +368,9 @@ def upsert_business(b: dict) -> None:
                 "faq": b.get("faq", ""),
                 "api_key": b.get("api_key"),
                 "vertical": b.get("vertical", "general"),
+                "staff": b.get("staff", ""),
+                "location": b.get("location", ""),
+                "policies": b.get("policies", ""),
             },
         )
 
@@ -366,6 +378,7 @@ def upsert_business(b: dict) -> None:
 _EDITABLE_BUSINESS_FIELDS = {
     "name", "type", "hours", "services", "tone", "faq",
     "open_hour", "close_hour", "slot_minutes", "vertical",
+    "staff", "location", "policies",
 }
 
 

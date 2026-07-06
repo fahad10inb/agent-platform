@@ -134,6 +134,9 @@ class BusinessSettings(BaseModel):
     close_hour: int | None = Field(default=None, ge=1, le=24)
     slot_minutes: int | None = Field(default=None, ge=5, le=240)
     vertical: str | None = Field(default=None, max_length=40)
+    staff: str | None = Field(default=None, max_length=1000)
+    location: str | None = Field(default=None, max_length=500)
+    policies: str | None = Field(default=None, max_length=2000)
 
 
 class NewBusiness(BaseModel):
@@ -151,6 +154,11 @@ class NewBusiness(BaseModel):
     close_hour: int = Field(default=17, ge=1, le=24)
     slot_minutes: int = Field(default=30, ge=5, le=240)
     vertical: str = Field(default="general", max_length=40)
+    # Personalization trio: the team ("Marwan — fades"), where/how to find you,
+    # and the house rules — first-class fields, not buried in the FAQ blob.
+    staff: str = Field(default="", max_length=1000)
+    location: str = Field(default="", max_length=500)
+    policies: str = Field(default="", max_length=2000)
 
 
 # Tools are now built PER REQUEST (scoped to the caller's business) inside the
@@ -260,7 +268,8 @@ def manage_get(business_id: str, request: Request, x_api_key: str | None = Heade
     if biz is None:
         raise HTTPException(status_code=404, detail="Unknown business.")
     fields = ["id", "name", "type", "hours", "services", "tone", "faq",
-              "open_hour", "close_hour", "slot_minutes", "vertical"]
+              "open_hour", "close_hour", "slot_minutes", "vertical",
+              "staff", "location", "policies"]
     return {k: biz.get(k) for k in fields}
 
 

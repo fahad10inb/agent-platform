@@ -44,6 +44,22 @@ def build_system_prompt(business: dict) -> str:
         facts.append(f"Opening hours: {hours}.")
     if services:
         facts.append(f"Services offered: {services}.")
+    # Personalization trio — first-class facts the agent should use naturally:
+    # offer the right team member for the job, give directions without being
+    # asked twice, and apply the house rules instead of guessing.
+    staff = (business.get("staff") or "").strip()
+    if staff:
+        facts.append(
+            f"The team and their specialties: {staff}. When a caller's request matches "
+            "someone's specialty, offer that person by name; note the chosen person in "
+            "the booking reason."
+        )
+    location = (business.get("location") or "").strip()
+    if location:
+        facts.append(f"Location and directions: {location}.")
+    policies = (business.get("policies") or "").strip()
+    if policies:
+        facts.append(f"House policies you must follow and share when relevant: {policies}.")
     facts_block = " ".join(facts)
 
     # 2b) KNOWLEDGE — free-form info the business gave us (insurance, parking,
