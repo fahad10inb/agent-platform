@@ -39,25 +39,61 @@ def test_message_bounds(client, fake_llm):
     assert client.post("/chat", json={"message": "x" * 5000}).status_code == 422
 
 
-def test_history_is_capped(client, fake_llm):
-    key = "bright-smile:long"
-    main_module._conversations[key] = [{"role": "user", "text": f"t{i}"} for i in range(100)]
+def test_history_survives_and_is_capped(client, fake_llm):
+    from app import db
+
+    # A marathon conversation persisted in the DB (100 turns)...
+    for i in range(100):
+        db.save_message("bright-smile", "long", "user", f"t{i}")
     r = client.post("/chat", json={"message": "latest", "conversation_id": "long", "business_id": "bright-smile"})
     assert r.status_code == 200
-    # Trimmed to the cap (40) at send time, +1 for the model reply appended after.
-    assert len(main_module._conversations[key]) <= 41
-    assert main_module._conversations[key][-2]["text"] == "latest"
+    # ...reaches the model trimmed to the cap: 40 stored turns + the new message.
+    assert len(fake_llm[0]) <= 41
+    assert fake_llm[0][-1]["text"] == "latest"
+    # And the new exchange was persisted durably (survives a deploy).
+    hist = db.get_history("bright-smile", "long", limit=100)
+    assert hist[-1] == {"role": "model", "text": "ok"}
 
 
 def test_failed_turn_is_rolled_back(client, monkeypatch):
+    from app import db
+
     async def _boom(system_prompt, history, tools=None):
         raise RuntimeError("gemini down")
 
     monkeypatch.setattr(main_module, "generate_reply", _boom)
     r = client.post("/chat", json={"message": "hi", "conversation_id": "c1", "business_id": "bright-smile"})
     assert r.status_code == 500
-    # The unanswered user turn must not haunt the next request's context.
-    assert main_module._conversations["bright-smile:c1"] == []
+    # The unanswered user turn must not haunt the next request's context —
+    # nothing is persisted unless the reply succeeded.
+    assert db.get_history("bright-smile", "c1") == []
+
+
+def test_usage_is_metered_and_readable(client, fake_llm):
+    client.post("/chat", json={"message": "hi", "business_id": "bright-smile"})
+    client.post("/chat", json={"message": "hello again", "business_id": "bright-smile"})
+    r = client.get("/usage?business_id=bright-smile", headers={"X-API-Key": "bizkey_bright_smile_demo"})
+    assert r.status_code == 200
+    assert r.json()[0]["messages"] == 2
+    # And it's tenant-protected like everything else.
+    assert client.get("/usage?business_id=bright-smile").status_code == 401
+
+
+def test_bookings_pagination(client):
+    from app import db
+
+    for i in range(7):
+        db.save_booking("bright-smile", "2026-08-01", f"{i + 1}:00 PM", f"P{i}", "050", "x")
+    page = client.get(
+        "/bookings?business_id=bright-smile&limit=3&offset=3",
+        headers={"X-API-Key": "bizkey_bright_smile_demo"},
+    )
+    assert page.status_code == 200
+    assert len(page.json()) == 3
+    assert client.get(
+        "/bookings?business_id=bright-smile&limit=9999",
+        headers={"X-API-Key": "bizkey_bright_smile_demo"},
+    ).status_code == 422  # limit is bounded
 
 
 def test_production_errors_hide_internals(client, monkeypatch):

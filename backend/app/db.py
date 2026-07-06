@@ -116,11 +116,39 @@ def init_db() -> None:
         # Booking now captures mobile number + reason for visit (UAE clinics take both).
         conn.execute("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS phone TEXT")
         conn.execute("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reason TEXT")
+        # Conversations are DURABLE (were in-process RAM: every deploy wiped all
+        # active chats mid-sentence, and it could never scale past one server).
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS messages (
+                id              SERIAL PRIMARY KEY,
+                business_id     TEXT NOT NULL,
+                conversation_id TEXT NOT NULL,
+                role            TEXT NOT NULL,
+                text            TEXT NOT NULL,
+                created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+            """
+        )
+        # Usage metering per business per day — the raw material for billing,
+        # quotas and "your month at a glance". Without it even manual invoicing
+        # has no data to stand on.
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS usage_daily (
+                business_id  TEXT NOT NULL,
+                day          DATE NOT NULL,
+                messages     INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (business_id, day)
+            )
+            """
+        )
         # Every hot query filters on these — without indexes each is a full
         # table scan that grows linearly with every tenant's data combined.
         conn.execute("CREATE INDEX IF NOT EXISTS idx_bookings_biz_date ON bookings (business_id, date)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_caller_memory_biz ON caller_memory (business_id, caller)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_leads_biz ON leads (business_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages (business_id, conversation_id, id)")
     # One slot = one booking, enforced by the DATABASE — the tool's check-then-
     # insert has a race window (two simultaneous callers both pass the check);
     # this unique index is what actually guarantees no double-booking. Separate
@@ -161,14 +189,60 @@ def save_booking(
     return row["id"]
 
 
-def list_bookings(business_id: str) -> list[dict]:
-    """Return one business's bookings, newest first. The WHERE clause is the
-    isolation wall — never returns another business's rows."""
+def list_bookings(business_id: str, limit: int = 100, offset: int = 0) -> list[dict]:
+    """Return one business's bookings, newest first, paginated (a busy salon's
+    500th booking must not turn every dashboard load into a full dump). The
+    WHERE clause is the isolation wall — never returns another business's rows."""
     with _connect() as conn:
         rows = conn.execute(
             "SELECT id, date, time, patient_name, phone, reason, created_at FROM bookings "
-            "WHERE business_id = %s ORDER BY id DESC",
-            (business_id,),
+            "WHERE business_id = %s ORDER BY id DESC LIMIT %s OFFSET %s",
+            (business_id, limit, offset),
+        ).fetchall()
+    return rows
+
+
+# --- conversations (durable chat history) --------------------------------------
+def save_message(business_id: str, conversation_id: str, role: str, text: str) -> None:
+    """Append one turn to a conversation's durable history."""
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO messages (business_id, conversation_id, role, text) VALUES (%s, %s, %s, %s)",
+            (business_id, conversation_id, role, text),
+        )
+
+
+def get_history(business_id: str, conversation_id: str, limit: int = 40) -> list[dict]:
+    """The last `limit` turns of one conversation, oldest first — exactly the
+    shape the LLM layer expects. Scoped by business_id so the same
+    conversation_id at two businesses can never share context."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT role, text FROM messages "
+            "WHERE business_id = %s AND conversation_id = %s ORDER BY id DESC LIMIT %s",
+            (business_id, conversation_id, limit),
+        ).fetchall()
+    return list(reversed(rows))
+
+
+# --- usage metering -------------------------------------------------------------
+def bump_usage(business_id: str, messages: int = 1) -> None:
+    """Count one (or more) handled messages against today's usage row."""
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO usage_daily (business_id, day, messages) VALUES (%s, CURRENT_DATE, %s) "
+            "ON CONFLICT (business_id, day) DO UPDATE SET messages = usage_daily.messages + EXCLUDED.messages",
+            (business_id, messages),
+        )
+
+
+def get_usage(business_id: str, days: int = 30) -> list[dict]:
+    """Per-day message counts for the last `days` days, newest first."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT day, messages FROM usage_daily "
+            "WHERE business_id = %s AND day > CURRENT_DATE - %s::int ORDER BY day DESC",
+            (business_id, days),
         ).fetchall()
     return rows
 
@@ -306,13 +380,13 @@ def save_lead(business_id: str, name: str, phone: str, interest: str, notes: str
     return row["id"]
 
 
-def list_leads(business_id: str) -> list[dict]:
-    """Return one business's captured leads, newest first (scoped by business_id)."""
+def list_leads(business_id: str, limit: int = 100, offset: int = 0) -> list[dict]:
+    """Return one business's captured leads, newest first, paginated."""
     with _connect() as conn:
         rows = conn.execute(
             "SELECT id, name, phone, interest, notes, created_at FROM leads "
-            "WHERE business_id = %s ORDER BY id DESC",
-            (business_id,),
+            "WHERE business_id = %s ORDER BY id DESC LIMIT %s OFFSET %s",
+            (business_id, limit, offset),
         ).fetchall()
     return rows
 

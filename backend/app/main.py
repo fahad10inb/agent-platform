@@ -8,7 +8,7 @@ so we can confirm the server is alive.
 
 import logging
 
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
@@ -68,6 +68,12 @@ async def _hardening(request: Request, call_next):
         response = JSONResponse(status_code=500, content={"detail": "Something went wrong on our side. Please try again."})
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    # Always-HTTPS (Render terminates TLS); browsers remember for a year.
+    response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
+    # The dashboard (where keys are typed) must never be framed — clickjacking
+    # protection. The widget MUST stay frameable (clinics embed it via iframe).
+    if request.url.path == "/dashboard":
+        response.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
     return response
 
 
@@ -149,11 +155,8 @@ class NewBusiness(BaseModel):
 
 # Tools are now built PER REQUEST (scoped to the caller's business) inside the
 # /chat handler, so each business only ever touches its own data.
-
-# Super-simple conversation memory: conversation_id -> list of {role, text} turns.
-# It lives in RAM, so it resets when the server restarts. That's fine for now;
-# in a later lesson this becomes a real database table that survives restarts.
-_conversations: dict[str, list[dict]] = {}
+# Conversation history lives in the messages TABLE (was a RAM dict — every
+# deploy wiped every tenant's live conversations, and it capped us at one server).
 
 
 @app.post("/chat", response_model=ChatResponse)
@@ -173,14 +176,11 @@ async def chat(req: ChatRequest, request: Request):
         raise HTTPException(status_code=404, detail=f"Unknown business_id: {req.business_id}")
     system_prompt = build_system_prompt(business)
 
-    # 2. Find (or start) this conversation's history, then add the new message.
-    # The key includes the business_id: the same conversation_id at two different
-    # businesses must NEVER share history (cross-tenant context bleed).
-    history = _conversations.setdefault(f"{req.business_id}:{req.conversation_id}", [])
-    history.append({"role": "user", "text": req.message})
-    # Cap remembered turns so a marathon conversation can't grow tokens unbounded.
-    if len(history) > 40:
-        del history[:-40]
+    # 2. Load this conversation's DURABLE history (scoped by business_id — the
+    # same conversation_id at two businesses can never share context) and add
+    # the new message in memory only. Capped at 40 turns at read time.
+    history = db.get_history(req.business_id, req.conversation_id, limit=40)
+    history = history + [{"role": "user", "text": req.message}]
 
     # 3. Build this business's tools (each scoped to its own data via the
     #    business_id closure), then send the whole conversation to the AI.
@@ -192,8 +192,8 @@ async def chat(req: ChatRequest, request: Request):
     try:
         reply = await generate_reply(system_prompt, history, tools=tools)
     except Exception as e:
-        # The failed user turn must not linger in history (the model never saw it).
-        history.pop()
+        # Nothing was persisted yet, so a failed turn can't haunt the next
+        # request — rollback by construction.
         # Log the real cause; tell the public only in development. Leaking
         # internals (key names, stack details) to an open endpoint is a gift
         # to attackers in production.
@@ -204,8 +204,11 @@ async def chat(req: ChatRequest, request: Request):
             status_code=500, detail="Sorry — something went wrong. Please try again."
         ) from e
 
-    # 4. Remember the AI's reply too, so the next turn has the full context.
-    history.append({"role": "model", "text": reply})
+    # 4. Persist BOTH turns only now that the reply succeeded, and meter the
+    # turn against the business's daily usage (the future billing/quota data).
+    db.save_message(req.business_id, req.conversation_id, "user", req.message)
+    db.save_message(req.business_id, req.conversation_id, "model", reply)
+    db.bump_usage(req.business_id)
     return ChatResponse(reply=reply)
 
 
@@ -285,18 +288,40 @@ def businesses(x_api_key: str | None = Header(default=None)):
 
 
 @app.get("/bookings")
-def bookings(business_id: str = "bright-smile", x_api_key: str | None = Header(default=None)):
-    """List ONE business's bookings (pass ?business_id=...), newest first.
+def bookings(
+    business_id: str = "bright-smile",
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    x_api_key: str | None = Header(default=None),
+):
+    """List ONE business's bookings (pass ?business_id=...), newest first,
+    paginated (?limit=&offset=).
 
     PROTECTED: requires that business's api_key (or the admin key) in the
     X-API-Key header. This is patient data — never open.
     """
     security.check_business_access(business_id, x_api_key)
-    return db.list_bookings(business_id)
+    return db.list_bookings(business_id, limit=limit, offset=offset)
 
 
 @app.get("/leads")
-def leads(business_id: str = "bright-smile", x_api_key: str | None = Header(default=None)):
-    """List ONE business's captured leads/enquiries. PROTECTED (business or admin key)."""
+def leads(
+    business_id: str = "bright-smile",
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    x_api_key: str | None = Header(default=None),
+):
+    """List ONE business's captured leads/enquiries, paginated. PROTECTED."""
     security.check_business_access(business_id, x_api_key)
-    return db.list_leads(business_id)
+    return db.list_leads(business_id, limit=limit, offset=offset)
+
+
+@app.get("/usage")
+def usage(
+    business_id: str = "bright-smile",
+    days: int = Query(default=30, ge=1, le=365),
+    x_api_key: str | None = Header(default=None),
+):
+    """Per-day handled-message counts — the billing/quota meter. PROTECTED."""
+    security.check_business_access(business_id, x_api_key)
+    return db.get_usage(business_id, days=days)

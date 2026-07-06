@@ -19,7 +19,7 @@ import pytest  # noqa: E402
 from app import db  # noqa: E402
 
 # ── in-memory state, same shape the real tables hold ─────────────────────────
-_S = {"businesses": {}, "bookings": [], "memory": [], "leads": [], "next_id": 1}
+_S = {"businesses": {}, "bookings": [], "memory": [], "leads": [], "messages": [], "usage": {}, "next_id": 1}
 
 
 def _nid() -> int:
@@ -67,8 +67,33 @@ def _fake_save_booking(business_id, date, time, patient_name, phone="", reason="
     return row["id"]
 
 
-def _fake_list_bookings(business_id):
-    return [dict(r) for r in reversed(_S["bookings"]) if r["business_id"] == business_id]
+def _fake_list_bookings(business_id, limit=100, offset=0):
+    rows = [dict(r) for r in reversed(_S["bookings"]) if r["business_id"] == business_id]
+    return rows[offset:offset + limit]
+
+
+def _fake_save_message(business_id, conversation_id, role, text):
+    _S["messages"].append(
+        {"business_id": business_id, "conversation_id": conversation_id, "role": role, "text": text}
+    )
+
+
+def _fake_get_history(business_id, conversation_id, limit=40):
+    rows = [
+        {"role": m["role"], "text": m["text"]}
+        for m in _S["messages"]
+        if m["business_id"] == business_id and m["conversation_id"] == conversation_id
+    ]
+    return rows[-limit:]
+
+
+def _fake_bump_usage(business_id, messages=1):
+    _S["usage"][business_id] = _S["usage"].get(business_id, 0) + messages
+
+
+def _fake_get_usage(business_id, days=30):
+    n = _S["usage"].get(business_id, 0)
+    return [{"day": "today", "messages": n}] if n else []
 
 
 def _fake_booked_times(business_id, date):
@@ -125,8 +150,9 @@ def _fake_save_lead(business_id, name, phone, interest, notes=""):
     return row["id"]
 
 
-def _fake_list_leads(business_id):
-    return [dict(r) for r in reversed(_S["leads"]) if r["business_id"] == business_id]
+def _fake_list_leads(business_id, limit=100, offset=0):
+    rows = [dict(r) for r in reversed(_S["leads"]) if r["business_id"] == business_id]
+    return rows[offset:offset + limit]
 
 
 # Swap the seam BEFORE app.main import (module scope: conftest loads first).
@@ -145,6 +171,10 @@ db.save_caller_memory = _fake_save_caller_memory
 db.get_caller_memory = _fake_get_caller_memory
 db.save_lead = _fake_save_lead
 db.list_leads = _fake_list_leads
+db.save_message = _fake_save_message
+db.get_history = _fake_get_history
+db.bump_usage = _fake_bump_usage
+db.get_usage = _fake_get_usage
 
 from app import main as main_module  # noqa: E402  (imports AFTER the swap)
 from fastapi.testclient import TestClient  # noqa: E402
@@ -159,7 +189,8 @@ def _clean_state():
     _S["bookings"].clear()
     _S["memory"].clear()
     _S["leads"].clear()
-    main_module._conversations.clear()
+    _S["messages"].clear()
+    _S["usage"].clear()
     security._hits.clear()
     yield
 

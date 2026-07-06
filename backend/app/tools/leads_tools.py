@@ -27,7 +27,8 @@ def make_lead_tools(business_id: str) -> list:
         Returns:
             A confirmation dict.
         """
-        print(f"  TOOL -> capture_lead(name={name!r}, phone={phone!r}, interest={interest!r}) [biz={business_id}]")
+        # No PII (name/phone) in server logs — Render retains them.
+        print(f"  TOOL -> capture_lead [biz={business_id}]")
         lead_id = db.save_lead(business_id, name, phone, interest, notes)
         return {"status": "captured", "lead_id": lead_id, "name": name}
 
