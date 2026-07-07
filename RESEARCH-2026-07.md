@@ -53,3 +53,9 @@ Our differentiators: fair billing, verified bookings, guaranteed human path, dia
 - Disclosure paradox resolved: +34pp satisfaction when customers KNOW it's AI (COPC) — default-on warm disclosure is stats-backed.
 - Rage concentrates on: voice AI intercepting calls, bots gating humans, accent failures (WER 30-50% accented vs 2-8% native), seniors (UK GP "Emma" backlash), rigid loops. McDonald's + Taco Bell retreated from drive-thru voice AI.
 - STRATEGY MANDATE: position as ADDITIVE ("capture what goes unanswered: after-hours, overflow, web visitors"), never "replace your receptionist." Voice = after-hours/overflow only, never the daytime front line. Chat-first is our structural advantage: the customer opts in by clicking.
+
+## Addendum 2: owner voices (Reddit, verified) — the trust ladder
+- Owners who KEEP AI receptionists confine them to: spam screening, after-hours overflow, message-taking reviewed next morning, low-stakes reschedules (~1/4 of calls). Almost none trust autonomous booking/pricing/first-line during business hours initially.
+- BUILD IDEA (new, differentiating): SUPERVISED MODE onboarding — AI drafts bookings/messages, owner confirms via dashboard/digest; graduate to autonomous after a trust period. No competitor offers a trust ladder.
+- "A robot answer is the same as no answer" — hang-up churn is the #1 owner-stated cancel reason; balanced by "353 calls last month that would have gone unanswered" (additive value proof).
+- Reddit AI-receptionist discourse is heavily vendor-astroturfed (one vendor: 32 identical promos) — honest-metrics positioning has an open lane.
