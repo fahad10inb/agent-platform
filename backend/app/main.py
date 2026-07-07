@@ -12,7 +12,7 @@ from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query, Requ
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
-from app import db, distill_service, security
+from app import db, distill_service, import_service, security
 from app.businesses import SEED_BUSINESSES
 from app.config import get_settings
 from app.llm_service import generate_reply
@@ -322,6 +322,28 @@ def admin_create_business(payload: NewBusiness, x_api_key: str | None = Header(d
     data["api_key"] = api_key
     db.upsert_business(data)
     return {"status": "created", "id": payload.id, "api_key": api_key}
+
+
+class ImportRequest(BaseModel):
+    """A website URL to bootstrap onboarding from."""
+
+    url: str = Field(min_length=4, max_length=300)
+
+
+@app.post("/onboarding/import")
+async def onboarding_import(payload: ImportRequest, request: Request, x_api_key: str | None = Header(default=None)):
+    """'Give us your website' — fetch + extract a review-ready onboarding
+    prefill (ADMIN ONLY: it spends LLM tokens and fetches arbitrary URLs)."""
+    security.check_admin(x_api_key)
+    security.rate_limit(request, limit=10, window=60, bucket="import")
+    try:
+        return await import_service.import_from_website(payload.url)
+    except Exception as exc:  # noqa: BLE001 — any failure = one friendly message
+        logger.warning("onboarding import failed for %r: %s", payload.url, str(exc)[:150])
+        raise HTTPException(
+            status_code=422,
+            detail="Couldn't read that website — double-check the URL, or fill the form manually.",
+        ) from exc
 
 
 @app.get("/business/{business_id}")

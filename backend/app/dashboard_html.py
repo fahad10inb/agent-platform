@@ -360,7 +360,16 @@ DASHBOARD_HTML = """<!doctype html>
     p.innerHTML = `<h3>Set up a new business</h3>
       <p class="lead">This one form is the whole onboarding — the receptionist is live the moment you create it.</p>
 
-      <div class="fgroup first">
+      <div class="fgroup first" style="background:var(--accent-soft);border-color:#ded4ff">
+        <div class="fghead"><span class="fgnum">✨</span><span class="fgtitle">Start from their website</span></div>
+        <p class="fgwhy">Paste the business's site and the form below fills itself — then just review and edit.</p>
+        <div style="display:flex;gap:10px;align-items:flex-end">
+          <div style="flex:1"><label for="o_url">Website</label><input id="o_url" placeholder="https://thebusiness.com"></div>
+          <button class="btn" type="button" id="importBtn" onclick="doImport()" style="flex:none">Import</button>
+        </div>
+      </div>
+
+      <div class="fgroup">
         <div class="fghead"><span class="fgnum">1</span><span class="fgtitle">The basics</span></div>
         <p class="fgwhy">How the receptionist introduces itself — and how it behaves.</p>
         <div class="row2"><div><label for="o_id">Business ID <span class="soft">(lowercase-and-dashes, permanent)</span></label><input id="o_id" placeholder="velvet-hair"></div>
@@ -412,6 +421,27 @@ DASHBOARD_HTML = """<!doctype html>
       <p class="note">Creating a business generates its API key. The key is shown once — copy it right away.</p>
       <div id="onboardResult"></div>`;
   }
+  async function doImport(){
+    const url = val("o_url").trim();
+    if(!url){ toast("Paste the business's website first."); return; }
+    const btn = $("importBtn"); btn.disabled = true; btn.textContent = "Reading…";
+    try{
+      const r = await api("/onboarding/import", { method:"POST", body: JSON.stringify({url}) });
+      const d = await r.json();
+      if(!r.ok){ toast(apiErr(d, "Couldn't read that website.")); return; }
+      // Prefill everything — the human reviews and edits before creating.
+      const map = { name:"o_name", type:"o_type", tone:"o_tone", hours:"o_hours", services:"o_services",
+        staff:"o_staff", location:"o_location", policies:"o_policies", faq:"o_faq" };
+      for(const k in map){ if(d[k]) $(map[k]).value = d[k]; }
+      if(d.open_hour != null) $("o_open").value = d.open_hour;
+      if(d.close_hour != null) $("o_close").value = d.close_hour;
+      if(d.vertical) $("o_vertical").value = d.vertical;
+      if(d.name && !val("o_id")) $("o_id").value = d.name.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,40);
+      toast("Imported — review every field, then create ✨");
+    } catch(e){ toast("Couldn't read that website."); }
+    finally { btn.disabled = false; btn.textContent = "Import"; }
+  }
+
   async function doOnboard(){
     const body = { id:val("o_id").trim(), name:val("o_name").trim(), type:val("o_type").trim(),
       tone:val("o_tone").trim()||"warm and professional", hours:val("o_hours").trim(), services:val("o_services").trim(),
