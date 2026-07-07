@@ -11,7 +11,7 @@ import json
 import pytest
 
 from app import db, distill_service
-from app import main as main_module
+from app import chat_core
 
 BIZ = "bright-smile"
 CONV = "distill-conv"
@@ -212,12 +212,12 @@ def test_chat_schedules_distill_every_sixth_user_message(client, monkeypatch):
     async def _spy(business_id, conversation_id):
         scheduled.append((business_id, conversation_id))
 
-    monkeypatch.setattr(main_module.distill_service, "distill_conversation", _spy)
+    monkeypatch.setattr(chat_core.distill_service, "distill_conversation", _spy)
 
     async def _fake_reply(system_prompt, history, tools=None):
         return "ok"
 
-    monkeypatch.setattr(main_module, "generate_reply", _fake_reply)
+    monkeypatch.setattr(chat_core, "generate_reply", _fake_reply)
 
     # 5 caller turns already on file; the 6th arrives through /chat.
     for i in range(5):
@@ -238,11 +238,11 @@ def test_chat_does_not_distill_short_conversations(client, monkeypatch):
     async def _spy(business_id, conversation_id):
         scheduled.append((business_id, conversation_id))
 
-    monkeypatch.setattr(main_module.distill_service, "distill_conversation", _spy)
+    monkeypatch.setattr(chat_core.distill_service, "distill_conversation", _spy)
 
     async def _fake_reply(system_prompt, history, tools=None):
         return "ok"
 
-    monkeypatch.setattr(main_module, "generate_reply", _fake_reply)
+    monkeypatch.setattr(chat_core, "generate_reply", _fake_reply)
     client.post("/chat", json={"message": "hi", "conversation_id": "c-one", "business_id": BIZ})
     assert scheduled == []

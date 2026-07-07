@@ -57,7 +57,7 @@ def test_request_human_without_number_takes_a_message(client, state, monkeypatch
 
 def test_chat_exposes_request_human(client, monkeypatch):
     """The tool is actually wired into /chat's toolbox."""
-    from app import main as main_module
+    from app import chat_core
 
     seen = {}
 
@@ -65,7 +65,7 @@ def test_chat_exposes_request_human(client, monkeypatch):
         seen["tools"] = [t.__name__ for t in (tools or [])]
         return "ok"
 
-    monkeypatch.setattr(main_module, "generate_reply", _fake)
+    monkeypatch.setattr(chat_core, "generate_reply", _fake)
     client.post("/chat", json={"message": "hi", "business_id": "bright-smile"})
     assert "request_human" in seen["tools"]
 

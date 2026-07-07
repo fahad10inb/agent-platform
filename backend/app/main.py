@@ -16,19 +16,14 @@ from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query, Requ
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
-from app import db, digest_service, distill_service, import_service, security
+from app import chat_core, db, digest_service, import_service, security
 from app.businesses import SEED_BUSINESSES
 from app.config import get_settings
-from app.llm_service import generate_reply
-from app.prompt_service import build_system_prompt
 import secrets
 
 from app.dashboard_html import DASHBOARD_HTML
 from app.landing_html import LANDING_HTML
-from app.tools.calendar_tools import make_calendar_tools
-from app.tools.handoff_tools import make_handoff_tools
-from app.tools.leads_tools import make_lead_tools
-from app.tools.memory_tools import make_memory_tools
+from app.whatsapp import router as whatsapp_router
 from app.widget_html import WIDGET_HTML
 
 # Load our settings once at startup.
@@ -89,6 +84,10 @@ app = FastAPI(
     openapi_url="/openapi.json" if _dev else None,
     lifespan=_lifespan,
 )
+
+# The WhatsApp channel (webhook verify + inbound messages). Plays dead (404)
+# until the WHATSAPP_* env vars are configured.
+app.include_router(whatsapp_router)
 
 
 @app.middleware("http")
@@ -187,6 +186,9 @@ class BusinessSettings(BaseModel):
     after_hours_mode: str | None = Field(
         default=None, pattern=r"^(take_message|book_only|info_only)$"
     )
+    # WhatsApp Cloud API phone_number_id owning this tenant's webhooks
+    # (empty string disconnects the channel for this business).
+    whatsapp_phone_id: str | None = Field(default=None, max_length=40)
 
 
 class NewBusiness(BaseModel):
@@ -221,10 +223,9 @@ class NewBusiness(BaseModel):
     notify_email: str = Field(default="", max_length=200)
 
 
-# Tools are now built PER REQUEST (scoped to the caller's business) inside the
-# /chat handler, so each business only ever touches its own data.
-# Conversation history lives in the messages TABLE (was a RAM dict — every
-# deploy wiped every tenant's live conversations, and it capped us at one server).
+# The turn itself lives in app/chat_core.py, shared with the WhatsApp webhook.
+# This route adds what's web-specific: the per-IP rate limit and HTTP error
+# shapes. Conversation history lives in the messages TABLE.
 
 
 @app.post("/chat", response_model=ChatResponse)
@@ -235,34 +236,18 @@ async def chat(req: ChatRequest, request: Request, background_tasks: BackgroundT
     `await` the (slow) AI call inside. Public (patients use it) but rate-limited
     so it can't be spammed into a huge Gemini bill.
     """
-    # 0. Abuse / cost guard: cap requests per IP.
+    # Abuse / cost guard: cap requests per IP.
     security.rate_limit(request)
 
-    # 1. Look up WHICH business this request is for, and build its persona.
-    business = db.get_business(req.business_id)
-    if business is None:
-        raise HTTPException(status_code=404, detail=f"Unknown business_id: {req.business_id}")
-    system_prompt = build_system_prompt(business)
-
-    # 2. Load this conversation's DURABLE history (scoped by business_id — the
-    # same conversation_id at two businesses can never share context) and add
-    # the new message in memory only. Capped at 40 turns at read time.
-    history = db.get_history(req.business_id, req.conversation_id, limit=40)
-    history = history + [{"role": "user", "text": req.message}]
-
-    # 3. Build this business's tools (each scoped to its own data via the
-    #    business_id closure), then send the whole conversation to the AI.
-    tools = (
-        make_calendar_tools(business)
-        + make_memory_tools(req.business_id)
-        + make_lead_tools(req.business_id)
-        + make_handoff_tools(business)
-    )
     try:
-        reply = await generate_reply(system_prompt, history, tools=tools)
+        reply = await chat_core.run_turn(
+            req.business_id, req.conversation_id, req.message, background_tasks.add_task
+        )
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
     except Exception as e:
-        # Nothing was persisted yet, so a failed turn can't haunt the next
-        # request — rollback by construction.
+        # Nothing was persisted (the core persists only after success), so a
+        # failed turn can't haunt the next request — rollback by construction.
         # Log the real cause; tell the public only in development. Leaking
         # internals (key names, stack details) to an open endpoint is a gift
         # to attackers in production.
@@ -272,32 +257,6 @@ async def chat(req: ChatRequest, request: Request, background_tasks: BackgroundT
         raise HTTPException(
             status_code=500, detail="Sorry — something went wrong. Please try again."
         ) from e
-
-    # Guard: the model occasionally acts (calls tools) but returns EMPTY text —
-    # the customer would see a blank bubble while things happened invisibly.
-    if not reply.strip():
-        reply = (
-            "Sorry — I lost my words for a second there. Could you say that "
-            "again? I'll double-check everything before confirming."
-        )
-
-    # 4. Persist BOTH turns only now that the reply succeeded, and meter the
-    # turn against the business's daily usage (the future billing/quota data).
-    db.save_message(req.business_id, req.conversation_id, "user", req.message)
-    db.save_message(req.business_id, req.conversation_id, "model", reply)
-    db.bump_usage(req.business_id)
-
-    # 5. Every 6th caller message, distill the conversation into durable caller
-    # memory — AFTER the response is sent (BackgroundTasks), so the caller never
-    # waits on it. `history` already includes this turn's message, so counting
-    # it counts the conversation as it now stands. The service is flag-gated
-    # (DISTILL_ENABLED) and swallows its own errors — it can't break /chat.
-    every_n = distill_service.DISTILL_EVERY_N_USER_MESSAGES
-    user_turns = sum(1 for t in history if t["role"] == "user")
-    if user_turns >= every_n and user_turns % every_n == 0:
-        background_tasks.add_task(
-            distill_service.distill_conversation, req.business_id, req.conversation_id
-        )
     return ChatResponse(reply=reply)
 
 
@@ -344,11 +303,13 @@ def manage_get(business_id: str, request: Request, x_api_key: str | None = Heade
               "open_hour", "close_hour", "slot_minutes", "vertical",
               "staff", "location", "policies",
               "min_notice_hours", "max_advance_days", "buffer_min", "notify_email",
-              "transfer_number", "after_hours_mode"]
+              "transfer_number", "after_hours_mode", "whatsapp_phone_id"]
     out = {k: biz.get(k) for k in fields}
     # The structured service menu rides along so the dashboard can prefill its
     # "name | minutes | price" textarea from what's actually stored.
     out["services_rows"] = db.list_services(business_id)
+    # Same for the property listings sheet (real-estate tenants).
+    out["listings_rows"] = db.list_listings(business_id)
     return out
 
 
@@ -403,6 +364,41 @@ def manage_services(
         raise HTTPException(status_code=404, detail="Unknown business.")
     db.replace_services(business_id, [s.model_dump() for s in payload.services])
     return {"status": "saved", "business_id": business_id, "count": len(payload.services)}
+
+
+class ListingRow(BaseModel):
+    """One live property. Everything except the title is optional and TEXT —
+    owners write prices like "1.2M" or "60k/yr" and bedrooms like "studio"."""
+
+    title: str = Field(min_length=1, max_length=120)
+    area: str = Field(default="", max_length=80)
+    bedrooms: str = Field(default="", max_length=20)
+    price: str = Field(default="", max_length=40)
+    purpose: str = Field(default="", max_length=20)  # sale / rent / their words
+    notes: str = Field(default="", max_length=200)
+
+
+class ListingsPayload(BaseModel):
+    """The whole sheet at once — replace semantics, like the service menu."""
+
+    listings: list[ListingRow] = Field(max_length=100)
+
+
+@app.post("/manage/{business_id}/listings")
+def manage_listings(
+    business_id: str,
+    payload: ListingsPayload,
+    request: Request,
+    x_api_key: str | None = Header(default=None),
+):
+    """Replace a business's property-listings sheet (real estate). Same auth as
+    the rest of /manage: that business's key or admin."""
+    security.rate_limit(request, limit=20, window=60, bucket="manage")
+    security.check_business_access(business_id, x_api_key)
+    if db.get_business(business_id) is None:
+        raise HTTPException(status_code=404, detail="Unknown business.")
+    db.replace_listings(business_id, [r.model_dump() for r in payload.listings])
+    return {"status": "saved", "business_id": business_id, "count": len(payload.listings)}
 
 
 @app.post("/admin/businesses")

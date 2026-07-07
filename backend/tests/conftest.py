@@ -21,7 +21,7 @@ from app import db  # noqa: E402
 
 # ── in-memory state, same shape the real tables hold ─────────────────────────
 _S = {"businesses": {}, "bookings": [], "memory": [], "leads": [], "messages": [],
-      "services": [], "usage": {}, "next_id": 1}
+      "services": [], "listings": [], "usage": {}, "next_id": 1}
 
 
 def _nid() -> int:
@@ -245,6 +245,30 @@ def _fake_list_leads(business_id, limit=100, offset=0):
     return rows[offset:offset + limit]
 
 
+def _fake_list_listings(business_id):
+    return [dict(r) for r in _S["listings"] if r["business_id"] == business_id]
+
+
+def _fake_replace_listings(business_id, listings):
+    _S["listings"] = [r for r in _S["listings"] if r["business_id"] != business_id]
+    for row in listings:
+        _S["listings"].append({
+            "id": _nid(), "business_id": business_id, "title": row["title"],
+            "area": row.get("area", ""), "bedrooms": row.get("bedrooms", ""),
+            "price": row.get("price", ""), "purpose": row.get("purpose", ""),
+            "notes": row.get("notes", ""),
+        })
+
+
+def _fake_get_business_by_whatsapp(phone_number_id):
+    if not phone_number_id:
+        return None
+    for b in _S["businesses"].values():
+        if b.get("whatsapp_phone_id") == phone_number_id:
+            return dict(b)
+    return None
+
+
 def _fake_find_recent_lead(business_id, phone, within_hours=48):
     digits = "".join(ch for ch in phone if ch.isdigit())
     if not digits:
@@ -283,6 +307,9 @@ db.save_lead = _fake_save_lead
 db.list_leads = _fake_list_leads
 db.find_recent_lead = _fake_find_recent_lead
 db.update_lead = _fake_update_lead
+db.list_listings = _fake_list_listings
+db.replace_listings = _fake_replace_listings
+db.get_business_by_whatsapp = _fake_get_business_by_whatsapp
 db.save_message = _fake_save_message
 db.get_history = _fake_get_history
 db.bump_usage = _fake_bump_usage
@@ -307,6 +334,7 @@ def _clean_state():
     _S["leads"].clear()
     _S["messages"].clear()
     _S["services"].clear()
+    _S["listings"].clear()
     _S["usage"].clear()
     # The seeded businesses persist, but per-test mutations to their alert
     # email / digest stamp must not — a digest test's leftovers would silently

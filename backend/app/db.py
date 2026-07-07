@@ -140,6 +140,9 @@ def init_db() -> None:
         # outside opening hours ('take_message' | 'book_only' | 'info_only').
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS transfer_number TEXT")
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS after_hours_mode TEXT")
+        # WhatsApp channel: the Cloud API phone_number_id whose webhooks belong
+        # to this business (empty = WhatsApp not connected).
+        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS whatsapp_phone_id TEXT")
         # When the weekly ROI digest last went out — the idempotency marker that
         # lets the scheduler re-check hourly without ever double-sending.
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS last_digest_at TIMESTAMPTZ")
@@ -176,6 +179,24 @@ def init_db() -> None:
             )
             """
         )
+        # Property listings — one row per property a real-estate business has
+        # live. All TEXT on purpose: owners write "1.2M", "60k/yr", "2", "studio".
+        # The prompt quotes ONLY these, so the bot can shortlist without ever
+        # inventing a property.
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS listings (
+                id           SERIAL PRIMARY KEY,
+                business_id  TEXT NOT NULL,
+                title        TEXT NOT NULL,
+                area         TEXT DEFAULT '',
+                bedrooms     TEXT DEFAULT '',
+                price        TEXT DEFAULT '',
+                purpose      TEXT DEFAULT '',
+                notes        TEXT DEFAULT ''
+            )
+            """
+        )
         # Usage metering per business per day — the raw material for billing,
         # quotas and "your month at a glance". Without it even manual invoicing
         # has no data to stand on.
@@ -195,6 +216,7 @@ def init_db() -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_caller_memory_biz ON caller_memory (business_id, caller)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_leads_biz ON leads (business_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_services_biz ON services (business_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_listings_biz ON listings (business_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages (business_id, conversation_id, id)")
     # One slot = one booking, enforced by the DATABASE — the tool's check-then-
     # insert has a race window (two simultaneous callers both pass the check);
@@ -515,6 +537,42 @@ def replace_services(business_id: str, services: list[dict]) -> None:
             )
 
 
+def list_listings(business_id: str) -> list[dict]:
+    """One business's live property listings, in the order the owner wrote them."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, title, area, bedrooms, price, purpose, notes FROM listings "
+            "WHERE business_id = %s ORDER BY id",
+            (business_id,),
+        ).fetchall()
+    return rows
+
+
+def replace_listings(business_id: str, listings: list[dict]) -> None:
+    """Swap a business's WHOLE listings sheet for a new one — atomically, same
+    guarantee as replace_services: never a half-empty sheet."""
+    with _connect() as conn:
+        conn.execute("DELETE FROM listings WHERE business_id = %s", (business_id,))
+        for row in listings:
+            conn.execute(
+                "INSERT INTO listings (business_id, title, area, bedrooms, price, purpose, notes) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (business_id, row["title"], row.get("area", ""), row.get("bedrooms", ""),
+                 row.get("price", ""), row.get("purpose", ""), row.get("notes", "")),
+            )
+
+
+def get_business_by_whatsapp(phone_number_id: str) -> dict | None:
+    """Which tenant owns this WhatsApp number? Routes inbound webhooks."""
+    if not phone_number_id:
+        return None
+    with _connect() as conn:
+        return conn.execute(
+            "SELECT * FROM businesses WHERE whatsapp_phone_id = %s LIMIT 1",
+            (phone_number_id,),
+        ).fetchone()
+
+
 # --- businesses (multi-tenancy) ----------------------------------------------
 def upsert_business(b: dict) -> None:
     """Insert a business, or update it if its id already exists ('upsert').
@@ -577,7 +635,7 @@ _EDITABLE_BUSINESS_FIELDS = {
     "open_hour", "close_hour", "slot_minutes", "vertical",
     "staff", "location", "policies",
     "min_notice_hours", "max_advance_days", "buffer_min",
-    "notify_email", "transfer_number", "after_hours_mode",
+    "notify_email", "transfer_number", "after_hours_mode", "whatsapp_phone_id",
 }
 
 

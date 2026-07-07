@@ -101,6 +101,29 @@ def build_system_prompt(business: dict) -> str:
             "check_availability and book_appointment EXACTLY as written on the menu, so "
             "the right amount of time is reserved."
         )
+    # Structured LISTINGS sheet (real estate) — lets the agent shortlist REAL
+    # properties instead of "leave your number and an agent will call": the
+    # single biggest friction in a property enquiry. Only what the owner wrote
+    # exists; matching stays honest by construction.
+    listing_rows = db.list_listings(business["id"]) if business.get("id") else []
+    if listing_rows:
+        sheet = "; ".join(
+            f"{r['title']}"
+            + (f" — {r['area']}" if (r.get("area") or "").strip() else "")
+            + (f" — {r['bedrooms']} BR" if (r.get("bedrooms") or "").strip() else "")
+            + (f" — {r['price']}" if (r.get("price") or "").strip() else "")
+            + (f" — for {r['purpose']}" if (r.get("purpose") or "").strip() else "")
+            + (f" ({r['notes']})" if (r.get("notes") or "").strip() else "")
+            for r in listing_rows[:60]
+        )
+        facts.append(
+            f"CURRENT LISTINGS (title — area — bedrooms — price — purpose): {sheet}. "
+            "These are the ONLY properties that exist — never mention or invent any other. "
+            "When a caller's budget, area or needs fit some, offer the best 2-3 by name with "
+            "their real prices and offer a viewing; if nothing fits, say so honestly and "
+            "capture their lead so an agent can search further. Frame availability as "
+            "'currently listed' — it can change."
+        )
     facts_block = " ".join(facts)
 
     # 2b) KNOWLEDGE — free-form info the business gave us (insurance, parking,

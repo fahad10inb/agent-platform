@@ -468,6 +468,22 @@ DASHBOARD_HTML = """<!doctype html>
   function serviceRowsText(rows){
     return (rows||[]).map(s=>s.name+" | "+s.duration_min+(s.price?" | "+s.price:"")).join("\\n");
   }
+  // Listings lines: title | area | bedrooms | price | sale or rent | notes.
+  // Only the title is required — owners fill what they have.
+  function parseListingRows(text){
+    const rows=[];
+    for(const line of String(text||"").split("\\n")){
+      const t=line.trim(); if(!t) continue;
+      const p=t.split("|").map(x=>x.trim());
+      if(!p[0]) return null;
+      rows.push({title:p[0], area:p[1]||"", bedrooms:p[2]||"", price:p[3]||"", purpose:p[4]||"", notes:p[5]||""});
+    }
+    return rows;
+  }
+  function listingRowsText(rows){
+    return (rows||[]).map(l=>[l.title,l.area,l.bedrooms,l.price,l.purpose,l.notes].join(" | ")
+      .replace(/( \\|)+ *$/,"")).join("\\n");
+  }
 
   async function doOnboard(){
     const body = { id:val("o_id").trim(), name:val("o_name").trim(), type:val("o_type").trim(),
@@ -543,6 +559,7 @@ DASHBOARD_HTML = """<!doctype html>
       if(!r.ok){ body.innerHTML = estate("⚠️","Couldn't load settings","Check your connection and switch tabs to retry."); return; }
       const b = await r.json();
       const svcText = serviceRowsText(b.services_rows);
+      const lstText = listingRowsText(b.listings_rows);
       body.innerHTML = `<h3>Settings</h3>
         <p class="lead">Everything the receptionist knows about this business. Changes apply to the very next conversation.</p>
 
@@ -575,11 +592,20 @@ DASHBOARD_HTML = """<!doctype html>
         </div>
 
         <div class="fgroup">
+          <div class="fghead"><span class="fgtitle">Property listings <span class="soft">(real estate)</span></span></div>
+          <label for="s_listings_rows">Live listings <span class="soft">(one per line: title | area | bedrooms | price | sale or rent | notes)</span></label>
+          <textarea id="s_listings_rows" rows="4" placeholder="2BR apartment, Bloom Towers | JVC | 2 | 1.2M | sale | ready, near park&#10;1BR, Marina Gate | Dubai Marina | 1 | 95k/yr | rent">${esc(lstText)}</textarea>
+          <p class="note">The agent shortlists ONLY from these — a caller's budget and area get matched to real properties, never invented ones. Update it whenever your inventory changes.</p>
+        </div>
+
+        <div class="fgroup">
           <div class="fghead"><span class="fgtitle">Human handoff &amp; after-hours</span></div>
           <label for="s_transfer">Transfer number <span class="soft">(shared when a caller asks for a human — empty = take a message)</span></label>
           <input id="s_transfer" value="${esc(b.transfer_number)}" placeholder="+971 50 123 4567">
           <label for="s_afterhours">When you're closed, the agent should…</label>
           <select id="s_afterhours"><option value="take_message">Take a message (name + number for a callback)</option><option value="book_only">Keep booking — staff confirm when you open</option><option value="info_only">Answer questions only — no bookings</option></select>
+          <label for="s_whatsapp">WhatsApp phone_number_id <span class="soft">(from Meta's Cloud API — empty = WhatsApp off)</span></label>
+          <input id="s_whatsapp" value="${esc(b.whatsapp_phone_id)}" placeholder="123456789012345">
         </div>
 
         <div class="fgroup">
@@ -619,22 +645,31 @@ DASHBOARD_HTML = """<!doctype html>
       slot_minutes:+val("s_slot"), vertical:val("s_vertical"),
       min_notice_hours:+val("s_notice"), max_advance_days:+val("s_advance"), buffer_min:+val("s_buffer"),
       notify_email:val("s_notify").trim(),
-      transfer_number:val("s_transfer").trim(), after_hours_mode:val("s_afterhours") };
-    // Validate the menu BEFORE saving anything, so a typo'd line can't leave
-    // settings saved but the menu silently unchanged.
+      transfer_number:val("s_transfer").trim(), after_hours_mode:val("s_afterhours"),
+      whatsapp_phone_id:val("s_whatsapp").trim() };
+    // Validate the menu and listings BEFORE saving anything, so a typo'd line
+    // can't leave settings saved but the sheet silently unchanged.
     const svcRows = parseServiceRows(val("s_services_rows"));
     if(svcRows===null){ toast("Service menu: each line needs 'name | minutes' (price optional)."); return; }
+    const lstRows = parseListingRows(val("s_listings_rows"));
+    if(lstRows===null){ toast("Listings: each line needs at least a title before the first |."); return; }
     const r = await api("/manage/"+encodeURIComponent(CURRENT), { method:"POST", body: JSON.stringify(body) });
     if(!r.ok){
       let d=null; try{ d = await r.json(); }catch(e){}
       toast(apiErr(d, "Couldn't save — please try again")); return;
     }
-    // Replace semantics: an emptied textarea deliberately clears the menu.
+    // Replace semantics: an emptied textarea deliberately clears the sheet.
     const rs = await api("/manage/"+encodeURIComponent(CURRENT)+"/services",
       { method:"POST", body: JSON.stringify({services: svcRows}) });
     if(!rs.ok){
       let d=null; try{ d = await rs.json(); }catch(e){}
       toast(apiErr(d, "Saved — but the service menu didn't. Check its lines.")); return;
+    }
+    const rl = await api("/manage/"+encodeURIComponent(CURRENT)+"/listings",
+      { method:"POST", body: JSON.stringify({listings: lstRows}) });
+    if(!rl.ok){
+      let d=null; try{ d = await rl.json(); }catch(e){}
+      toast(apiErr(d, "Saved — but the listings didn't. Check their lines.")); return;
     }
     toast("Settings saved — live from the next conversation");
   }

@@ -3,6 +3,7 @@ the review found), history capping, rollback on failure, and input bounds."""
 
 import pytest
 
+from app import chat_core
 from app import main as main_module
 
 
@@ -15,7 +16,7 @@ def fake_llm(monkeypatch):
         calls.append([dict(t) for t in history])
         return "ok"
 
-    monkeypatch.setattr(main_module, "generate_reply", _fake)
+    monkeypatch.setattr(chat_core, "generate_reply", _fake)
     return calls
 
 
@@ -61,7 +62,7 @@ def test_failed_turn_is_rolled_back(client, monkeypatch):
     async def _boom(system_prompt, history, tools=None):
         raise RuntimeError("gemini down")
 
-    monkeypatch.setattr(main_module, "generate_reply", _boom)
+    monkeypatch.setattr(chat_core, "generate_reply", _boom)
     r = client.post("/chat", json={"message": "hi", "conversation_id": "c1", "business_id": "bright-smile"})
     assert r.status_code == 500
     # The unanswered user turn must not haunt the next request's context —
@@ -133,7 +134,7 @@ def test_production_errors_hide_internals(client, monkeypatch):
     async def _boom(system_prompt, history, tools=None):
         raise RuntimeError("SECRET_DB_PASSWORD in traceback")
 
-    monkeypatch.setattr(main_module, "generate_reply", _boom)
+    monkeypatch.setattr(chat_core, "generate_reply", _boom)
     monkeypatch.setattr(main_module.settings, "environment", "production")
     r = client.post("/chat", json={"message": "hi", "business_id": "bright-smile"})
     assert r.status_code == 500

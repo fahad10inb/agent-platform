@@ -57,6 +57,16 @@ class Settings(BaseSettings):
     # memory passes: value-proof email is nice-to-have, never worth an incident.
     digest_enabled: bool = True
 
+    # --- WhatsApp channel (Meta Cloud API) ---
+    # All empty = the webhook plays dead (404), so the channel is off by
+    # default. verify_token is a string YOU invent and paste in both Meta's
+    # webhook form and here; access_token comes from the Meta app (the test
+    # number's temp token first, a System User token in production);
+    # app_secret enables signature checks on inbound webhooks (set in prod).
+    whatsapp_access_token: str = ""
+    whatsapp_verify_token: str = ""
+    whatsapp_app_secret: str = ""
+
     # --- Secrets ---
     gemini_api_key: str = ""
     database_url: str = ""
