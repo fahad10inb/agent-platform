@@ -18,8 +18,8 @@ def make_lead_tools(business_id: str) -> list:
         a rough idea of what they want — a partial lead saved beats a perfect one
         lost. Do NOT keep asking qualifying questions before saving; capture first,
         keep chatting after. If more detail emerges later (buy vs rent, bedrooms,
-        timeline), add it with remember_about_caller — do not call this again, it
-        would duplicate the lead.
+        timeline), call this again with the fuller picture — the same phone number
+        UPDATES the existing lead, it never duplicates.
 
         Args:
             name: The caller's name.
@@ -32,6 +32,13 @@ def make_lead_tools(business_id: str) -> list:
         """
         # No PII (name/phone) in server logs — Render retains them.
         print(f"  TOOL -> capture_lead [biz={business_id}]")
+        # Same phone captured again recently = the SAME enquiry evolving, not a
+        # new one: enrich the row in place and spare the owner a duplicate email.
+        existing = db.find_recent_lead(business_id, phone)
+        if existing:
+            merged_notes = "; ".join(x for x in (existing.get("notes"), notes) if x)
+            db.update_lead(existing["id"], interest, merged_notes)
+            return {"status": "updated", "lead_id": existing["id"], "name": name}
         lead_id = db.save_lead(business_id, name, phone, interest, notes)
         # A lead is money waiting for a call back — tell the owner NOW.
         notify_service.notify_owner(

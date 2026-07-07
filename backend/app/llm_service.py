@@ -9,6 +9,7 @@ swap models or providers, we change only this file.
 
 import asyncio
 import logging
+import re
 from functools import lru_cache
 
 from google import genai
@@ -87,6 +88,7 @@ async def generate_reply(
     # systematic ones will fail twice and surface properly). Retrying with tools
     # is safe: the destructive tools are idempotent under retry (booking twice
     # hits the unique slot index → "unavailable"; a second cancel → "not_found").
+    tool_names = {getattr(t, "__name__", "") for t in (tools or [])} - {""}
     last_exc: Exception | None = None
     for attempt in (1, 2):
         try:
@@ -99,16 +101,28 @@ async def generate_reply(
                 timeout=settings.llm_timeout_seconds,
             )
             text = (response.text or "").strip()
-            if text:
+            leaked = bool(text) and _looks_like_leaked_tool_call(text, tool_names)
+            if text and not leaked:
                 return text
-            # The model sometimes ends its tool loop on a TEXT-LESS turn: the
-            # tools ran (a lead was saved, a slot was booked) but the caller
-            # would get a blank bubble. A blind retry would RE-RUN the tools —
-            # a second book_appointment now hits its own booking and reports
-            # "unavailable" — so instead we make one follow-up call that shows
-            # the model its own tool transcript and demands a reply, with
-            # tools DISABLED so nothing can execute twice.
-            return await _recover_empty_reply(response, contents, config, settings)
+            # Two model failure shapes land here: a TEXT-LESS turn (tools ran —
+            # a lead was saved, a slot was booked — but the caller would get a
+            # blank bubble) and a LEAKED turn (the model TYPED its tool call,
+            # `capture_lead(name='X')`, instead of executing it). If tools DID
+            # run, a blind retry would re-run them — a second book_appointment
+            # hits its own booking and reports "unavailable" — so we make one
+            # follow-up call that shows the model its own tool transcript and
+            # demands a reply, with tools DISABLED so nothing executes twice.
+            # If nothing ran, a clean retry is side-effect-free — just loop.
+            activity = _tool_activity_lines(response)
+            if not activity and attempt == 1:
+                logger.warning(
+                    "model returned %s with no tool activity — retrying the turn",
+                    "leaked tool-call text" if leaked else "empty text",
+                )
+                continue
+            return await _recover_empty_reply(
+                response, contents, config, settings, leaked_text=text if leaked else None
+            )
         except asyncio.TimeoutError as exc:
             last_exc = exc
             logger.warning("gemini call timed out (attempt %d/2, %ss)", attempt, settings.llm_timeout_seconds)
@@ -118,6 +132,14 @@ async def generate_reply(
         if attempt == 1:
             await asyncio.sleep(0.6)
     raise last_exc if last_exc else RuntimeError("gemini call failed")
+
+
+def _looks_like_leaked_tool_call(text: str, tool_names: set[str]) -> bool:
+    """Gemini occasionally TYPES its tool call — the whole reply is literally
+    `recall_caller(caller_name='fahad')` — instead of executing it. The caller
+    must never see tool syntax, and nothing actually ran."""
+    stripped = text.strip().strip("`").strip()
+    return any(re.match(rf"(?:print\()?\s*{re.escape(n)}\s*\(", stripped) for n in tool_names)
 
 
 def _tool_activity_lines(response) -> list[str]:
@@ -135,14 +157,25 @@ def _tool_activity_lines(response) -> list[str]:
     return lines
 
 
-async def _recover_empty_reply(response, contents, config, settings) -> str:
+async def _recover_empty_reply(response, contents, config, settings, leaked_text: str | None = None) -> str:
     """One tools-off follow-up call: tell the model what its tools already did
     and make it speak. Returns "" if this too fails — the /chat route keeps a
     generic last-resort line for that."""
     activity = _tool_activity_lines(response)
+    if leaked_text:
+        problem = (
+            f'Your last turn was the literal text "{leaked_text}" — you TYPED a '
+            "tool call instead of executing it, so nothing ran and the caller "
+            "saw raw code. Never show tool syntax to a caller.\n"
+        )
+    else:
+        problem = (
+            "Your last turn produced no message text, so the caller is staring "
+            "at a blank bubble.\n"
+        )
     note = (
-        "(SYSTEM NOTE — the caller never sees this. Your last turn produced no "
-        "message text, so the caller is staring at a blank bubble.\n"
+        "(SYSTEM NOTE — the caller never sees this. "
+        + problem
         + ("This is what you actually did with your tools:\n" + "\n".join(activity) + "\n" if activity else "")
         + "Write your reply to the caller NOW. State plainly what you just did — "
         "do not redo it, do not contradict it, do not apologize — and ask the "

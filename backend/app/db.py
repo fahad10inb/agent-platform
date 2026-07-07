@@ -592,6 +592,32 @@ def save_lead(business_id: str, name: str, phone: str, interest: str, notes: str
     return row["id"]
 
 
+def find_recent_lead(business_id: str, phone: str, within_hours: int = 48) -> dict | None:
+    """The same caller re-captured within a couple of days is ONE lead, not two —
+    matched on the phone's digits so '050 123 4567' equals '0501234567'."""
+    digits = "".join(ch for ch in phone if ch.isdigit())
+    if not digits:
+        return None
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT id, name, phone, interest, notes FROM leads "
+            "WHERE business_id = %s AND regexp_replace(phone, '\\D', '', 'g') = %s "
+            "AND created_at > now() - make_interval(hours => %s) "
+            "ORDER BY id DESC LIMIT 1",
+            (business_id, digits, within_hours),
+        ).fetchone()
+    return row
+
+
+def update_lead(lead_id: int, interest: str, notes: str = "") -> None:
+    """Enrich an existing lead in place (the dedup path — see find_recent_lead)."""
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE leads SET interest = %s, notes = %s WHERE id = %s",
+            (interest, notes, lead_id),
+        )
+
+
 def list_leads(business_id: str, limit: int = 100, offset: int = 0) -> list[dict]:
     """Return one business's captured leads, newest first, paginated."""
     with _connect() as conn:

@@ -245,6 +245,22 @@ def _fake_list_leads(business_id, limit=100, offset=0):
     return rows[offset:offset + limit]
 
 
+def _fake_find_recent_lead(business_id, phone, within_hours=48):
+    digits = "".join(ch for ch in phone if ch.isdigit())
+    if not digits:
+        return None
+    for r in reversed(_S["leads"]):  # newest first, like the SQL ORDER BY id DESC
+        if r["business_id"] == business_id and "".join(ch for ch in r["phone"] if ch.isdigit()) == digits:
+            return dict(r)
+    return None
+
+
+def _fake_update_lead(lead_id, interest, notes=""):
+    for r in _S["leads"]:
+        if r["id"] == lead_id:
+            r["interest"], r["notes"] = interest, notes
+
+
 # Swap the seam BEFORE app.main import (module scope: conftest loads first).
 db.init_db = _fake_init_db
 db.get_business = _fake_get_business
@@ -265,6 +281,8 @@ db.get_caller_memory = _fake_get_caller_memory
 db.replace_caller_memory = _fake_replace_caller_memory
 db.save_lead = _fake_save_lead
 db.list_leads = _fake_list_leads
+db.find_recent_lead = _fake_find_recent_lead
+db.update_lead = _fake_update_lead
 db.save_message = _fake_save_message
 db.get_history = _fake_get_history
 db.bump_usage = _fake_bump_usage

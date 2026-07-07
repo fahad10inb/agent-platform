@@ -59,11 +59,13 @@ def test_empty_reply_recovers_with_the_tool_transcript(monkeypatch):
     assert "capture_lead" in note and "Fahad" in note and "captured" in note
 
 
-def test_recovery_failure_still_returns_empty_not_crash(monkeypatch):
-    """If the follow-up ALSO comes back blank, generate_reply returns "" and the
-    /chat route's generic last-resort line takes over — the turn never 500s."""
+def test_empty_with_no_tool_activity_retries_then_recovers(monkeypatch):
+    """No tools ran, so retrying the whole turn is side-effect-free: one clean
+    retry first; if that is ALSO blank, the tools-off recovery; if everything
+    stays blank, "" — the /chat route's last-resort line takes over, never a 500."""
     calls: list = []
     responses = [
+        SimpleNamespace(text="", automatic_function_calling_history=None),
         SimpleNamespace(text="", automatic_function_calling_history=None),
         SimpleNamespace(text=""),
     ]
@@ -72,7 +74,38 @@ def test_recovery_failure_still_returns_empty_not_crash(monkeypatch):
     reply = asyncio.run(llm_service.generate_reply("be warm", [{"role": "user", "text": "hi"}]))
 
     assert reply == ""
+    assert len(calls) == 3
+
+
+def test_leaked_tool_call_text_never_reaches_the_caller(monkeypatch):
+    """The Fahad bug, part 2: the whole reply is `recall_caller(caller_name='fahad')`
+    — typed, not executed. Nothing ran, so the turn is retried cleanly."""
+    calls: list = []
+    responses = [
+        SimpleNamespace(text="recall_caller(caller_name='fahad')", automatic_function_calling_history=None),
+        SimpleNamespace(text="Nice to meet you, Fahad! What's the best number to reach you on?"),
+    ]
+    monkeypatch.setattr(llm_service, "_get_client", lambda: _fake_client(responses, calls))
+
+    def recall_caller():
+        pass
+
+    reply = asyncio.run(
+        llm_service.generate_reply("be warm", [{"role": "user", "text": "name is fahad"}], tools=[recall_caller])
+    )
+
+    assert reply.startswith("Nice to meet you")
     assert len(calls) == 2
+
+
+def test_leak_detector_only_flags_bare_tool_syntax():
+    names = {"recall_caller", "capture_lead"}
+    assert llm_service._looks_like_leaked_tool_call("recall_caller(caller_name='x')", names)
+    assert llm_service._looks_like_leaked_tool_call("`capture_lead(name='A', phone='050')`", names)
+    assert llm_service._looks_like_leaked_tool_call("print(recall_caller(caller_name='x'))", names)
+    # Normal prose — even prose that mentions saving details — is untouched.
+    assert not llm_service._looks_like_leaked_tool_call("I've saved your details!", names)
+    assert not llm_service._looks_like_leaked_tool_call("We can call you back today.", names)
 
 
 def test_nonempty_reply_never_triggers_a_second_call(monkeypatch):
