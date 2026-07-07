@@ -140,6 +140,9 @@ def init_db() -> None:
         # outside opening hours ('take_message' | 'book_only' | 'info_only').
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS transfer_number TEXT")
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS after_hours_mode TEXT")
+        # When the weekly ROI digest last went out — the idempotency marker that
+        # lets the scheduler re-check hourly without ever double-sending.
+        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS last_digest_at TIMESTAMPTZ")
         # Booking now captures mobile number + reason for visit (UAE clinics take both).
         conn.execute("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS phone TEXT")
         conn.execute("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reason TEXT")
@@ -282,13 +285,24 @@ def bump_usage(business_id: str, messages: int = 1) -> None:
 
 def get_metrics(business_id: str) -> dict:
     """The owner's value-proof numbers: today + last 30 days, in one round trip.
-    Conversations = distinct chat threads; messages = every question handled."""
+    Conversations = distinct chat threads; messages = every question handled.
+
+    Fair-billing rule: a conversation only COUNTS once the caller sent a second
+    message — spam and one-line drive-bys are never counted (the landing page
+    pledges this in writing, so the metric must actually behave that way).
+    messages_30d stays raw on purpose: it answers "how busy was the agent",
+    not "what would you be billed for"."""
     with _connect() as conn:
         m = conn.execute(
-            "SELECT COUNT(DISTINCT conversation_id) AS convs_30d, COUNT(*) AS msgs_30d, "
-            "COUNT(DISTINCT conversation_id) FILTER (WHERE created_at::date = CURRENT_DATE) AS convs_today "
-            "FROM messages WHERE business_id = %s AND role = 'user' "
-            "AND created_at > now() - interval '30 days'",
+            # ::int on the SUM: SUM(bigint) is numeric in Postgres, which psycopg
+            # hands back as Decimal — the old COUNT(*) was an int, keep it one.
+            "SELECT COUNT(*) FILTER (WHERE user_msgs >= 2) AS convs_30d, "
+            "COALESCE(SUM(user_msgs), 0)::int AS msgs_30d, "
+            "COUNT(*) FILTER (WHERE user_msgs >= 2 AND last_day = CURRENT_DATE) AS convs_today "
+            "FROM (SELECT conversation_id, COUNT(*) AS user_msgs, MAX(created_at::date) AS last_day "
+            "      FROM messages WHERE business_id = %s AND role = 'user' "
+            "      AND created_at > now() - interval '30 days' "
+            "      GROUP BY conversation_id) per_conv",
             (business_id,),
         ).fetchone()
         b = conn.execute(
@@ -308,6 +322,47 @@ def get_metrics(business_id: str) -> dict:
         "bookings_30d": b["n"],
         "leads_30d": led["n"],
     }
+
+
+def get_week_stats(business_id: str) -> dict:
+    """One business's last-7-days numbers for the weekly owner digest.
+    Same fair-billing rule as get_metrics: a conversation counts only once the
+    caller sent a second message (drive-bys aren't value, so they aren't news)."""
+    with _connect() as conn:
+        m = conn.execute(
+            # Same ::int cast as get_metrics: SUM(bigint) would come back Decimal.
+            "SELECT COUNT(*) FILTER (WHERE user_msgs >= 2) AS convs_7d, "
+            "COALESCE(SUM(user_msgs), 0)::int AS msgs_7d "
+            "FROM (SELECT conversation_id, COUNT(*) AS user_msgs "
+            "      FROM messages WHERE business_id = %s AND role = 'user' "
+            "      AND created_at > now() - interval '7 days' "
+            "      GROUP BY conversation_id) per_conv",
+            (business_id,),
+        ).fetchone()
+        b = conn.execute(
+            "SELECT COUNT(*) AS n FROM bookings WHERE business_id = %s "
+            "AND created_at > now() - interval '7 days'",
+            (business_id,),
+        ).fetchone()
+        led = conn.execute(
+            "SELECT COUNT(*) AS n FROM leads WHERE business_id = %s "
+            "AND created_at > now() - interval '7 days'",
+            (business_id,),
+        ).fetchone()
+    return {
+        "conversations_7d": m["convs_7d"],
+        "messages_7d": m["msgs_7d"],
+        "bookings_7d": b["n"],
+        "leads_7d": led["n"],
+    }
+
+
+def set_last_digest(business_id: str) -> None:
+    """Stamp 'the weekly digest went out now' — the 6-day rule reads this back."""
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE businesses SET last_digest_at = now() WHERE id = %s", (business_id,)
+        )
 
 
 def get_usage(business_id: str, days: int = 30) -> list[dict]:
@@ -577,5 +632,16 @@ def list_businesses() -> list[dict]:
     with _connect() as conn:
         rows = conn.execute(
             "SELECT id, name, type FROM businesses ORDER BY name"
+        ).fetchall()
+    return rows
+
+
+def list_businesses_full() -> list[dict]:
+    """The digest sender's view of every business: who to email and when they
+    last got one. Deliberately NOT api_key or the whole row — the digest loop
+    only needs these four columns, so that's all it can ever leak."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, name, notify_email, last_digest_at FROM businesses ORDER BY id"
         ).fetchall()
     return rows

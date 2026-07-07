@@ -86,3 +86,27 @@ def test_landing_page_serves_the_pitch(client):
     r = client.get("/")
     assert r.status_code == 200
     assert "remembers" in r.text  # the differentiator is the headline
+
+
+def test_landing_page_carries_the_fair_billing_pledge(client):
+    """The anti-billing-betrayal section (the market's #1 complaint): all three
+    pledges in writing, plus the honest 'not live yet' framing, plus the FAQ."""
+    r = client.get("/")
+    assert "Fair billing, in writing" in r.text
+    assert "Spam and one-line drive-bys are never counted." in r.text
+    assert "Your usage meter is always visible on your dashboard." in r.text
+    assert "Cancel anytime — one click, no email maze." in r.text
+    assert "When paid plans launch, these three are the contract." in r.text
+    assert "Will spam or junk messages count against me?" in r.text
+
+
+def test_widget_greets_with_ai_disclosure(client):
+    """Disclosure-by-default: the widget's fresh-start greeting says it's the
+    AI assistant and offers the human path, before the caller types a word."""
+    r = client.get("/widget")
+    assert r.status_code == 200
+    assert (
+        "Hi! I'm the AI assistant here — I can answer questions, book you in, "
+        "or get you a human. How can I help?"
+    ) in r.text
+    assert "Book an appointment" in r.text  # the starter chips survived

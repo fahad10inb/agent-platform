@@ -112,6 +112,32 @@ def test_distill_parses_json_wrapped_in_fences_and_prose(client, fake_llm):
     assert db.get_caller_memory(BIZ, "Zara Malik") == ["allergic to ammonia dyes"]
 
 
+def test_distill_runs_on_the_cheap_background_model(client, monkeypatch):
+    """Cost control: extraction passes are pure overhead, so they call
+    gemini_background_model (the lite tier), never the chat model. Patches one
+    level BELOW _call_llm — the fake client records which model was billed."""
+    from types import SimpleNamespace
+
+    from app.config import get_settings
+
+    _seed_conversation()
+    captured = {}
+
+    async def _gen(model, contents, config):
+        captured["model"] = model
+        return SimpleNamespace(
+            text=json.dumps({"caller_name": "Zara Malik", "facts": ["prefers mornings"]})
+        )
+
+    fake_client = SimpleNamespace(aio=SimpleNamespace(models=SimpleNamespace(generate_content=_gen)))
+    monkeypatch.setattr(distill_service, "_get_client", lambda: fake_client)
+    asyncio.run(distill_service.distill_conversation(BIZ, CONV))
+    assert captured["model"] == get_settings().gemini_background_model
+    assert captured["model"] == "gemini-2.5-flash-lite"  # the documented default
+    # And the pass still worked end-to-end on the lite model's output.
+    assert db.get_caller_memory(BIZ, "Zara Malik") == ["prefers mornings"]
+
+
 # ── consolidation ─────────────────────────────────────────────────────────────
 def _seed_notes(n=10, name="Zara Malik"):
     for i in range(n):

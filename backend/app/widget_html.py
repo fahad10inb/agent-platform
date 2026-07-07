@@ -160,7 +160,10 @@ WIDGET_HTML = """<!doctype html>
   });
 
   function freshStart() {
-    row("Hi! How can I help you today?", "ai");
+    // Disclosure-by-default: the very first bubble says it's AI, warmly —
+    // customers who know they're talking to AI are measurably happier, and
+    // pretending otherwise is exactly the trust-killer the market punishes.
+    row("Hi! I'm the AI assistant here — I can answer questions, book you in, or get you a human. How can I help?", "ai");
     // quick-reply starter chips — purely visual, removed after the first message
     const chipBox = document.createElement("div");
     chipBox.id = "chips"; chipBox.className = "chips";

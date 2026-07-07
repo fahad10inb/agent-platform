@@ -28,6 +28,11 @@ class Settings(BaseSettings):
 
     # --- LLM tuning (env-tunable; no deploy needed to dial the voice) ---
     gemini_model: str = "gemini-2.5-flash"
+    # Background extraction work (distill/consolidate) doesn't need the chat
+    # model's quality — a lite model produces the same tiny JSON blobs for a
+    # fraction of the price. The website importer stays on the MAIN model:
+    # onboarding extraction is quality-critical and runs once per business.
+    gemini_background_model: str = "gemini-2.5-flash-lite"
     gemini_temperature: float = 0.7
     # A receptionist answers in a couple of sentences; this cap stops a runaway
     # generation from producing (and billing) an essay.
@@ -48,6 +53,9 @@ class Settings(BaseSettings):
     # a Resend-verified sender; onboarding@resend.dev works for early testing.
     resend_api_key: str = ""
     notify_from: str = "ReceptionAI <onboarding@resend.dev>"
+    # Weekly owner ROI digest (Monday morning email). A kill switch like the
+    # memory passes: value-proof email is nice-to-have, never worth an incident.
+    digest_enabled: bool = True
 
     # --- Secrets ---
     gemini_api_key: str = ""

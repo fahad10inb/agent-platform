@@ -97,7 +97,10 @@ async def _call_llm(prompt: str) -> str:
     )
     response = await asyncio.wait_for(
         _get_client().aio.models.generate_content(
-            model=settings.gemini_model,
+            # The BACKGROUND model, not the chat model: pulling 3 facts into a
+            # JSON blob doesn't need conversational quality, and every distill/
+            # consolidate pass is pure overhead on the LLM bill.
+            model=settings.gemini_background_model,
             contents=prompt,
             config=config,
         ),

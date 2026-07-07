@@ -6,13 +6,17 @@ the outside world can call. For Part 1 there is just one route: a health check
 so we can confirm the server is alive.
 """
 
+import asyncio
+import contextlib
+import datetime
 import logging
+import zoneinfo
 
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
-from app import db, distill_service, import_service, security
+from app import db, digest_service, distill_service, import_service, security
 from app.businesses import SEED_BUSINESSES
 from app.config import get_settings
 from app.llm_service import generate_reply
@@ -41,6 +45,37 @@ for _b in SEED_BUSINESSES:
 
 logger = logging.getLogger("agent-platform")
 
+_DUBAI_TZ = zoneinfo.ZoneInfo("Asia/Dubai")
+
+
+async def _digest_scheduler() -> None:
+    """Hourly check for 'is it Monday morning in Dubai?' — the whole scheduler.
+
+    An hourly wake-up + the 6-day last_digest_at rule inside send_weekly_digests
+    is what makes this safe with zero infrastructure: no cron, no queue, and a
+    restart mid-window can't double-send. Sleep FIRST so a boot during the
+    window doesn't fire before the app has finished settling.
+    """
+    while True:
+        await asyncio.sleep(3600)
+        now = datetime.datetime.now(_DUBAI_TZ)
+        if now.weekday() == 0 and 8 <= now.hour < 12:  # Monday, 8am–12pm Dubai
+            try:
+                await asyncio.to_thread(digest_service.send_weekly_digests)
+            except Exception:  # noqa: BLE001 — the loop must outlive any one bad pass
+                logger.exception("weekly digest pass failed")
+
+
+@contextlib.asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    """Start the digest scheduler with the server, stop it with the server.
+    DIGEST_ENABLED=false switches the whole feature off from the environment."""
+    task = asyncio.create_task(_digest_scheduler()) if settings.digest_enabled else None
+    yield
+    if task:
+        task.cancel()
+
+
 # `app` is THE application object. When we run `uvicorn app.main:app`, that
 # command literally means: "find the variable `app` inside app/main.py and run
 # it." FastAPI also uses `title` to label the auto-generated docs page.
@@ -52,6 +87,7 @@ app = FastAPI(
     docs_url="/docs" if _dev else None,
     redoc_url="/redoc" if _dev else None,
     openapi_url="/openapi.json" if _dev else None,
+    lifespan=_lifespan,
 )
 
 
@@ -380,6 +416,15 @@ def admin_create_business(payload: NewBusiness, x_api_key: str | None = Header(d
     data["api_key"] = api_key
     db.upsert_business(data)
     return {"status": "created", "id": payload.id, "api_key": api_key}
+
+
+@app.post("/admin/send-digests")
+def admin_send_digests(x_api_key: str | None = Header(default=None)):
+    """Run the weekly-digest pass RIGHT NOW (ADMIN ONLY) — the manual lever for
+    testing delivery and for catch-up runs; the 6-day rule still applies, so
+    hammering this can't spam any owner."""
+    security.check_admin(x_api_key)
+    return {"sent": digest_service.send_weekly_digests()}
 
 
 class ImportRequest(BaseModel):

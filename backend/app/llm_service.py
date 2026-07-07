@@ -77,6 +77,11 @@ async def generate_reply(
         tools=tools,  # None = no tools; a list = the AI may call them
     )
 
+    # TODO(cost): Gemini's Batch API / "flex" service tiers promise ~50% off for
+    # latency-tolerant work (the distill/consolidate passes qualify; chat never
+    # will). NOT wired up yet because our pinned google-genai SDK's support for
+    # them is unverified — verify the SDK surface first, then route background
+    # calls through it.
     # Resilience: a hard timeout (a hung upstream call must not hold the caller
     # hostage) and ONE retry on transient failure (blip-shaped errors are common;
     # systematic ones will fail twice and surface properly). Retrying with tools

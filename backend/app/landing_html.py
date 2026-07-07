@@ -570,6 +570,40 @@ LANDING_HTML = """<!doctype html>
   </div>
 </section>
 
+<!-- Fair billing: the market's loudest complaint is billing betrayal (charged
+     after cancelling, spam calls billed, silence billed as "resolutions") —
+     so the pledge goes on the page, in writing, before billing even exists. -->
+<section id="fair-billing">
+  <div class="container">
+    <div class="sechead center reveal">
+      <p class="eyebrow">Fair billing</p>
+      <h2>Fair billing, in writing</h2>
+      <p class="subhead">Paid plans aren't live yet — which is exactly why we're putting the rules
+        in writing first. When paid plans launch, these three are the contract.</p>
+    </div>
+    <div class="trio">
+      <div class="tcard reveal">
+        <div class="tico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16l-6 7v6l-4 2v-8L4 5z"/></svg></div>
+        <h3>Spam and one-line drive-bys are never counted.</h3>
+        <p>A conversation only counts once a customer actually engages. Your dashboard's numbers
+          already work this way today — junk never inflates them, so it can never inflate a bill.</p>
+      </div>
+      <div class="tcard reveal">
+        <div class="tico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12z"/><circle cx="12" cy="12" r="3"/></svg></div>
+        <h3>Your usage meter is always visible on your dashboard.</h3>
+        <p>Day-by-day counts, updated as they happen — you see exactly what we see. No surprise
+          invoice can exist when the meter is on your screen all month.</p>
+      </div>
+      <div class="tcard reveal">
+        <div class="tico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></div>
+        <h3>Cancel anytime — one click, no email maze.</h3>
+        <p>No retention scripts, no "call us to discuss", no billing that outlives the goodbye.
+          Leaving should be as easy as joining, or the joining was a trap.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
 <section id="faq">
   <div class="container">
     <div class="sechead center reveal">
@@ -618,6 +652,13 @@ LANDING_HTML = """<!doctype html>
         <p>We're finalising pricing with our founding customers — simple monthly tiers, no long-term
           contracts. Founding businesses lock in their rate before public launch and it never goes
           up while they stay.</p>
+      </details>
+      <details>
+        <summary>Will spam or junk messages count against me?</summary>
+        <p>Never. A conversation only counts once a customer sends a second message — spam and
+          one-line drive-bys are excluded from your numbers today, and will be excluded from any
+          bill when paid plans launch. Your usage meter stays visible on your dashboard, and
+          cancelling will always be one click. That's the fair-billing pledge, in writing.</p>
       </details>
     </div>
   </div>

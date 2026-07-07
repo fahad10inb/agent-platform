@@ -4,6 +4,7 @@ a TestClient. Same trick as the companion's fake_supabase — db.py is the singl
 storage seam, so faking that one module tests everything above it for real.
 """
 
+import datetime
 import os
 import sys
 
@@ -92,16 +93,54 @@ def _fake_bump_usage(business_id, messages=1):
     _S["usage"][business_id] = _S["usage"].get(business_id, 0) + messages
 
 
+def _user_msgs_per_conversation(business_id):
+    """user-message counts per conversation — the fair-billing rule's raw data."""
+    per_conv = {}
+    for m in _S["messages"]:
+        if m["business_id"] == business_id and m["role"] == "user":
+            per_conv[m["conversation_id"]] = per_conv.get(m["conversation_id"], 0) + 1
+    return per_conv
+
+
 def _fake_get_metrics(business_id):
-    convs = {m["conversation_id"] for m in _S["messages"] if m["business_id"] == business_id and m["role"] == "user"}
-    msgs = sum(1 for m in _S["messages"] if m["business_id"] == business_id and m["role"] == "user")
+    # Mirrors the real layer's fair-billing rule: a conversation counts only
+    # once the caller sent a SECOND message; messages stay raw. The fake has no
+    # timestamps, so "today" and "30d" see the same window.
+    per_conv = _user_msgs_per_conversation(business_id)
+    engaged = sum(1 for n in per_conv.values() if n >= 2)
     return {
-        "conversations_today": len(convs),
-        "conversations_30d": len(convs),
-        "messages_30d": msgs,
+        "conversations_today": engaged,
+        "conversations_30d": engaged,
+        "messages_30d": sum(per_conv.values()),
         "bookings_30d": sum(1 for b in _S["bookings"] if b["business_id"] == business_id),
         "leads_30d": sum(1 for r in _S["leads"] if r["business_id"] == business_id),
     }
+
+
+def _fake_get_week_stats(business_id):
+    # Same >=2-user-message rule as get_metrics; everything counts as "this week".
+    per_conv = _user_msgs_per_conversation(business_id)
+    return {
+        "conversations_7d": sum(1 for n in per_conv.values() if n >= 2),
+        "messages_7d": sum(per_conv.values()),
+        "bookings_7d": sum(1 for b in _S["bookings"] if b["business_id"] == business_id),
+        "leads_7d": sum(1 for r in _S["leads"] if r["business_id"] == business_id),
+    }
+
+
+def _fake_set_last_digest(business_id):
+    if business_id in _S["businesses"]:
+        _S["businesses"][business_id]["last_digest_at"] = datetime.datetime.now(
+            datetime.timezone.utc
+        )
+
+
+def _fake_list_businesses_full():
+    return [
+        {"id": b["id"], "name": b["name"], "notify_email": b.get("notify_email"),
+         "last_digest_at": b.get("last_digest_at")}
+        for b in _S["businesses"].values()
+    ]
 
 
 def _fake_get_usage(business_id, days=30):
@@ -231,6 +270,9 @@ db.get_history = _fake_get_history
 db.bump_usage = _fake_bump_usage
 db.get_usage = _fake_get_usage
 db.get_metrics = _fake_get_metrics
+db.get_week_stats = _fake_get_week_stats
+db.set_last_digest = _fake_set_last_digest
+db.list_businesses_full = _fake_list_businesses_full
 
 from app import main as main_module  # noqa: E402  (imports AFTER the swap)
 from fastapi.testclient import TestClient  # noqa: E402
@@ -248,6 +290,12 @@ def _clean_state():
     _S["messages"].clear()
     _S["services"].clear()
     _S["usage"].clear()
+    # The seeded businesses persist, but per-test mutations to their alert
+    # email / digest stamp must not — a digest test's leftovers would silently
+    # change which businesses the next test emails.
+    for b in _S["businesses"].values():
+        b.pop("notify_email", None)
+        b.pop("last_digest_at", None)
     security._hits.clear()
     yield
 

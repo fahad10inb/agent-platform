@@ -179,6 +179,9 @@ async def _extract(text: str) -> dict:
     """One low-temperature LLM pass turning site text into form JSON."""
     settings = get_settings()
     response = await _get_client().aio.models.generate_content(
+        # Deliberately the MAIN model (not gemini_background_model): this runs
+        # once per business and seeds everything the agent will ever say about
+        # it — a missed price here is wrong answers forever. Quality > pennies.
         model=settings.gemini_model,
         contents=_EXTRACT_PROMPT + text,
         config=types.GenerateContentConfig(

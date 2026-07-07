@@ -80,16 +80,36 @@ def test_usage_is_metered_and_readable(client, fake_llm):
 
 
 def test_owner_metrics_roll_up(client, fake_llm):
-    """The value-proof numbers: chats, questions, and the hours-saved estimate."""
+    """The value-proof numbers: chats, questions, and the hours-saved estimate.
+
+    Fair-billing rule: c1 (two caller messages) counts as a conversation; c2's
+    single hello is a drive-by and must NOT — the landing page pledges that in
+    writing. messages_30d stays raw (it measures workload, not billing)."""
     client.post("/chat", json={"message": "hi", "conversation_id": "c1", "business_id": "bright-smile"})
     client.post("/chat", json={"message": "prices?", "conversation_id": "c1", "business_id": "bright-smile"})
     client.post("/chat", json={"message": "hello", "conversation_id": "c2", "business_id": "bright-smile"})
     r = client.get("/metrics?business_id=bright-smile", headers={"X-API-Key": "bizkey_bright_smile_demo"})
     assert r.status_code == 200
     m = r.json()
-    assert m["conversations_30d"] == 2 and m["messages_30d"] == 3
-    assert m["hours_saved_30d_estimate"] == round(2 * 4 / 60, 1)
+    assert m["conversations_30d"] == 1 and m["messages_30d"] == 3
+    assert m["hours_saved_30d_estimate"] == round(1 * 4 / 60, 1)
     assert client.get("/metrics?business_id=bright-smile").status_code == 401
+
+
+def test_drive_by_conversations_never_count(client, fake_llm):
+    """Pledge #1 as behavior: any number of one-message threads roll up to ZERO
+    conversations, and a thread starts counting the moment its second caller
+    message lands."""
+    for i in range(3):
+        client.post("/chat", json={"message": "spam", "conversation_id": f"drive-{i}", "business_id": "bright-smile"})
+    headers = {"X-API-Key": "bizkey_bright_smile_demo"}
+    m = client.get("/metrics?business_id=bright-smile", headers=headers).json()
+    assert m["conversations_30d"] == 0 and m["conversations_today"] == 0
+    assert m["messages_30d"] == 3  # the workload number stays honest too — raw
+
+    client.post("/chat", json={"message": "actually, a question", "conversation_id": "drive-0", "business_id": "bright-smile"})
+    m = client.get("/metrics?business_id=bright-smile", headers=headers).json()
+    assert m["conversations_30d"] == 1  # drive-0 graduated; the other two never count
 
 
 def test_bookings_pagination(client):
