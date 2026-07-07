@@ -142,6 +142,8 @@ class BusinessSettings(BaseModel):
     min_notice_hours: int | None = Field(default=None, ge=0, le=72)
     max_advance_days: int | None = Field(default=None, ge=1, le=365)
     buffer_min: int | None = Field(default=None, ge=0, le=120)
+    # Owner alert inbox — empty string switches notifications off.
+    notify_email: str | None = Field(default=None, max_length=200)
 
 
 class NewBusiness(BaseModel):
@@ -290,7 +292,7 @@ def manage_get(business_id: str, request: Request, x_api_key: str | None = Heade
     fields = ["id", "name", "type", "hours", "services", "tone", "faq",
               "open_hour", "close_hour", "slot_minutes", "vertical",
               "staff", "location", "policies",
-              "min_notice_hours", "max_advance_days", "buffer_min"]
+              "min_notice_hours", "max_advance_days", "buffer_min", "notify_email"]
     return {k: biz.get(k) for k in fields}
 
 

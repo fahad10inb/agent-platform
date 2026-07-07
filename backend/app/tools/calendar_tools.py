@@ -14,7 +14,7 @@ import datetime
 import re
 import zoneinfo
 
-from app import db
+from app import db, notify_service
 
 _TZ = zoneinfo.ZoneInfo("Asia/Dubai")
 
@@ -189,6 +189,13 @@ def make_calendar_tools(business: dict) -> list:
                 db.save_caller_memory(business_id, patient_name, f"came in for {reason} ({date})")
             except Exception:
                 pass
+        # The owner hears about it the moment it happens (fire-and-forget).
+        notify_service.notify_owner(
+            business_id,
+            f"New booking: {patient_name} — {date} at {time}",
+            f"{patient_name} booked {reason or 'an appointment'} for {date} at {time}.\n"
+            f"Phone: {phone or '—'}\n\nBooked automatically by your AI receptionist.",
+        )
         return {
             "status": "confirmed",
             "booking_id": booking_id,
@@ -256,6 +263,12 @@ def make_calendar_tools(business: dict) -> list:
             return {"status": "verification_needed", "message": _VERIFY_MSG}
         time = _norm_time(time)
         ok = db.cancel_booking(business_id, patient_name, date, time)
+        if ok:
+            notify_service.notify_owner(
+                business_id,
+                f"Booking cancelled: {patient_name} — {date} at {time}",
+                f"{patient_name} cancelled their {date} {time} appointment via the receptionist.",
+            )
         print(f"  TOOL -> cancel_appointment({date!r}, {time!r}) [biz={business_id}] ok={ok}")
         return {"status": "cancelled" if ok else "not_found", "date": date, "time": time}
 

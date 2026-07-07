@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     distill_enabled: bool = True
     consolidate_enabled: bool = True
 
+    # --- Owner notifications (Resend) ---
+    # Empty key = notifications are logged, not delivered. notify_from must be
+    # a Resend-verified sender; onboarding@resend.dev works for early testing.
+    resend_api_key: str = ""
+    notify_from: str = "ReceptionAI <onboarding@resend.dev>"
+
     # --- Secrets ---
     gemini_api_key: str = ""
     database_url: str = ""

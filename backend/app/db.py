@@ -133,6 +133,8 @@ def init_db() -> None:
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS min_notice_hours INTEGER")
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS max_advance_days INTEGER")
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS buffer_min INTEGER")
+        # Where to email the owner when a booking or lead lands (empty = off).
+        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS notify_email TEXT")
         # Booking now captures mobile number + reason for visit (UAE clinics take both).
         conn.execute("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS phone TEXT")
         conn.execute("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reason TEXT")
@@ -449,6 +451,7 @@ _EDITABLE_BUSINESS_FIELDS = {
     "open_hour", "close_hour", "slot_minutes", "vertical",
     "staff", "location", "policies",
     "min_notice_hours", "max_advance_days", "buffer_min",
+    "notify_email",
 }
 
 

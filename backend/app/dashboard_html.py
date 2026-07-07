@@ -398,6 +398,8 @@ DASHBOARD_HTML = """<!doctype html>
         <input id="o_location" placeholder="Al Barsha 1, near MoE metro exit 2 — free parking behind the building">
         <label for="o_policies">Policies <span class="soft">(cancellations, walk-ins, payments, deposits)</span></label>
         <textarea id="o_policies" rows="2" placeholder="Reschedule up to 2h before. Walk-ins welcome, bookings get priority. Cash &amp; card."></textarea>
+        <label for="o_notify">Owner email for instant alerts <span class="soft">(every booking &amp; lead — leave empty to skip)</span></label>
+        <input id="o_notify" type="email" placeholder="owner@business.com">
       </div>
 
       <div class="fgroup">
@@ -416,7 +418,7 @@ DASHBOARD_HTML = """<!doctype html>
       faq:val("o_faq").trim(), staff:val("o_staff").trim(), location:val("o_location").trim(),
       policies:val("o_policies").trim(), open_hour:+val("o_open"), close_hour:+val("o_close"), slot_minutes:+val("o_slot"),
       min_notice_hours:+val("o_notice"), max_advance_days:+val("o_advance"), buffer_min:+val("o_buffer"),
-      vertical:val("o_vertical") };
+      notify_email:val("o_notify").trim(), vertical:val("o_vertical") };
     if(!body.id||!body.name||!body.type){ toast("ID, name and type are required."); return; }
     const r = await api("/admin/businesses", { method:"POST", body: JSON.stringify(body) });
     const d = await r.json();
@@ -502,6 +504,8 @@ DASHBOARD_HTML = """<!doctype html>
           <label for="s_staff">Team &amp; specialties <span class="soft">(so it recommends the right person)</span></label><input id="s_staff" value="${esc(b.staff)}" placeholder="Marwan — fades · Tony — beards">
           <label for="s_location">Location &amp; directions</label><input id="s_location" value="${esc(b.location)}" placeholder="Area, landmark, parking">
           <label for="s_policies">Policies</label><textarea id="s_policies" rows="2" placeholder="Cancellations, walk-ins, payments">${esc(b.policies)}</textarea>
+          <label for="s_notify">Owner email for instant alerts <span class="soft">(every booking &amp; lead)</span></label>
+          <input id="s_notify" type="email" value="${esc(b.notify_email)}" placeholder="owner@business.com">
         </div>
 
         <div class="fgroup">
@@ -529,7 +533,8 @@ DASHBOARD_HTML = """<!doctype html>
       services:val("s_services"), faq:val("s_faq"), staff:val("s_staff"), location:val("s_location"),
       policies:val("s_policies"), open_hour:+val("s_open"), close_hour:+val("s_close"),
       slot_minutes:+val("s_slot"), vertical:val("s_vertical"),
-      min_notice_hours:+val("s_notice"), max_advance_days:+val("s_advance"), buffer_min:+val("s_buffer") };
+      min_notice_hours:+val("s_notice"), max_advance_days:+val("s_advance"), buffer_min:+val("s_buffer"),
+      notify_email:val("s_notify").trim() };
     const r = await api("/manage/"+encodeURIComponent(CURRENT), { method:"POST", body: JSON.stringify(body) });
     if(r.ok){ toast("Settings saved — live from the next conversation"); return; }
     let d=null; try{ d = await r.json(); }catch(e){}

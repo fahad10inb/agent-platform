@@ -4,7 +4,7 @@ real estate and general small businesses. Same closure pattern as the others:
 bound to one business so a captured lead lands in the right tenant.
 """
 
-from app import db
+from app import db, notify_service
 
 
 def make_lead_tools(business_id: str) -> list:
@@ -30,6 +30,13 @@ def make_lead_tools(business_id: str) -> list:
         # No PII (name/phone) in server logs — Render retains them.
         print(f"  TOOL -> capture_lead [biz={business_id}]")
         lead_id = db.save_lead(business_id, name, phone, interest, notes)
+        # A lead is money waiting for a call back — tell the owner NOW.
+        notify_service.notify_owner(
+            business_id,
+            f"New lead: {name}",
+            f"{name} ({phone}) is interested in: {interest}\n{notes}\n\n"
+            "Captured automatically by your AI receptionist — a quick callback wins these.",
+        )
         return {"status": "captured", "lead_id": lead_id, "name": name}
 
     return [capture_lead]
