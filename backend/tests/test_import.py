@@ -45,6 +45,27 @@ def test_import_failure_is_friendly(client, monkeypatch):
     assert "double-check" in r.json()["detail"]
 
 
+def test_description_mode_skips_the_fetch(client, fake_site, monkeypatch):
+    """No website? Rough notes go through the same extractor — and we must
+    never try to fetch anything."""
+    def _no_fetch(url):
+        raise AssertionError("fetch must not happen in description mode")
+
+    monkeypatch.setattr(import_service, "_fetch_text", _no_fetch)
+    r = client.post(
+        "/onboarding/import",
+        json={"description": "Barbershop in Karama, fades 60 AED, barbers Tony and Ali, open 10am-10pm"},
+        headers=ADMIN,
+    )
+    assert r.status_code == 200
+    assert r.json()["name"] == "The Fade Lab"  # fake extractor's output
+
+
+def test_import_requires_url_or_description(client):
+    r = client.post("/onboarding/import", json={}, headers=ADMIN)
+    assert r.status_code == 422
+
+
 def test_clamp_forces_form_bounds():
     wild = {"name": "x" * 999, "vertical": "spaceship", "open_hour": 99, "close_hour": -3}
     out = import_service._clamp(wild)

@@ -383,9 +383,11 @@ def admin_create_business(payload: NewBusiness, x_api_key: str | None = Header(d
 
 
 class ImportRequest(BaseModel):
-    """A website URL to bootstrap onboarding from."""
+    """A website URL and/or a plain-text description to bootstrap onboarding
+    from (description covers businesses that have no website at all)."""
 
-    url: str = Field(min_length=4, max_length=300)
+    url: str = Field(default="", max_length=300)
+    description: str = Field(default="", max_length=4000)
 
 
 @app.post("/onboarding/import")
@@ -394,8 +396,10 @@ async def onboarding_import(payload: ImportRequest, request: Request, x_api_key:
     prefill (ADMIN ONLY: it spends LLM tokens and fetches arbitrary URLs)."""
     security.check_admin(x_api_key)
     security.rate_limit(request, limit=10, window=60, bucket="import")
+    if not payload.url.strip() and not payload.description.strip():
+        raise HTTPException(status_code=422, detail="Give me a website URL or a short description of the business.")
     try:
-        return await import_service.import_from_website(payload.url)
+        return await import_service.import_from_website(url=payload.url, description=payload.description)
     except Exception as exc:  # noqa: BLE001 — any failure = one friendly message
         logger.warning("onboarding import failed for %r: %s", payload.url, str(exc)[:150])
         raise HTTPException(

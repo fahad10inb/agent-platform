@@ -367,6 +367,8 @@ DASHBOARD_HTML = """<!doctype html>
           <div style="flex:1"><label for="o_url">Website</label><input id="o_url" placeholder="https://thebusiness.com"></div>
           <button class="btn" type="button" id="importBtn" onclick="doImport()" style="flex:none">Import</button>
         </div>
+        <label for="o_desc">No website? Describe the business instead <span class="soft">(rough notes are fine)</span></label>
+        <textarea id="o_desc" rows="2" placeholder="Barbershop in Karama. Fades 60 AED, beard 40. Barbers Tony and Ali. Open 10am–10pm, Fri from 2pm."></textarea>
       </div>
 
       <div class="fgroup">
@@ -429,11 +431,11 @@ DASHBOARD_HTML = """<!doctype html>
       <div id="onboardResult"></div>`;
   }
   async function doImport(){
-    const url = val("o_url").trim();
-    if(!url){ toast("Paste the business's website first."); return; }
+    const url = val("o_url").trim(), desc = val("o_desc").trim();
+    if(!url && !desc){ toast("Paste their website — or describe the business below."); return; }
     const btn = $("importBtn"); btn.disabled = true; btn.textContent = "Reading…";
     try{
-      const r = await api("/onboarding/import", { method:"POST", body: JSON.stringify({url}) });
+      const r = await api("/onboarding/import", { method:"POST", body: JSON.stringify({url, description: desc}) });
       const d = await r.json();
       if(!r.ok){ toast(apiErr(d, "Couldn't read that website.")); return; }
       // Prefill everything — the human reviews and edits before creating.
