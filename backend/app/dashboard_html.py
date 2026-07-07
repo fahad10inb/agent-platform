@@ -384,6 +384,9 @@ DASHBOARD_HTML = """<!doctype html>
         <div class="fghead"><span class="fgnum">2</span><span class="fgtitle">What customers can book</span></div>
         <p class="fgwhy">This drives real availability — the agent only ever offers genuinely free slots.</p>
         <label for="o_services">Services</label><input id="o_services" placeholder="checkups, cleanings, whitening…">
+        <label for="o_services_rows">Service menu <span class="soft">(optional — one per line: name | minutes | price)</span></label>
+        <textarea id="o_services_rows" rows="3" placeholder="skin fade | 45 | 80 AED&#10;beard trim | 15 | 30 AED"></textarea>
+        <p class="note">Menu lines drive real appointment lengths and the exact prices the agent quotes; the Services line above stays as friendly descriptive copy.</p>
         <label for="o_hours">Opening hours <span class="soft">(as customers should hear them)</span></label><input id="o_hours" placeholder="Mon–Fri 9am–5pm">
         <div class="row2"><div><label for="o_open">Open hour <span class="soft">(0–23)</span></label><input id="o_open" type="number" min="0" max="23" value="9"></div>
         <div><label for="o_close">Close hour <span class="soft">(1–24)</span></label><input id="o_close" type="number" min="1" max="24" value="17"></div>
@@ -409,6 +412,10 @@ DASHBOARD_HTML = """<!doctype html>
         <textarea id="o_policies" rows="2" placeholder="Reschedule up to 2h before. Walk-ins welcome, bookings get priority. Cash &amp; card."></textarea>
         <label for="o_notify">Owner email for instant alerts <span class="soft">(every booking &amp; lead — leave empty to skip)</span></label>
         <input id="o_notify" type="email" placeholder="owner@business.com">
+        <div class="row2"><div><label for="o_transfer">Transfer number <span class="soft">(shared when a caller asks for a human)</span></label>
+        <input id="o_transfer" placeholder="+971 50 123 4567"></div>
+        <div><label for="o_afterhours">When you're closed, the agent should…</label>
+        <select id="o_afterhours"><option value="take_message">Take a message (name + number for a callback)</option><option value="book_only">Keep booking — staff confirm when you open</option><option value="info_only">Answer questions only — no bookings</option></select></div></div>
       </div>
 
       <div class="fgroup">
@@ -442,17 +449,45 @@ DASHBOARD_HTML = """<!doctype html>
     finally { btn.disabled = false; btn.textContent = "Import"; }
   }
 
+  // "name | minutes | price" textarea lines -> [{name, duration_min, price}].
+  // null = a malformed line (better to say so up front than lose their menu
+  // to a server-side 422 after everything else already saved).
+  function parseServiceRows(text){
+    const rows=[];
+    for(const line of String(text||"").split("\\n")){
+      const t=line.trim(); if(!t) continue;
+      const p=t.split("|").map(x=>x.trim());
+      const mins=parseInt(p[1],10);
+      if(!p[0] || !isFinite(mins)) return null;
+      rows.push({name:p[0], duration_min:mins, price:p[2]||""});
+    }
+    return rows;
+  }
+  function serviceRowsText(rows){
+    return (rows||[]).map(s=>s.name+" | "+s.duration_min+(s.price?" | "+s.price:"")).join("\\n");
+  }
+
   async function doOnboard(){
     const body = { id:val("o_id").trim(), name:val("o_name").trim(), type:val("o_type").trim(),
       tone:val("o_tone").trim()||"warm and professional", hours:val("o_hours").trim(), services:val("o_services").trim(),
       faq:val("o_faq").trim(), staff:val("o_staff").trim(), location:val("o_location").trim(),
       policies:val("o_policies").trim(), open_hour:+val("o_open"), close_hour:+val("o_close"), slot_minutes:+val("o_slot"),
       min_notice_hours:+val("o_notice"), max_advance_days:+val("o_advance"), buffer_min:+val("o_buffer"),
-      notify_email:val("o_notify").trim(), vertical:val("o_vertical") };
+      notify_email:val("o_notify").trim(), vertical:val("o_vertical"),
+      transfer_number:val("o_transfer").trim(), after_hours_mode:val("o_afterhours") };
     if(!body.id||!body.name||!body.type){ toast("ID, name and type are required."); return; }
+    const svcRows = parseServiceRows(val("o_services_rows"));
+    if(svcRows===null){ toast("Service menu: each line needs 'name | minutes' (price optional)."); return; }
     const r = await api("/admin/businesses", { method:"POST", body: JSON.stringify(body) });
     const d = await r.json();
     if(!r.ok){ toast(apiErr(d, "Could not create the business.")); return; }
+    // The menu has its own endpoint (replace semantics) — posted only after
+    // the business exists, and only when the owner actually typed rows.
+    if(svcRows.length){
+      const rs = await api("/manage/"+encodeURIComponent(body.id)+"/services",
+        { method:"POST", body: JSON.stringify({services: svcRows}) });
+      if(!rs.ok) toast("Created — but the service menu didn't save. Fix it in Settings.");
+    }
     $("onboardResult").innerHTML = `<div class="okcard">
       <div class="oktitle">✓ ${esc(body.name)} is live</div>
       <div class="note">This is their API key — it's shown once, so copy it now. They sign in to this dashboard with it.</div>
@@ -505,6 +540,7 @@ DASHBOARD_HTML = """<!doctype html>
       const r = await api("/manage/"+encodeURIComponent(CURRENT));
       if(!r.ok){ body.innerHTML = estate("⚠️","Couldn't load settings","Check your connection and switch tabs to retry."); return; }
       const b = await r.json();
+      const svcText = serviceRowsText(b.services_rows);
       body.innerHTML = `<h3>Settings</h3>
         <p class="lead">Everything the receptionist knows about this business. Changes apply to the very next conversation.</p>
 
@@ -530,6 +566,21 @@ DASHBOARD_HTML = """<!doctype html>
         </div>
 
         <div class="fgroup">
+          <div class="fghead"><span class="fgtitle">Services &amp; prices</span></div>
+          <label for="s_services_rows">Service menu <span class="soft">(one per line: name | minutes | price)</span></label>
+          <textarea id="s_services_rows" rows="4" placeholder="skin fade | 45 | 80 AED&#10;beard trim | 15 | 30 AED">${esc(svcText)}</textarea>
+          <p class="note">Menu lines drive real appointment lengths and the exact prices the agent quotes. The Services field above stays as friendly descriptive copy.</p>
+        </div>
+
+        <div class="fgroup">
+          <div class="fghead"><span class="fgtitle">Human handoff &amp; after-hours</span></div>
+          <label for="s_transfer">Transfer number <span class="soft">(shared when a caller asks for a human — empty = take a message)</span></label>
+          <input id="s_transfer" value="${esc(b.transfer_number)}" placeholder="+971 50 123 4567">
+          <label for="s_afterhours">When you're closed, the agent should…</label>
+          <select id="s_afterhours"><option value="take_message">Take a message (name + number for a callback)</option><option value="book_only">Keep booking — staff confirm when you open</option><option value="info_only">Answer questions only — no bookings</option></select>
+        </div>
+
+        <div class="fgroup">
           <div class="fghead"><span class="fgtitle">Team, location &amp; policies</span></div>
           <label for="s_staff">Team &amp; specialties <span class="soft">(so it recommends the right person)</span></label><input id="s_staff" value="${esc(b.staff)}" placeholder="Marwan — fades · Tony — beards">
           <label for="s_location">Location &amp; directions</label><input id="s_location" value="${esc(b.location)}" placeholder="Area, landmark, parking">
@@ -545,6 +596,7 @@ DASHBOARD_HTML = """<!doctype html>
 
         <div style="margin-top:22px"><button class="btn" onclick="saveSettings()">Save changes</button></div>`;
       $("s_vertical").value = b.vertical || "general";
+      $("s_afterhours").value = b.after_hours_mode || "take_message";
     } else {
       const url = location.origin + "/widget?business_id=" + encodeURIComponent(CURRENT);
       body.innerHTML = `<h3>Your chat widget</h3>
@@ -564,11 +616,25 @@ DASHBOARD_HTML = """<!doctype html>
       policies:val("s_policies"), open_hour:+val("s_open"), close_hour:+val("s_close"),
       slot_minutes:+val("s_slot"), vertical:val("s_vertical"),
       min_notice_hours:+val("s_notice"), max_advance_days:+val("s_advance"), buffer_min:+val("s_buffer"),
-      notify_email:val("s_notify").trim() };
+      notify_email:val("s_notify").trim(),
+      transfer_number:val("s_transfer").trim(), after_hours_mode:val("s_afterhours") };
+    // Validate the menu BEFORE saving anything, so a typo'd line can't leave
+    // settings saved but the menu silently unchanged.
+    const svcRows = parseServiceRows(val("s_services_rows"));
+    if(svcRows===null){ toast("Service menu: each line needs 'name | minutes' (price optional)."); return; }
     const r = await api("/manage/"+encodeURIComponent(CURRENT), { method:"POST", body: JSON.stringify(body) });
-    if(r.ok){ toast("Settings saved — live from the next conversation"); return; }
-    let d=null; try{ d = await r.json(); }catch(e){}
-    toast(apiErr(d, "Couldn't save — please try again"));
+    if(!r.ok){
+      let d=null; try{ d = await r.json(); }catch(e){}
+      toast(apiErr(d, "Couldn't save — please try again")); return;
+    }
+    // Replace semantics: an emptied textarea deliberately clears the menu.
+    const rs = await api("/manage/"+encodeURIComponent(CURRENT)+"/services",
+      { method:"POST", body: JSON.stringify({services: svcRows}) });
+    if(!rs.ok){
+      let d=null; try{ d = await rs.json(); }catch(e){}
+      toast(apiErr(d, "Saved — but the service menu didn't. Check its lines.")); return;
+    }
+    toast("Settings saved — live from the next conversation");
   }
 </script>
 </body>

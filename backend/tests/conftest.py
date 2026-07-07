@@ -19,7 +19,8 @@ import pytest  # noqa: E402
 from app import db  # noqa: E402
 
 # ── in-memory state, same shape the real tables hold ─────────────────────────
-_S = {"businesses": {}, "bookings": [], "memory": [], "leads": [], "messages": [], "usage": {}, "next_id": 1}
+_S = {"businesses": {}, "bookings": [], "memory": [], "leads": [], "messages": [],
+      "services": [], "usage": {}, "next_id": 1}
 
 
 def _nid() -> int:
@@ -166,6 +167,33 @@ def _fake_replace_caller_memory(business_id, name, notes):
         _S["memory"].append({"business_id": business_id, "caller": key, "note": note})
 
 
+def _fake_bookings_with_times(business_id, date):
+    return [
+        {"time": r["time"], "reason": r["reason"]}
+        for r in _S["bookings"]
+        if r["business_id"] == business_id and r["date"] == date
+    ]
+
+
+def _fake_list_services(business_id):
+    return [
+        {k: s[k] for k in ("id", "name", "duration_min", "price", "category", "bookable")}
+        for s in _S["services"]
+        if s["business_id"] == business_id
+    ]
+
+
+def _fake_replace_services(business_id, services):
+    # Real layer: DELETE + INSERTs in one transaction — here, filter then extend.
+    _S["services"][:] = [s for s in _S["services"] if s["business_id"] != business_id]
+    for s in services:
+        _S["services"].append({
+            "id": _nid(), "business_id": business_id, "name": s["name"],
+            "duration_min": s["duration_min"], "price": s.get("price", ""),
+            "category": s.get("category", ""), "bookable": s.get("bookable", True),
+        })
+
+
 def _fake_save_lead(business_id, name, phone, interest, notes=""):
     row = {"id": _nid(), "business_id": business_id, "name": name,
            "phone": phone, "interest": interest, "notes": notes}
@@ -187,6 +215,9 @@ db.list_businesses = _fake_list_businesses
 db.save_booking = _fake_save_booking
 db.list_bookings = _fake_list_bookings
 db.booked_times = _fake_booked_times
+db.bookings_with_times = _fake_bookings_with_times
+db.list_services = _fake_list_services
+db.replace_services = _fake_replace_services
 db.find_bookings = _fake_find_bookings
 db.cancel_booking = _fake_cancel_booking
 db.reschedule_booking = _fake_reschedule_booking
@@ -215,6 +246,7 @@ def _clean_state():
     _S["memory"].clear()
     _S["leads"].clear()
     _S["messages"].clear()
+    _S["services"].clear()
     _S["usage"].clear()
     security._hits.clear()
     yield

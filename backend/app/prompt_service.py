@@ -11,9 +11,30 @@ different persona for every client.
 import datetime
 import zoneinfo
 
+from app import db
+
 # The product serves UAE businesses; the server runs in UTC. Without pinning the
 # zone, "tomorrow" resolves to the WRONG DATE from midnight to 4am Gulf time.
 _UAE_TZ = zoneinfo.ZoneInfo("Asia/Dubai")
+
+
+def _now() -> datetime.datetime:
+    """Dubai wall clock — a seam so tests can freeze time (same trick as
+    calendar_tools._now)."""
+    return datetime.datetime.now(_UAE_TZ)
+
+
+def is_open(business: dict) -> bool:
+    """Whether the business is inside its open hours RIGHT NOW (Dubai time).
+
+    Uses the same open/close columns (and the same bad-value fallback) as the
+    calendar's slot math, so "we're closed" and "no slots today" can't disagree.
+    """
+    open_hour = business.get("open_hour") or 9
+    close_hour = business.get("close_hour") or 17
+    if not (0 <= open_hour < close_hour <= 24):
+        open_hour, close_hour = 9, 17
+    return open_hour <= _now().hour < close_hour
 
 
 def build_system_prompt(business: dict) -> str:
@@ -60,6 +81,24 @@ def build_system_prompt(business: dict) -> str:
     policies = (business.get("policies") or "").strip()
     if policies:
         facts.append(f"House policies you must follow and share when relevant: {policies}.")
+    # Structured SERVICE MENU — beats the freetext services blob because exact
+    # durations drive real slot math and exact prices stop invented numbers.
+    # (Businesses without menu rows simply skip this block: nothing changes.)
+    service_rows = db.list_services(business["id"]) if business.get("id") else []
+    if service_rows:
+        menu = "; ".join(
+            f"{s['name']} — {s['duration_min']} min"
+            + (f" — {s['price']}" if (s.get("price") or "").strip() else "")
+            + ("" if s.get("bookable", True) else " (not bookable online)")
+            for s in service_rows
+        )
+        facts.append(
+            f"SERVICE MENU (name — duration — price): {menu}. Quote prices from this menu "
+            "ONLY — if something isn't on it, say a team member will confirm the price "
+            "rather than guessing. When a caller wants one of these, pass its name to "
+            "check_availability and book_appointment EXACTLY as written on the menu, so "
+            "the right amount of time is reserved."
+        )
     facts_block = " ".join(facts)
 
     # 2b) KNOWLEDGE — free-form info the business gave us (insurance, parking,
@@ -121,6 +160,43 @@ def build_system_prompt(business: dict) -> str:
         "one they mean, then call reschedule_appointment or cancel_appointment."
     )
 
+    # 4b) ESCALATION — only worth prompting for when there's a number to give;
+    # without one, request_human's own return value steers the model to take a
+    # message instead.
+    transfer_number = (business.get("transfer_number") or "").strip()
+    handoff_line = ""
+    if transfer_number:
+        handoff_line = (
+            "If the caller sounds frustrated, explicitly asks for a human, or needs "
+            "something beyond what your tools can do, call request_human and warmly "
+            "share the phone number it returns so they can reach a real person."
+        )
+
+    # 4c) AFTER-HOURS — computed at prompt-build time, so the very same business
+    # behaves differently at 2am than at 2pm without any code path changing.
+    after_hours_line = ""
+    if not is_open(business):
+        mode = (business.get("after_hours_mode") or "take_message").strip()
+        if mode == "book_only":
+            detail = (
+                "you may still check availability and book FUTURE slots, but tell the "
+                "caller a staff member will confirm the booking once the business opens."
+            )
+        elif mode == "info_only":
+            detail = (
+                "answer questions from what you know, but do NOT book anything — "
+                "warmly invite them to get in touch again during opening hours."
+            )
+        else:  # take_message — the safe default
+            detail = (
+                "don't promise immediate help; collect the caller's name, mobile number "
+                "and what they need, save it with capture_lead, and reassure them the "
+                "team will follow up as soon as the business opens."
+            )
+        after_hours_line = (
+            "RIGHT NOW the business is CLOSED (outside its opening hours) — " + detail
+        )
+
     # 5) VERTICAL — tailor the job to the kind of business.
     vertical = (business.get("vertical") or "general").strip().lower()
     if vertical == "real_estate":
@@ -154,4 +230,11 @@ def build_system_prompt(business: dict) -> str:
             "capture_lead so the team can follow up."
         )
 
-    return f"{who}\n{date_line}\n\n{facts_block}\n{info_block}\n\n{voice}\n\n{behavior}\n{vertical_line}".strip()
+    parts = [
+        f"{who}\n{date_line}",
+        f"{facts_block}\n{info_block}",
+        voice,
+        # Empty optional lines are dropped so absent settings add no blank rows.
+        "\n".join(x for x in (behavior, handoff_line, after_hours_line, vertical_line) if x),
+    ]
+    return "\n\n".join(parts).strip()

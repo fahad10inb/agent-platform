@@ -91,6 +91,58 @@ def make_calendar_tools(business: dict) -> list:
     max_advance_d = business.get("max_advance_days") or 60
     buffer_min = max(0, business.get("buffer_min") or 0)
     step = slot_minutes + buffer_min
+    # Structured service menu (per-service durations). When a caller names a
+    # menu service, ITS duration drives the slot grid instead of the global
+    # slot_minutes — a 15-min beard trim and a 90-min color stop sharing one
+    # one-size-fits-all grid. No menu rows = the old behavior, untouched.
+    # Longest names first so "skin fade" wins over "fade" when a stored reason
+    # mentions both (duration inference must be deterministic).
+    services = sorted(
+        db.list_services(business_id),
+        key=lambda s: len((s.get("name") or "")),
+        reverse=True,
+    )
+
+    def _find_service(name: str) -> dict | None:
+        """The menu row whose name matches (case-insensitive), else None."""
+        key = (name or "").strip().lower()
+        if not key:
+            return None
+        for s in services:
+            if (s.get("name") or "").strip().lower() == key:
+                return s
+        return None
+
+    def _infer_duration(reason: str) -> int:
+        """An EXISTING booking's length, recovered from the service its stored
+        reason names (book_appointment writes the menu name into the reason for
+        exactly this). Bookings that predate the menu — or never matched a
+        service — fall back to the global slot length."""
+        low = (reason or "").lower()
+        for s in services:
+            nm = (s.get("name") or "").strip().lower()
+            if nm and nm in low:
+                return s.get("duration_min") or slot_minutes
+        return slot_minutes
+
+    def _overlaps_existing(date: str, time_label: str, duration: int) -> bool:
+        """True when [start, start+duration) would cut into ANY existing
+        booking's [start, start+its-duration). With mixed durations a plain
+        same-start check isn't enough: a new 90-min color starting 30 minutes
+        before someone's trim — or a quick trim dropped into the middle of a
+        color — must both be refused."""
+        start = _label_to_minutes(time_label)
+        if start is None:
+            return False
+        end = start + duration
+        for r in db.bookings_with_times(business_id, date):
+            b_start = _label_to_minutes(r.get("time") or "")
+            if b_start is None:
+                continue
+            b_end = b_start + _infer_duration(r.get("reason") or "")
+            if start < b_end and b_start < end:
+                return True
+        return False
 
     def _date_check(date: str):
         """None if the date is bookable; else a human reason why not."""
@@ -119,11 +171,13 @@ def make_calendar_tools(business: dict) -> list:
         )
         return slot_dt < _now() + datetime.timedelta(hours=min_notice_h)
 
-    def check_availability(date: str) -> dict:
+    def check_availability(date: str, service: str = "") -> dict:
         """Check which appointment times are still FREE on a given date.
 
         Args:
             date: The day to check, as a concrete date (e.g. "2026-07-01").
+            service: The service the caller wants, exactly as it appears on the
+                SERVICE MENU (optional — its duration shapes the offered times).
 
         Returns:
             A dict with the date and the list of free time slots.
@@ -132,16 +186,33 @@ def make_calendar_tools(business: dict) -> list:
         if why:
             print(f"  TOOL -> check_availability(date={date!r}) [biz={business_id}] refused: {why}")
             return {"date": date, "available_slots": [], "note": why}
-        taken = set(db.booked_times(business_id, date))
-        free = [
-            s for s in _all_slots(open_hour, close_hour, step)
-            if s not in taken and not _too_soon(date, s)
-        ]
+        svc = _find_service(service)
+        if services:
+            # Menu math: the requested service's length sets both the grid step
+            # and the overlap window; slots that would run past closing go too.
+            duration = (svc.get("duration_min") if svc else None) or slot_minutes
+            free = [
+                s for s in _all_slots(open_hour, close_hour, duration + buffer_min)
+                if (_label_to_minutes(s) or 0) + duration <= close_hour * 60
+                and not _overlaps_existing(date, s, duration)
+                and not _too_soon(date, s)
+            ]
+        else:
+            taken = set(db.booked_times(business_id, date))
+            free = [
+                s for s in _all_slots(open_hour, close_hour, step)
+                if s not in taken and not _too_soon(date, s)
+            ]
         print(f"  TOOL -> check_availability(date={date!r}) [biz={business_id}] free={len(free)}")
-        return {"date": date, "available_slots": free}
+        out = {"date": date, "available_slots": free}
+        if svc:
+            out["service"] = svc["name"]
+            out["duration_min"] = svc["duration_min"]
+        return out
 
     def book_appointment(
-        date: str, time: str, patient_name: str, phone: str = "", reason: str = ""
+        date: str, time: str, patient_name: str, phone: str = "", reason: str = "",
+        service: str = "",
     ) -> dict:
         """Book an appointment in a specific slot, if it's still free.
 
@@ -155,6 +226,8 @@ def make_calendar_tools(business: dict) -> list:
             patient_name: The caller's full name.
             phone: The caller's mobile number.
             reason: The reason for the visit (e.g. "cleaning", "toothache").
+            service: The service being booked, exactly as it appears on the
+                SERVICE MENU (optional — it reserves that service's duration).
 
         Returns:
             A confirmation dict, or status "unavailable" if that slot is taken.
@@ -169,7 +242,18 @@ def make_calendar_tools(business: dict) -> list:
                 "reason": f"we need at least {min_notice_h} hour(s) notice for bookings",
                 "date": date, "time": time,
             }
-        if time in set(db.booked_times(business_id, date)):
+        svc = _find_service(service)
+        if svc:
+            # The stored reason must name the menu service — that's how future
+            # overlap checks recover this booking's true duration from the DB.
+            if (svc["name"] or "").strip().lower() not in (reason or "").lower():
+                reason = svc["name"] + (f" — {reason}" if (reason or "").strip() else "")
+        if services:
+            duration = (svc.get("duration_min") if svc else None) or slot_minutes
+            if _overlaps_existing(date, time, duration):
+                print(f"  TOOL -> book_appointment DENIED (overlap) date={date!r} time={time!r} [biz={business_id}]")
+                return {"status": "unavailable", "reason": f"{time} on {date} is already booked", "date": date, "time": time}
+        elif time in set(db.booked_times(business_id, date)):
             print(f"  TOOL -> book_appointment DENIED (taken) date={date!r} time={time!r} [biz={business_id}]")
             return {"status": "unavailable", "reason": f"{time} on {date} is already booked", "date": date, "time": time}
 

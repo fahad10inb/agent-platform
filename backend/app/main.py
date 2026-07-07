@@ -22,6 +22,7 @@ import secrets
 from app.dashboard_html import DASHBOARD_HTML
 from app.landing_html import LANDING_HTML
 from app.tools.calendar_tools import make_calendar_tools
+from app.tools.handoff_tools import make_handoff_tools
 from app.tools.leads_tools import make_lead_tools
 from app.tools.memory_tools import make_memory_tools
 from app.widget_html import WIDGET_HTML
@@ -144,6 +145,12 @@ class BusinessSettings(BaseModel):
     buffer_min: int | None = Field(default=None, ge=0, le=120)
     # Owner alert inbox — empty string switches notifications off.
     notify_email: str | None = Field(default=None, max_length=200)
+    # Escalation + after-hours: a number to hand a caller who needs a human
+    # (empty = take a message), and what to do outside opening hours.
+    transfer_number: str | None = Field(default=None, max_length=40)
+    after_hours_mode: str | None = Field(
+        default=None, pattern=r"^(take_message|book_only|info_only)$"
+    )
 
 
 class NewBusiness(BaseModel):
@@ -169,6 +176,13 @@ class NewBusiness(BaseModel):
     min_notice_hours: int = Field(default=1, ge=0, le=72)
     max_advance_days: int = Field(default=60, ge=1, le=365)
     buffer_min: int = Field(default=0, ge=0, le=120)
+    transfer_number: str = Field(default="", max_length=40)
+    after_hours_mode: str = Field(
+        default="take_message", pattern=r"^(take_message|book_only|info_only)$"
+    )
+    # Was silently dropped before (form sent it, model ignored it) — the owner
+    # had to re-enter their alert email in Settings after onboarding.
+    notify_email: str = Field(default="", max_length=200)
 
 
 # Tools are now built PER REQUEST (scoped to the caller's business) inside the
@@ -206,6 +220,7 @@ async def chat(req: ChatRequest, request: Request, background_tasks: BackgroundT
         make_calendar_tools(business)
         + make_memory_tools(req.business_id)
         + make_lead_tools(req.business_id)
+        + make_handoff_tools(business)
     )
     try:
         reply = await generate_reply(system_prompt, history, tools=tools)
@@ -292,8 +307,13 @@ def manage_get(business_id: str, request: Request, x_api_key: str | None = Heade
     fields = ["id", "name", "type", "hours", "services", "tone", "faq",
               "open_hour", "close_hour", "slot_minutes", "vertical",
               "staff", "location", "policies",
-              "min_notice_hours", "max_advance_days", "buffer_min", "notify_email"]
-    return {k: biz.get(k) for k in fields}
+              "min_notice_hours", "max_advance_days", "buffer_min", "notify_email",
+              "transfer_number", "after_hours_mode"]
+    out = {k: biz.get(k) for k in fields}
+    # The structured service menu rides along so the dashboard can prefill its
+    # "name | minutes | price" textarea from what's actually stored.
+    out["services_rows"] = db.list_services(business_id)
+    return out
 
 
 @app.post("/manage/{business_id}")
@@ -309,6 +329,44 @@ def manage_update(
     fields = {k: v for k, v in settings_in.model_dump().items() if v is not None}
     db.update_business_settings(business_id, fields)
     return {"status": "saved", "business_id": business_id}
+
+
+class ServiceRow(BaseModel):
+    """One structured service: the name is what callers say, the duration is
+    what the calendar math reserves, the price is what the agent may quote.
+    Price stays TEXT — owners write "80 AED", "from 150", "free consult"."""
+
+    name: str = Field(min_length=1, max_length=120)
+    duration_min: int = Field(ge=5, le=480)
+    price: str = Field(default="", max_length=60)
+    category: str = Field(default="", max_length=60)
+    bookable: bool = True
+
+
+class ServicesPayload(BaseModel):
+    """The whole menu at once — replace semantics keep the dashboard's textarea
+    and the DB trivially in sync (no per-row diffing)."""
+
+    services: list[ServiceRow] = Field(max_length=50)
+
+
+@app.post("/manage/{business_id}/services")
+def manage_services(
+    business_id: str,
+    payload: ServicesPayload,
+    request: Request,
+    x_api_key: str | None = Header(default=None),
+):
+    """Replace a business's structured service menu (per-service duration +
+    price). Same auth as the rest of /manage: that business's key or admin."""
+    security.rate_limit(request, limit=20, window=60, bucket="manage")
+    security.check_business_access(business_id, x_api_key)
+    if db.get_business(business_id) is None:
+        # Only reachable with the admin key (a business key already 403s on an
+        # unknown id) — refuse rows for a business that doesn't exist.
+        raise HTTPException(status_code=404, detail="Unknown business.")
+    db.replace_services(business_id, [s.model_dump() for s in payload.services])
+    return {"status": "saved", "business_id": business_id, "count": len(payload.services)}
 
 
 @app.post("/admin/businesses")

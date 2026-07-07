@@ -135,6 +135,11 @@ def init_db() -> None:
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS buffer_min INTEGER")
         # Where to email the owner when a booking or lead lands (empty = off).
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS notify_email TEXT")
+        # Escalation + after-hours behavior: a number to hand a frustrated
+        # caller (empty = take a message instead), and what the agent should do
+        # outside opening hours ('take_message' | 'book_only' | 'info_only').
+        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS transfer_number TEXT")
+        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS after_hours_mode TEXT")
         # Booking now captures mobile number + reason for visit (UAE clinics take both).
         conn.execute("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS phone TEXT")
         conn.execute("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reason TEXT")
@@ -149,6 +154,22 @@ def init_db() -> None:
                 role            TEXT NOT NULL,
                 text            TEXT NOT NULL,
                 created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+            """
+        )
+        # Structured service menu — one row per bookable service. Duration is a
+        # first-class column (it drives real slot math per service) and price is
+        # TEXT on purpose: owners write "80 AED", "from 150", "free consult".
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS services (
+                id           SERIAL PRIMARY KEY,
+                business_id  TEXT NOT NULL,
+                name         TEXT NOT NULL,
+                duration_min INTEGER NOT NULL,
+                price        TEXT DEFAULT '',
+                category     TEXT DEFAULT '',
+                bookable     BOOLEAN DEFAULT TRUE
             )
             """
         )
@@ -170,6 +191,7 @@ def init_db() -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_bookings_biz_date ON bookings (business_id, date)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_caller_memory_biz ON caller_memory (business_id, caller)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_leads_biz ON leads (business_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_services_biz ON services (business_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages (business_id, conversation_id, id)")
     # One slot = one booking, enforced by the DATABASE — the tool's check-then-
     # insert has a race window (two simultaneous callers both pass the check);
@@ -310,6 +332,18 @@ def booked_times(business_id: str, date: str) -> list[str]:
     return [r["time"] for r in rows]
 
 
+def bookings_with_times(business_id: str, date: str) -> list[dict]:
+    """Each booking on a date as {time, reason} — the reason is what lets the
+    calendar infer an existing booking's true length (it names the service),
+    so overlap checks can block a new slot that would cut into it."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT time, reason FROM bookings WHERE business_id = %s AND date = %s",
+            (business_id, date),
+        ).fetchall()
+    return rows
+
+
 def find_bookings(business_id: str, patient_name: str) -> list[dict]:
     """Find a patient's bookings at a business (case-insensitive name match)."""
     with _connect() as conn:
@@ -397,6 +431,35 @@ def replace_caller_memory(business_id: str, name: str, notes: list[str]) -> None
             )
 
 
+# --- services (structured menu) ------------------------------------------------
+def list_services(business_id: str) -> list[dict]:
+    """One business's service menu, in the order the owner wrote it."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, name, duration_min, price, category, bookable FROM services "
+            "WHERE business_id = %s ORDER BY id",
+            (business_id,),
+        ).fetchall()
+    return rows
+
+
+def replace_services(business_id: str, services: list[dict]) -> None:
+    """Swap a business's WHOLE service menu for a new one — atomically.
+
+    DELETE + INSERTs share ONE connection context (one transaction), the same
+    guarantee as replace_caller_memory: a crash mid-replace can never leave the
+    business with a half-empty menu."""
+    with _connect() as conn:
+        conn.execute("DELETE FROM services WHERE business_id = %s", (business_id,))
+        for s in services:
+            conn.execute(
+                "INSERT INTO services (business_id, name, duration_min, price, category, bookable) "
+                "VALUES (%s, %s, %s, %s, %s, %s)",
+                (business_id, s["name"], s["duration_min"], s.get("price", ""),
+                 s.get("category", ""), s.get("bookable", True)),
+            )
+
+
 # --- businesses (multi-tenancy) ----------------------------------------------
 def upsert_business(b: dict) -> None:
     """Insert a business, or update it if its id already exists ('upsert').
@@ -406,12 +469,14 @@ def upsert_business(b: dict) -> None:
             """
             INSERT INTO businesses
                 (id, name, type, hours, services, tone, open_hour, close_hour, slot_minutes, faq, api_key, vertical,
-                 staff, location, policies, min_notice_hours, max_advance_days, buffer_min)
+                 staff, location, policies, min_notice_hours, max_advance_days, buffer_min,
+                 transfer_number, after_hours_mode, notify_email)
             VALUES
                 (%(id)s, %(name)s, %(type)s, %(hours)s, %(services)s, %(tone)s,
                  %(open_hour)s, %(close_hour)s, %(slot_minutes)s, %(faq)s, %(api_key)s, %(vertical)s,
                  %(staff)s, %(location)s, %(policies)s,
-                 %(min_notice_hours)s, %(max_advance_days)s, %(buffer_min)s)
+                 %(min_notice_hours)s, %(max_advance_days)s, %(buffer_min)s,
+                 %(transfer_number)s, %(after_hours_mode)s, %(notify_email)s)
             ON CONFLICT (id) DO UPDATE SET
                 name=EXCLUDED.name, type=EXCLUDED.type, hours=EXCLUDED.hours,
                 services=EXCLUDED.services, tone=EXCLUDED.tone,
@@ -421,7 +486,10 @@ def upsert_business(b: dict) -> None:
                 vertical=EXCLUDED.vertical,
                 staff=EXCLUDED.staff, location=EXCLUDED.location, policies=EXCLUDED.policies,
                 min_notice_hours=EXCLUDED.min_notice_hours,
-                max_advance_days=EXCLUDED.max_advance_days, buffer_min=EXCLUDED.buffer_min
+                max_advance_days=EXCLUDED.max_advance_days, buffer_min=EXCLUDED.buffer_min,
+                transfer_number=EXCLUDED.transfer_number,
+                after_hours_mode=EXCLUDED.after_hours_mode,
+                notify_email=EXCLUDED.notify_email
             """,
             {
                 "id": b["id"],
@@ -442,6 +510,9 @@ def upsert_business(b: dict) -> None:
                 "min_notice_hours": b.get("min_notice_hours", 1),
                 "max_advance_days": b.get("max_advance_days", 60),
                 "buffer_min": b.get("buffer_min", 0),
+                "transfer_number": b.get("transfer_number", ""),
+                "after_hours_mode": b.get("after_hours_mode", "take_message"),
+                "notify_email": b.get("notify_email", ""),
             },
         )
 
@@ -451,7 +522,7 @@ _EDITABLE_BUSINESS_FIELDS = {
     "open_hour", "close_hour", "slot_minutes", "vertical",
     "staff", "location", "policies",
     "min_notice_hours", "max_advance_days", "buffer_min",
-    "notify_email",
+    "notify_email", "transfer_number", "after_hours_mode",
 }
 
 
