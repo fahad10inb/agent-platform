@@ -10,9 +10,28 @@ Still a closure factory (make_calendar_tools) so each tool acts only on its own
 business's data without the AI ever handling the business_id.
 """
 
+import datetime
 import re
+import zoneinfo
 
 from app import db
+
+_TZ = zoneinfo.ZoneInfo("Asia/Dubai")
+
+
+def _now() -> datetime.datetime:
+    """Dubai wall clock — a seam so tests can freeze time."""
+    return datetime.datetime.now(_TZ)
+
+
+def _label_to_minutes(label: str):
+    """'2:00 PM' -> minutes since midnight (None if unparseable)."""
+    m = re.match(r"^(\d{1,2}):(\d{2}) (AM|PM)$", label or "")
+    if not m:
+        return None
+    h, mins, suffix = int(m.group(1)), int(m.group(2)), m.group(3)
+    h = h % 12 + (12 if suffix == "PM" else 0)
+    return h * 60 + mins
 
 
 def _norm_time(t: str) -> str:
@@ -64,6 +83,41 @@ def make_calendar_tools(business: dict) -> list:
         slot_minutes = 30
     if not (0 <= open_hour < close_hour <= 24):
         open_hour, close_hour = 9, 17
+    # Booking hygiene (Fresha-style), with safe defaults for rows that predate
+    # these settings: minimum notice stops "book 9:00 at 8:55", the advance
+    # window stops far-future junk, buffer adds breathing room between slots.
+    _mn = business.get("min_notice_hours")
+    min_notice_h = 1 if _mn is None else max(0, _mn)
+    max_advance_d = business.get("max_advance_days") or 60
+    buffer_min = max(0, business.get("buffer_min") or 0)
+    step = slot_minutes + buffer_min
+
+    def _date_check(date: str):
+        """None if the date is bookable; else a human reason why not."""
+        try:
+            d = datetime.date.fromisoformat((date or "").strip())
+        except ValueError:
+            return None  # non-ISO input: let exact-match flows handle it
+        today = _now().date()
+        if d < today:
+            return f"{date} has already passed"
+        if d > today + datetime.timedelta(days=max_advance_d):
+            return f"bookings open up to {max_advance_d} days ahead"
+        return None
+
+    def _too_soon(date: str, time_label: str) -> bool:
+        """True when the slot starts inside the minimum-notice window."""
+        try:
+            d = datetime.date.fromisoformat((date or "").strip())
+        except ValueError:
+            return False
+        mins = _label_to_minutes(time_label)
+        if mins is None:
+            return False
+        slot_dt = datetime.datetime.combine(
+            d, datetime.time(mins // 60, mins % 60), tzinfo=_TZ
+        )
+        return slot_dt < _now() + datetime.timedelta(hours=min_notice_h)
 
     def check_availability(date: str) -> dict:
         """Check which appointment times are still FREE on a given date.
@@ -74,8 +128,15 @@ def make_calendar_tools(business: dict) -> list:
         Returns:
             A dict with the date and the list of free time slots.
         """
+        why = _date_check(date)
+        if why:
+            print(f"  TOOL -> check_availability(date={date!r}) [biz={business_id}] refused: {why}")
+            return {"date": date, "available_slots": [], "note": why}
         taken = set(db.booked_times(business_id, date))
-        free = [s for s in _all_slots(open_hour, close_hour, slot_minutes) if s not in taken]
+        free = [
+            s for s in _all_slots(open_hour, close_hour, step)
+            if s not in taken and not _too_soon(date, s)
+        ]
         print(f"  TOOL -> check_availability(date={date!r}) [biz={business_id}] free={len(free)}")
         return {"date": date, "available_slots": free}
 
@@ -99,6 +160,15 @@ def make_calendar_tools(business: dict) -> list:
             A confirmation dict, or status "unavailable" if that slot is taken.
         """
         time = _norm_time(time)
+        why = _date_check(date)
+        if why:
+            return {"status": "unavailable", "reason": why, "date": date, "time": time}
+        if _too_soon(date, time):
+            return {
+                "status": "unavailable",
+                "reason": f"we need at least {min_notice_h} hour(s) notice for bookings",
+                "date": date, "time": time,
+            }
         if time in set(db.booked_times(business_id, date)):
             print(f"  TOOL -> book_appointment DENIED (taken) date={date!r} time={time!r} [biz={business_id}]")
             return {"status": "unavailable", "reason": f"{time} on {date} is already booked", "date": date, "time": time}
@@ -211,6 +281,11 @@ def make_calendar_tools(business: dict) -> list:
         if _verified(patient_name, phone_last4) is False:
             return {"status": "verification_needed", "message": _VERIFY_MSG}
         old_time, new_time = _norm_time(old_time), _norm_time(new_time)
+        why = _date_check(new_date)
+        if why:
+            return {"status": "unavailable", "reason": why}
+        if _too_soon(new_date, new_time):
+            return {"status": "unavailable", "reason": f"we need at least {min_notice_h} hour(s) notice"}
         if new_time in set(db.booked_times(business_id, new_date)):
             print(f"  TOOL -> reschedule DENIED (new slot taken) [biz={business_id}]")
             return {"status": "unavailable", "reason": f"{new_time} on {new_date} is already booked"}

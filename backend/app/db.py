@@ -128,6 +128,11 @@ def init_db() -> None:
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS staff TEXT")
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS location TEXT")
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS policies TEXT")
+        # Booking hygiene (Fresha-style): how much notice a booking needs, how
+        # far ahead the calendar opens, and breathing room between appointments.
+        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS min_notice_hours INTEGER")
+        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS max_advance_days INTEGER")
+        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS buffer_min INTEGER")
         # Booking now captures mobile number + reason for visit (UAE clinics take both).
         conn.execute("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS phone TEXT")
         conn.execute("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reason TEXT")
@@ -399,11 +404,12 @@ def upsert_business(b: dict) -> None:
             """
             INSERT INTO businesses
                 (id, name, type, hours, services, tone, open_hour, close_hour, slot_minutes, faq, api_key, vertical,
-                 staff, location, policies)
+                 staff, location, policies, min_notice_hours, max_advance_days, buffer_min)
             VALUES
                 (%(id)s, %(name)s, %(type)s, %(hours)s, %(services)s, %(tone)s,
                  %(open_hour)s, %(close_hour)s, %(slot_minutes)s, %(faq)s, %(api_key)s, %(vertical)s,
-                 %(staff)s, %(location)s, %(policies)s)
+                 %(staff)s, %(location)s, %(policies)s,
+                 %(min_notice_hours)s, %(max_advance_days)s, %(buffer_min)s)
             ON CONFLICT (id) DO UPDATE SET
                 name=EXCLUDED.name, type=EXCLUDED.type, hours=EXCLUDED.hours,
                 services=EXCLUDED.services, tone=EXCLUDED.tone,
@@ -411,7 +417,9 @@ def upsert_business(b: dict) -> None:
                 slot_minutes=EXCLUDED.slot_minutes, faq=EXCLUDED.faq,
                 api_key=COALESCE(EXCLUDED.api_key, businesses.api_key),
                 vertical=EXCLUDED.vertical,
-                staff=EXCLUDED.staff, location=EXCLUDED.location, policies=EXCLUDED.policies
+                staff=EXCLUDED.staff, location=EXCLUDED.location, policies=EXCLUDED.policies,
+                min_notice_hours=EXCLUDED.min_notice_hours,
+                max_advance_days=EXCLUDED.max_advance_days, buffer_min=EXCLUDED.buffer_min
             """,
             {
                 "id": b["id"],
@@ -429,6 +437,9 @@ def upsert_business(b: dict) -> None:
                 "staff": b.get("staff", ""),
                 "location": b.get("location", ""),
                 "policies": b.get("policies", ""),
+                "min_notice_hours": b.get("min_notice_hours", 1),
+                "max_advance_days": b.get("max_advance_days", 60),
+                "buffer_min": b.get("buffer_min", 0),
             },
         )
 
@@ -437,6 +448,7 @@ _EDITABLE_BUSINESS_FIELDS = {
     "name", "type", "hours", "services", "tone", "faq",
     "open_hour", "close_hour", "slot_minutes", "vertical",
     "staff", "location", "policies",
+    "min_notice_hours", "max_advance_days", "buffer_min",
 }
 
 

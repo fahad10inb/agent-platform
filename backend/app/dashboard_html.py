@@ -379,6 +379,9 @@ DASHBOARD_HTML = """<!doctype html>
         <div class="row2"><div><label for="o_open">Open hour <span class="soft">(0–23)</span></label><input id="o_open" type="number" min="0" max="23" value="9"></div>
         <div><label for="o_close">Close hour <span class="soft">(1–24)</span></label><input id="o_close" type="number" min="1" max="24" value="17"></div>
         <div><label for="o_slot">Slot length <span class="soft">(minutes, 5–240)</span></label><input id="o_slot" type="number" min="5" max="240" value="30"></div></div>
+        <div class="row2"><div><label for="o_notice">Min notice <span class="soft">(hours)</span></label><input id="o_notice" type="number" min="0" max="72" value="1"></div>
+        <div><label for="o_advance">Book ahead <span class="soft">(days)</span></label><input id="o_advance" type="number" min="1" max="365" value="60"></div>
+        <div><label for="o_buffer">Buffer <span class="soft">(mins between)</span></label><input id="o_buffer" type="number" min="0" max="120" value="0"></div></div>
       </div>
 
       <div class="fgroup">
@@ -412,6 +415,7 @@ DASHBOARD_HTML = """<!doctype html>
       tone:val("o_tone").trim()||"warm and professional", hours:val("o_hours").trim(), services:val("o_services").trim(),
       faq:val("o_faq").trim(), staff:val("o_staff").trim(), location:val("o_location").trim(),
       policies:val("o_policies").trim(), open_hour:+val("o_open"), close_hour:+val("o_close"), slot_minutes:+val("o_slot"),
+      min_notice_hours:+val("o_notice"), max_advance_days:+val("o_advance"), buffer_min:+val("o_buffer"),
       vertical:val("o_vertical") };
     if(!body.id||!body.name||!body.type){ toast("ID, name and type are required."); return; }
     const r = await api("/admin/businesses", { method:"POST", body: JSON.stringify(body) });
@@ -488,6 +492,9 @@ DASHBOARD_HTML = """<!doctype html>
           <div class="row2"><div><label for="s_open">Open hour <span class="soft">(0–23)</span></label><input id="s_open" type="number" min="0" max="23" value="${esc(b.open_hour)}"></div>
           <div><label for="s_close">Close hour <span class="soft">(1–24)</span></label><input id="s_close" type="number" min="1" max="24" value="${esc(b.close_hour)}"></div>
           <div><label for="s_slot">Slot length <span class="soft">(minutes)</span></label><input id="s_slot" type="number" min="5" max="240" value="${esc(b.slot_minutes)}"></div></div>
+          <div class="row2"><div><label for="s_notice">Min notice <span class="soft">(hours)</span></label><input id="s_notice" type="number" min="0" max="72" value="${esc(b.min_notice_hours == null ? 1 : b.min_notice_hours)}"></div>
+          <div><label for="s_advance">Book ahead <span class="soft">(days)</span></label><input id="s_advance" type="number" min="1" max="365" value="${esc(b.max_advance_days == null ? 60 : b.max_advance_days)}"></div>
+          <div><label for="s_buffer">Buffer <span class="soft">(mins)</span></label><input id="s_buffer" type="number" min="0" max="120" value="${esc(b.buffer_min == null ? 0 : b.buffer_min)}"></div></div>
         </div>
 
         <div class="fgroup">
@@ -521,7 +528,8 @@ DASHBOARD_HTML = """<!doctype html>
     const body = { name:val("s_name"), type:val("s_type"), tone:val("s_tone"), hours:val("s_hours"),
       services:val("s_services"), faq:val("s_faq"), staff:val("s_staff"), location:val("s_location"),
       policies:val("s_policies"), open_hour:+val("s_open"), close_hour:+val("s_close"),
-      slot_minutes:+val("s_slot"), vertical:val("s_vertical") };
+      slot_minutes:+val("s_slot"), vertical:val("s_vertical"),
+      min_notice_hours:+val("s_notice"), max_advance_days:+val("s_advance"), buffer_min:+val("s_buffer") };
     const r = await api("/manage/"+encodeURIComponent(CURRENT), { method:"POST", body: JSON.stringify(body) });
     if(r.ok){ toast("Settings saved — live from the next conversation"); return; }
     let d=null; try{ d = await r.json(); }catch(e){}

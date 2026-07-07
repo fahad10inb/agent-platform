@@ -56,6 +56,42 @@ def test_reschedule_into_taken_slot_is_unavailable(client):
     assert out["status"] == "unavailable"
 
 
+def test_booking_hygiene_rules(client, monkeypatch):
+    """Past dates, far-future dates and the min-notice window are all refused;
+    the agent can no longer book a 9:00 slot at 8:55."""
+    import datetime
+    import zoneinfo
+
+    from app.tools import calendar_tools as ct
+
+    frozen = datetime.datetime(2026, 7, 7, 10, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Dubai"))
+    monkeypatch.setattr(ct, "_now", lambda: frozen)
+    biz = {"id": "bright-smile", "open_hour": 9, "close_hour": 17, "slot_minutes": 30,
+           "min_notice_hours": 2, "max_advance_days": 30, "buffer_min": 0}
+    tools = {f.__name__: f for f in ct.make_calendar_tools(biz)}
+
+    assert tools["book_appointment"]("2026-07-06", "9:00 AM", "X")["status"] == "unavailable"  # past
+    assert tools["book_appointment"]("2026-09-01", "9:00 AM", "X")["status"] == "unavailable"  # too far
+    free = tools["check_availability"]("2026-07-07")["available_slots"]  # today, 10:00 now, 2h notice
+    assert "11:30 AM" not in free and "12:00 PM" in free
+    assert tools["book_appointment"]("2026-07-07", "11:00 AM", "X")["status"] == "unavailable"
+    assert "9:00 AM" in tools["check_availability"]("2026-07-08")["available_slots"]  # tomorrow fine
+
+
+def test_buffer_widens_the_slot_grid(client, monkeypatch):
+    """15 min buffer on 30-min slots = a 45-minute grid (Fresha's slot math)."""
+    import datetime
+    import zoneinfo
+
+    from app.tools import calendar_tools as ct
+
+    monkeypatch.setattr(ct, "_now", lambda: datetime.datetime(
+        2026, 7, 7, 8, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Dubai")))
+    biz = {"id": "bright-smile", "open_hour": 9, "close_hour": 11, "slot_minutes": 30, "buffer_min": 15}
+    tools = {f.__name__: f for f in ct.make_calendar_tools(biz)}
+    assert tools["check_availability"]("2026-07-08")["available_slots"] == ["9:00 AM", "9:45 AM", "10:30 AM"]
+
+
 def test_availability_hides_booked_slots(client):
     tools = _tools()
     tools["book_appointment"]("2026-07-10", "9:00 AM", "Sara")

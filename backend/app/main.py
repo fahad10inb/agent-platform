@@ -137,6 +137,11 @@ class BusinessSettings(BaseModel):
     staff: str | None = Field(default=None, max_length=1000)
     location: str | None = Field(default=None, max_length=500)
     policies: str | None = Field(default=None, max_length=2000)
+    # Booking hygiene: notice window, how far ahead the calendar opens, and
+    # breathing room between appointments.
+    min_notice_hours: int | None = Field(default=None, ge=0, le=72)
+    max_advance_days: int | None = Field(default=None, ge=1, le=365)
+    buffer_min: int | None = Field(default=None, ge=0, le=120)
 
 
 class NewBusiness(BaseModel):
@@ -159,6 +164,9 @@ class NewBusiness(BaseModel):
     staff: str = Field(default="", max_length=1000)
     location: str = Field(default="", max_length=500)
     policies: str = Field(default="", max_length=2000)
+    min_notice_hours: int = Field(default=1, ge=0, le=72)
+    max_advance_days: int = Field(default=60, ge=1, le=365)
+    buffer_min: int = Field(default=0, ge=0, le=120)
 
 
 # Tools are now built PER REQUEST (scoped to the caller's business) inside the
@@ -281,7 +289,8 @@ def manage_get(business_id: str, request: Request, x_api_key: str | None = Heade
         raise HTTPException(status_code=404, detail="Unknown business.")
     fields = ["id", "name", "type", "hours", "services", "tone", "faq",
               "open_hour", "close_hour", "slot_minutes", "vertical",
-              "staff", "location", "policies"]
+              "staff", "location", "policies",
+              "min_notice_hours", "max_advance_days", "buffer_min"]
     return {k: biz.get(k) for k in fields}
 
 
