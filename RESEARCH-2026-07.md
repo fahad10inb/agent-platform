@@ -47,3 +47,9 @@ Our differentiators: fair billing, verified bookings, guaranteed human path, dia
 - "A booking is only a booking when it's IN the calendar — enforced by the database, not a promise."
 - "Your customers can always reach a human."
 - "Arabic that survives dialect." (where every US product and every open model is weakest)
+
+## Addendum: the CALLERS' side (end-customer sentiment, added after final research stream)
+- 31% hang up immediately on AI answering business calls (rising); 64% prefer no AI in service; 53% would consider switching over it (Gartner n=5,728); 79% pick the business with the human receptionist among equals.
+- Disclosure paradox resolved: +34pp satisfaction when customers KNOW it's AI (COPC) — default-on warm disclosure is stats-backed.
+- Rage concentrates on: voice AI intercepting calls, bots gating humans, accent failures (WER 30-50% accented vs 2-8% native), seniors (UK GP "Emma" backlash), rigid loops. McDonald's + Taco Bell retreated from drive-thru voice AI.
+- STRATEGY MANDATE: position as ADDITIVE ("capture what goes unanswered: after-hours, overflow, web visitors"), never "replace your receptionist." Voice = after-hours/overflow only, never the daytime front line. Chat-first is our structural advantage: the customer opts in by clicking.
