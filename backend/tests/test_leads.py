@@ -22,6 +22,8 @@ def test_same_phone_updates_instead_of_duplicating(client):
     assert len(rows) == 1
     assert rows[0]["interest"] == "buy in Jumeirah, 1.5M"  # newest picture wins
     assert "ready soon" in rows[0]["notes"]
+    # ...but the earlier wording survives in notes — no detail is ever lost.
+    assert "earlier: 1.5M budget, Jumeirah" in rows[0]["notes"]
 
 
 def test_different_phone_is_a_new_lead(client):

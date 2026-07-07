@@ -37,6 +37,13 @@ def make_lead_tools(business_id: str) -> list:
         existing = db.find_recent_lead(business_id, phone)
         if existing:
             merged_notes = "; ".join(x for x in (existing.get("notes"), notes) if x)
+            # The newest picture wins the interest field, but a detail the
+            # caller gave earlier (their budget, say) must never fall out of
+            # the row — tuck the prior interest into notes unless the new
+            # text already covers it.
+            prior = (existing.get("interest") or "").strip()
+            if prior and prior.lower() not in interest.lower():
+                merged_notes = "; ".join(x for x in (f"earlier: {prior}", merged_notes) if x)
             db.update_lead(existing["id"], interest, merged_notes)
             return {"status": "updated", "lead_id": existing["id"], "name": name}
         lead_id = db.save_lead(business_id, name, phone, interest, notes)
