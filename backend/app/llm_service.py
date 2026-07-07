@@ -98,7 +98,17 @@ async def generate_reply(
                 ),
                 timeout=settings.llm_timeout_seconds,
             )
-            return (response.text or "").strip()
+            text = (response.text or "").strip()
+            if text:
+                return text
+            # The model sometimes ends its tool loop on a TEXT-LESS turn: the
+            # tools ran (a lead was saved, a slot was booked) but the caller
+            # would get a blank bubble. A blind retry would RE-RUN the tools —
+            # a second book_appointment now hits its own booking and reports
+            # "unavailable" — so instead we make one follow-up call that shows
+            # the model its own tool transcript and demands a reply, with
+            # tools DISABLED so nothing can execute twice.
+            return await _recover_empty_reply(response, contents, config, settings)
         except asyncio.TimeoutError as exc:
             last_exc = exc
             logger.warning("gemini call timed out (attempt %d/2, %ss)", attempt, settings.llm_timeout_seconds)
@@ -108,3 +118,56 @@ async def generate_reply(
         if attempt == 1:
             await asyncio.sleep(0.6)
     raise last_exc if last_exc else RuntimeError("gemini call failed")
+
+
+def _tool_activity_lines(response) -> list[str]:
+    """What the model actually DID this turn — every tool call and its result,
+    scraped from the SDK's automatic-function-calling transcript."""
+    lines: list[str] = []
+    for content in getattr(response, "automatic_function_calling_history", None) or []:
+        for part in getattr(content, "parts", None) or []:
+            call = getattr(part, "function_call", None)
+            if call is not None:
+                lines.append(f"- you called {call.name}({dict(call.args or {})})")
+            result = getattr(part, "function_response", None)
+            if result is not None:
+                lines.append(f"  it returned: {result.response}")
+    return lines
+
+
+async def _recover_empty_reply(response, contents, config, settings) -> str:
+    """One tools-off follow-up call: tell the model what its tools already did
+    and make it speak. Returns "" if this too fails — the /chat route keeps a
+    generic last-resort line for that."""
+    activity = _tool_activity_lines(response)
+    note = (
+        "(SYSTEM NOTE — the caller never sees this. Your last turn produced no "
+        "message text, so the caller is staring at a blank bubble.\n"
+        + ("This is what you actually did with your tools:\n" + "\n".join(activity) + "\n" if activity else "")
+        + "Write your reply to the caller NOW. State plainly what you just did — "
+        "do not redo it, do not contradict it, do not apologize — and ask the "
+        "one question still needed, if any.)"
+    )
+    followup = list(contents) + [types.Content(role="user", parts=[types.Part(text=note)])]
+    recovery_config = types.GenerateContentConfig(
+        system_instruction=config.system_instruction,
+        temperature=config.temperature,
+        max_output_tokens=config.max_output_tokens,
+        tools=None,  # nothing may execute twice
+    )
+    try:
+        second = await asyncio.wait_for(
+            _get_client().aio.models.generate_content(
+                model=settings.gemini_model,
+                contents=followup,
+                config=recovery_config,
+            ),
+            timeout=settings.llm_timeout_seconds,
+        )
+        text = (second.text or "").strip()
+        if text:
+            logger.info("empty-reply recovery succeeded (%d tool steps)", len(activity))
+        return text
+    except Exception as exc:
+        logger.warning("empty-reply recovery failed: %s", str(exc)[:200])
+        return ""

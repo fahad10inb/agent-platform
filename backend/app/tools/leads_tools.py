@@ -14,9 +14,12 @@ def make_lead_tools(business_id: str) -> list:
         """Save an enquiry/lead so the team can follow up.
 
         Use this when a caller is interested but isn't booking a fixed slot — e.g.
-        a property enquiry. Collect their name, mobile number, and what they're
-        after (for real estate: buy or rent, area, budget, bedrooms; for general
-        businesses: what they need). Ask for whatever's missing before saving.
+        a property enquiry. Save AS SOON AS you have their name, mobile number and
+        a rough idea of what they want — a partial lead saved beats a perfect one
+        lost. Do NOT keep asking qualifying questions before saving; capture first,
+        keep chatting after. If more detail emerges later (buy vs rent, bedrooms,
+        timeline), add it with remember_about_caller — do not call this again, it
+        would duplicate the lead.
 
         Args:
             name: The caller's name.
