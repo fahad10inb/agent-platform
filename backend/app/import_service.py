@@ -12,6 +12,7 @@ import asyncio
 import json
 import logging
 import re
+import urllib.parse
 import urllib.request
 from html.parser import HTMLParser
 
@@ -60,10 +61,63 @@ class _LinkExtractor(HTMLParser):
 
 
 # The pages worth following, in any language we serve (crawl4ai/Firecrawl's
-# lesson: score links by intent keywords instead of crawling blindly).
+# lesson: score links by intent keywords instead of crawling blindly). Two
+# tiers: hub words name the pages that hold onboarding facts; weak words
+# appear in the dozens of leaf articles ("/gum-treatment-dubai/") that would
+# otherwise crowd the hubs out of the pick.
 _LINK_KEYWORDS = ("service", "price", "pricing", "menu", "about", "contact",
-                  "book", "team", "staff", "location", "hours", "treatment",
+                  "book", "team", "staff", "location", "hours",
+                  "package", "rates", "faq", "offer",
                   "خدمات", "اسعار", "أسعار", "حجز", "تواصل")
+_WEAK_KEYWORDS = ("treatment", "doctor", "property", "listing")
+
+
+def _same_site(base_url: str, url: str) -> bool:
+    """Same site ignoring the www. prefix — sites routinely link to their own
+    pages as www.X while the owner pasted X (or vice versa); treating those as
+    external silently skipped every services/prices page."""
+    bh = urllib.parse.urlparse(base_url).netloc.lower().removeprefix("www.")
+    uh = urllib.parse.urlparse(url).netloc.lower().removeprefix("www.")
+    return bool(bh) and bh == uh
+
+
+def _score_link(path: str) -> int:
+    """How promising a page looks for onboarding facts: hub keywords count 3,
+    weak (leaf-article) keywords count 1, and shallow paths get a bonus — so
+    '/our-services/' and '/prices/' always outrank '/gum-treatment-dubai/'."""
+    p = path.lower()
+    score = sum(3 for k in _LINK_KEYWORDS if k in p) + sum(1 for k in _WEAK_KEYWORDS if k in p)
+    depth = len([seg for seg in path.split("/") if seg])
+    if score and depth <= 2:
+        score += 2
+    return score
+
+
+def _pick_links(base_url: str, hrefs: list[str], limit: int = 4) -> list[str]:
+    """The best `limit` same-site links by score (document order breaks ties) —
+    not the FIRST few that happen to contain a keyword."""
+    base = re.match(r"^(https?://[^/]+)", base_url, re.IGNORECASE)
+    if not base:
+        return []
+    base = base.group(1)
+    scored, seen = [], set()
+    for order, href in enumerate(hrefs):
+        h = (href or "").strip()
+        if not h or h.startswith(("mailto:", "tel:", "#", "javascript:")):
+            continue
+        full = h if h.startswith("http") else base + ("" if h.startswith("/") else "/") + h
+        if not _same_site(base, full):
+            continue
+        path = urllib.parse.urlparse(full).path
+        key = path.rstrip("/").lower()
+        if not key or key in seen:  # skip the homepage itself and duplicates
+            continue
+        seen.add(key)
+        score = _score_link(path)
+        if score > 0:
+            scored.append((-score, order, full))
+    scored.sort()
+    return [full for _, _, full in scored[:limit]]
 
 
 def _fetch_raw(url: str) -> str:
@@ -92,7 +146,6 @@ def _fetch_text(url: str) -> str:
     """
     if not re.match(r"^https?://", url, re.IGNORECASE):
         url = "https://" + url
-    base = re.match(r"^(https?://[^/]+)", url, re.IGNORECASE).group(1)
 
     text = ""
     try:
@@ -101,17 +154,7 @@ def _fetch_text(url: str) -> str:
         # Score internal links by intent keywords; follow the best few.
         links = _LinkExtractor()
         links.feed(home)
-        seen, picked = set(), []
-        for href in links.hrefs:
-            full = href if href.startswith("http") else base + ("" if href.startswith("/") else "/") + href
-            if not full.startswith(base) or full.rstrip("/") in seen:
-                continue
-            seen.add(full.rstrip("/"))
-            if any(k in full.lower() for k in _LINK_KEYWORDS):
-                picked.append(full)
-            if len(picked) >= 3:
-                break
-        for page in picked:
+        for page in _pick_links(url, links.hrefs):
             try:
                 text += "\n\n" + _strip(_fetch_raw(page))
             except Exception:  # noqa: BLE001 — a broken subpage shouldn't sink the import
@@ -119,10 +162,21 @@ def _fetch_text(url: str) -> str:
     except Exception:  # noqa: BLE001 — homepage fetch failed; the fallback may still work
         pass
 
-    if len(text.strip()) < 200:
-        # JS-heavy site (or blocked) — let Jina Reader render it for us.
+    if len(text.strip()) < 3_000:
+        # A thin harvest means a JS-rendered site (nav and content injected by
+        # scripts — raw HTML holds a 900-char skeleton), a blocked fetch, or an
+        # SSL failure. Jina Reader renders the page server-side; its markdown
+        # carries the links too, so we can crawl the best subpages the same way.
         try:
-            text = _fetch_raw("https://r.jina.ai/" + url)
+            rendered = _fetch_raw("https://r.jina.ai/" + url)
+            md_links = re.findall(r"\]\((https?://[^)\s]+)\)", rendered)
+            for page in _pick_links(url, md_links, limit=2):
+                try:
+                    rendered += "\n\n" + _fetch_raw("https://r.jina.ai/" + page)
+                except Exception:  # noqa: BLE001
+                    continue
+            if len(rendered.strip()) > len(text.strip()):
+                text = rendered
             logger.info("[import] used jina reader fallback for %s", url)
         except Exception:  # noqa: BLE001
             pass
