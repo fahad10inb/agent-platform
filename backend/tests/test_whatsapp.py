@@ -51,7 +51,7 @@ def test_verify_handshake_echoes_the_challenge(client, monkeypatch):
 
 def test_inbound_parser_takes_texts_and_skips_receipts():
     events = whatsapp._inbound_messages(_sample_payload())
-    assert events == [("111222333", "971501234567", "hi, do you have a 2BR?")]
+    assert events == [("111222333", "971501234567", "hi, do you have a 2BR?", "wamid.X")]
     # A delivery-receipt payload (statuses, no messages) yields nothing.
     receipt = {"entry": [{"changes": [{"value": {
         "metadata": {"phone_number_id": "111222333"},

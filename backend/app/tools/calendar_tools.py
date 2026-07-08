@@ -125,17 +125,20 @@ def make_calendar_tools(business: dict) -> list:
                 return s.get("duration_min") or slot_minutes
         return slot_minutes
 
-    def _overlaps_existing(date: str, time_label: str, duration: int) -> bool:
+    def _overlaps_existing(date: str, time_label: str, duration: int, exclude_time: str = "") -> bool:
         """True when [start, start+duration) would cut into ANY existing
         booking's [start, start+its-duration). With mixed durations a plain
         same-start check isn't enough: a new 90-min color starting 30 minutes
         before someone's trim — or a quick trim dropped into the middle of a
-        color — must both be refused."""
+        color — must both be refused. `exclude_time` skips one booking (the one
+        being MOVED by a reschedule, so it doesn't collide with itself)."""
         start = _label_to_minutes(time_label)
         if start is None:
             return False
         end = start + duration
         for r in db.bookings_with_times(business_id, date):
+            if exclude_time and _norm_time(r.get("time") or "") == exclude_time:
+                continue
             b_start = _label_to_minutes(r.get("time") or "")
             if b_start is None:
                 continue
@@ -383,7 +386,22 @@ def make_calendar_tools(business: dict) -> list:
             return {"status": "unavailable", "reason": why}
         if _too_soon(new_date, new_time):
             return {"status": "unavailable", "reason": f"we need at least {min_notice_h} hour(s) notice"}
-        if new_time in set(db.booked_times(business_id, new_date)):
+        # The new slot must be free — using the SAME duration-aware overlap check
+        # book_appointment uses (a plain same-start check let a rescheduled trim
+        # drop into the middle of a 90-min colour). Recover the moved booking's
+        # true length from its stored reason, and exclude it from the check when
+        # it's moving within the same day so it can't collide with itself.
+        if services:
+            duration = slot_minutes
+            for r in db.bookings_with_times(business_id, old_date):
+                if _norm_time(r.get("time") or "") == old_time:
+                    duration = _infer_duration(r.get("reason") or "")
+                    break
+            exclude = old_time if new_date == old_date else ""
+            if _overlaps_existing(new_date, new_time, duration, exclude_time=exclude):
+                print(f"  TOOL -> reschedule DENIED (overlap) [biz={business_id}]")
+                return {"status": "unavailable", "reason": f"{new_time} on {new_date} is already booked"}
+        elif new_time in set(db.booked_times(business_id, new_date)):
             print(f"  TOOL -> reschedule DENIED (new slot taken) [biz={business_id}]")
             return {"status": "unavailable", "reason": f"{new_time} on {new_date} is already booked"}
         ok = db.reschedule_booking(business_id, patient_name, old_date, old_time, new_date, new_time)

@@ -25,6 +25,7 @@ import asyncio
 import hashlib
 import hmac
 import logging
+import time
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -37,6 +38,28 @@ logger = logging.getLogger("agent-platform.whatsapp")
 router = APIRouter()
 
 _GRAPH_URL = "https://graph.facebook.com/v20.0"
+
+# Meta redelivers a webhook when our ACK is slow or errors, and occasionally
+# duplicates even after a 200 — so the same message id (wamid) can arrive twice.
+# Without dedup that means two full Gemini turns, two replies to the customer,
+# and double tool execution. A short-TTL seen-set makes processing idempotent.
+# Single instance only (in-process); a redeliver after a deploy is dropped, not
+# double-run — acceptable for a best-effort channel.
+_SEEN_WAMIDS: dict[str, float] = {}
+_WAMID_TTL_SECONDS = 3600
+
+
+def _already_processed(wamid: str) -> bool:
+    """True if this wamid was seen recently; records it and prunes stale ids."""
+    now = time.monotonic()
+    if _SEEN_WAMIDS:
+        for k, seen_at in list(_SEEN_WAMIDS.items()):
+            if now - seen_at > _WAMID_TTL_SECONDS:
+                del _SEEN_WAMIDS[k]
+    if wamid in _SEEN_WAMIDS:
+        return True
+    _SEEN_WAMIDS[wamid] = now
+    return False
 
 
 @router.get("/whatsapp/webhook")
@@ -87,17 +110,20 @@ async def receive_webhook(request: Request):
     except Exception:
         return {"status": "ignored"}
 
-    for phone_id, sender, text in _inbound_messages(payload):
+    for phone_id, sender, text, wamid in _inbound_messages(payload):
+        if wamid and _already_processed(wamid):
+            logger.info("skipping duplicate whatsapp delivery wamid=%s", wamid)
+            continue
         business = db.get_business_by_whatsapp(phone_id)
         if business:
             asyncio.create_task(_handle_message(business["id"], phone_id, sender, text))
     return {"status": "received"}
 
 
-def _inbound_messages(payload: dict) -> list[tuple[str, str, str]]:
-    """(phone_number_id, sender, text) for each real customer text message in a
-    webhook payload. Delivery receipts (value['statuses']) and non-text types
-    (media/location — later) fall straight through."""
+def _inbound_messages(payload: dict) -> list[tuple[str, str, str, str]]:
+    """(phone_number_id, sender, text, wamid) for each real customer text
+    message in a webhook payload. Delivery receipts (value['statuses']) and
+    non-text types (media/location — later) fall straight through."""
     out = []
     for entry in payload.get("entry", []) or []:
         for change in entry.get("changes", []) or []:
@@ -107,7 +133,7 @@ def _inbound_messages(payload: dict) -> list[tuple[str, str, str]]:
                 sender = msg.get("from", "")
                 text = ((msg.get("text") or {}).get("body") or "").strip()
                 if msg.get("type") == "text" and phone_id and sender and text:
-                    out.append((phone_id, sender, text))
+                    out.append((phone_id, sender, text, msg.get("id", "")))
     return out
 
 

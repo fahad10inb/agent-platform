@@ -7,6 +7,7 @@ meter, and schedule the distiller. Anything channel-specific — rate limits,
 HTTP error shapes, WhatsApp send calls — stays in the routes.
 """
 
+import asyncio
 import datetime
 import logging
 import zoneinfo
@@ -23,6 +24,22 @@ from app.tools.memory_tools import make_memory_tools
 logger = logging.getLogger("agent-platform.core")
 
 _DUBAI_TZ = zoneinfo.ZoneInfo("Asia/Dubai")
+
+# One lock per (business, conversation) so rapid-fire messages in the SAME thread
+# run one-at-a-time — without it, message B reads history before A has saved, so
+# B's model never sees A, both run tools (both may book the same caller), and the
+# saved turns interleave. Different conversations never contend (different keys),
+# so throughput is unaffected. Single instance only; created lazily in the loop.
+_conv_locks: dict[tuple[str, str], "asyncio.Lock"] = {}
+
+
+def _conversation_lock(business_id: str, conversation_id: str) -> "asyncio.Lock":
+    key = (business_id, conversation_id)
+    lock = _conv_locks.get(key)
+    if lock is None:
+        lock = asyncio.Lock()
+        _conv_locks[key] = lock
+    return lock
 
 
 def _quota_state(business: dict) -> tuple[bool, str]:
@@ -107,41 +124,47 @@ async def run_turn(
 
     system_prompt = build_system_prompt(business)
 
-    # This conversation's DURABLE history (scoped by business_id — the same
-    # conversation_id at two businesses can never share context), capped at 40
-    # turns at read time, plus the new message in memory only.
-    history = db.get_history(business_id, conversation_id, limit=40)
-    history = history + [{"role": "user", "text": message}]
+    # Serialize this conversation's turns: read history → model → persist all run
+    # under one lock, so two rapid messages in the same thread can't interleave
+    # (see _conversation_lock). Distinct conversations hold distinct locks and
+    # still run fully in parallel.
+    async with _conversation_lock(business_id, conversation_id):
+        # This conversation's DURABLE history (scoped by business_id — the same
+        # conversation_id at two businesses can never share context), capped at
+        # 40 turns at read time, plus the new message in memory only.
+        history = db.get_history(business_id, conversation_id, limit=40)
+        history = history + [{"role": "user", "text": message}]
 
-    # Tools are built PER TURN, each scoped to this business via its closure.
-    tools = (
-        make_calendar_tools(business)
-        + make_memory_tools(business_id)
-        + make_lead_tools(business_id)
-        + make_handoff_tools(business)
-    )
-    reply = await generate_reply(system_prompt, history, tools=tools)
-
-    # Last-resort guard: llm_service already retries/recovers empty and leaked
-    # replies; if EVERYTHING came back blank the caller still gets words.
-    if not reply.strip():
-        reply = (
-            "Sorry — I lost my words for a second there. Could you say that "
-            "again? I'll double-check everything before confirming."
+        # Tools are built PER TURN, each scoped to this business via its closure.
+        tools = (
+            make_calendar_tools(business)
+            + make_memory_tools(business_id)
+            + make_lead_tools(business_id)
+            + make_handoff_tools(business)
         )
+        reply = await generate_reply(system_prompt, history, tools=tools)
 
-    # Persist BOTH turns only now that the reply succeeded, and meter the turn
-    # against the business's daily usage (the future billing/quota data).
-    db.save_message(business_id, conversation_id, "user", message)
-    db.save_message(business_id, conversation_id, "model", reply)
-    db.bump_usage(business_id)
+        # Last-resort guard: llm_service already retries/recovers empty and
+        # leaked replies; if EVERYTHING came back blank the caller still gets words.
+        if not reply.strip():
+            reply = (
+                "Sorry — I lost my words for a second there. Could you say that "
+                "again? I'll double-check everything before confirming."
+            )
 
-    # Every 6th caller message, distill the conversation into durable caller
-    # memory — deferred so the caller never waits on it. `history` already
-    # includes this turn's message, so counting it counts the conversation as
-    # it now stands. Flag-gated (DISTILL_ENABLED) and swallows its own errors.
-    every_n = distill_service.DISTILL_EVERY_N_USER_MESSAGES
-    user_turns = sum(1 for t in history if t["role"] == "user")
-    if user_turns >= every_n and user_turns % every_n == 0:
-        schedule(distill_service.distill_conversation, business_id, conversation_id)
+        # Persist BOTH turns only now that the reply succeeded, and meter the
+        # turn against the business's daily usage (the future billing data).
+        db.save_message(business_id, conversation_id, "user", message)
+        db.save_message(business_id, conversation_id, "model", reply)
+        db.bump_usage(business_id)
+
+        # Every 6th caller message, distill the conversation into durable caller
+        # memory — deferred so the caller never waits on it. Count the DURABLE
+        # total, not this capped window: a long thread's window saturates at 20
+        # user turns forever (21 % 6 != 0), which silently stopped distilling
+        # exactly the regulars whose preferences matter most.
+        every_n = distill_service.DISTILL_EVERY_N_USER_MESSAGES
+        user_turns = db.count_user_messages(business_id, conversation_id)
+        if user_turns >= every_n and user_turns % every_n == 0:
+            schedule(distill_service.distill_conversation, business_id, conversation_id)
     return reply

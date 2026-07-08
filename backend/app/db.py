@@ -309,12 +309,27 @@ def get_history(business_id: str, conversation_id: str, limit: int = 40) -> list
     return list(reversed(rows))
 
 
+def count_user_messages(business_id: str, conversation_id: str) -> int:
+    """Total caller messages EVER in a conversation — the distiller's cadence
+    counter. Counting the durable total (not the capped history window) keeps
+    the 'every 6th message' trigger firing on long WhatsApp threads that would
+    otherwise saturate the window at 20 forever."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS n FROM messages "
+            "WHERE business_id = %s AND conversation_id = %s AND role = 'user'",
+            (business_id, conversation_id),
+        ).fetchone()
+    return int(row["n"])
+
+
 # --- usage metering -------------------------------------------------------------
 def bump_usage(business_id: str, messages: int = 1) -> None:
     """Count one (or more) handled messages against today's usage row."""
     with _connect() as conn:
         conn.execute(
-            "INSERT INTO usage_daily (business_id, day, messages) VALUES (%s, CURRENT_DATE, %s) "
+            "INSERT INTO usage_daily (business_id, day, messages) "
+            "VALUES (%s, (now() AT TIME ZONE 'Asia/Dubai')::date, %s) "
             "ON CONFLICT (business_id, day) DO UPDATE SET messages = usage_daily.messages + EXCLUDED.messages",
             (business_id, messages),
         )

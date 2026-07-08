@@ -126,11 +126,21 @@ async def generate_reply(
         except asyncio.TimeoutError as exc:
             last_exc = exc
             logger.warning("gemini call timed out (attempt %d/2, %ss)", attempt, settings.llm_timeout_seconds)
-        except Exception as exc:  # transient 5xx/network — retry once
+        except Exception as exc:  # transient 5xx/network
             last_exc = exc
             logger.warning("gemini call failed (attempt %d/2): %s", attempt, str(exc)[:200])
-        if attempt == 1:
+        # Retry is ONLY safe when no tools were offered. With tools, a timeout
+        # can land AFTER a tool already committed (book_appointment/capture_lead
+        # run in a thread the timeout can't cancel), and the SDK gives us no
+        # response to inspect — so a retry could book a DIFFERENT slot or
+        # re-capture a lead. We fail the turn cleanly instead; the caller's
+        # natural re-ask (serialized by chat_core's per-conversation lock) is the
+        # safe recovery. Tool-less calls have no side effects, so they still get
+        # their one transient-blip retry.
+        if attempt == 1 and not tool_names:
             await asyncio.sleep(0.6)
+            continue
+        break
     raise last_exc if last_exc else RuntimeError("gemini call failed")
 
 

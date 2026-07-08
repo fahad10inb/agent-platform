@@ -80,6 +80,12 @@ def _fake_save_message(business_id, conversation_id, role, text):
     )
 
 
+def _fake_count_user_messages(business_id, conversation_id):
+    return sum(1 for m in _S["messages"]
+               if m["business_id"] == business_id and m["conversation_id"] == conversation_id
+               and m["role"] == "user")
+
+
 def _fake_get_history(business_id, conversation_id, limit=40):
     rows = [
         {"role": m["role"], "text": m["text"]}
@@ -362,6 +368,7 @@ db.get_business_by_whatsapp = _fake_get_business_by_whatsapp
 db.rotate_api_key = _fake_rotate_api_key
 db.save_message = _fake_save_message
 db.get_history = _fake_get_history
+db.count_user_messages = _fake_count_user_messages
 db.bump_usage = _fake_bump_usage
 db.get_usage = _fake_get_usage
 db.get_month_usage = _fake_get_month_usage
