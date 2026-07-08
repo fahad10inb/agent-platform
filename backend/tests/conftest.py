@@ -21,7 +21,7 @@ from app import db  # noqa: E402
 
 # ── in-memory state, same shape the real tables hold ─────────────────────────
 _S = {"businesses": {}, "bookings": [], "memory": [], "leads": [], "messages": [],
-      "services": [], "listings": [], "usage": {}, "next_id": 1}
+      "services": [], "listings": [], "reminders": set(), "usage": {}, "next_id": 1}
 
 
 def _nid() -> int:
@@ -64,9 +64,35 @@ def _fake_save_booking(business_id, date, time, patient_name, phone="", reason="
     row = {
         "id": _nid(), "business_id": business_id, "date": date, "time": time,
         "patient_name": patient_name, "phone": phone, "reason": reason,
+        "status": "booked",
     }
     _S["bookings"].append(row)
     return row["id"]
+
+
+def _fake_future_bookings():
+    # The real query filters date >= today; the fake returns all rows and lets
+    # reminder_service._due_stage skip past ones (its None for hours_until<=0),
+    # so the test's frozen clock — not the wall clock — decides what's "future".
+    return [dict(r) for r in _S["bookings"]]
+
+
+def _fake_claim_reminder(business_id, booking_id, stage):
+    key = (booking_id, stage)
+    if key in _S["reminders"]:
+        return False
+    _S["reminders"].add(key)
+    return True
+
+
+def _fake_set_booking_status(business_id, patient_name, date, time, status):
+    name = (patient_name or "").strip().lower()
+    for r in _S["bookings"]:
+        if (r["business_id"] == business_id and r["patient_name"].lower() == name
+                and r["date"] == date and r["time"] == time):
+            r["status"] = status
+            return True
+    return False
 
 
 def _fake_list_bookings(business_id, limit=100, offset=0):
@@ -358,6 +384,9 @@ db.reschedule_booking = _fake_reschedule_booking
 db.save_caller_memory = _fake_save_caller_memory
 db.get_caller_memory = _fake_get_caller_memory
 db.replace_caller_memory = _fake_replace_caller_memory
+db.future_bookings = _fake_future_bookings
+db.claim_reminder = _fake_claim_reminder
+db.set_booking_status = _fake_set_booking_status
 db.save_lead = _fake_save_lead
 db.list_leads = _fake_list_leads
 db.find_recent_lead = _fake_find_recent_lead
@@ -395,6 +424,7 @@ def _clean_state():
     _S["messages"].clear()
     _S["services"].clear()
     _S["listings"].clear()
+    _S["reminders"].clear()
     _S["usage"].clear()
     # Reset each SEEDED business to its pristine seed values, so no per-test
     # mutation leaks into the next test — a changed name, a set notify_email, a

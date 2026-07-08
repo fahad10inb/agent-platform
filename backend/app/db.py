@@ -160,6 +160,9 @@ def init_db() -> None:
         # Booking now captures mobile number + reason for visit (UAE clinics take both).
         conn.execute("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS phone TEXT")
         conn.execute("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reason TEXT")
+        # Two-way reminders: confirmation state a caller sets by replying to the
+        # reminder ('booked' | 'confirmed'; a cancel deletes the row entirely).
+        conn.execute("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'booked'")
         # Conversations are DURABLE (were in-process RAM: every deploy wiped all
         # active chats mid-sentence, and it could never scale past one server).
         conn.execute(
@@ -205,6 +208,22 @@ def init_db() -> None:
                 price        TEXT DEFAULT '',
                 purpose      TEXT DEFAULT '',
                 notes        TEXT DEFAULT ''
+            )
+            """
+        )
+        # Reminder log — one row per (booking, stage) actually sent. The UNIQUE
+        # constraint is the send-once guarantee: the sweep INSERTs to CLAIM a
+        # reminder, so two overlapping sweeps (or a restart mid-pass) can never
+        # message the same caller twice for the same stage.
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS reminders (
+                id           SERIAL PRIMARY KEY,
+                business_id  TEXT NOT NULL,
+                booking_id   INTEGER NOT NULL,
+                stage        TEXT NOT NULL,
+                sent_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+                UNIQUE (booking_id, stage)
             )
             """
         )
@@ -496,6 +515,46 @@ def booked_times(business_id: str, date: str) -> list[str]:
             (business_id, date),
         ).fetchall()
     return [r["time"] for r in rows]
+
+
+def future_bookings() -> list[dict]:
+    """Every not-yet-past booking across ALL businesses — the reminder sweep's
+    input. `date` is ISO TEXT ('YYYY-MM-DD'), so a lexicographic >= today's ISO
+    date is a correct date filter; the small result set is refined (24h/2h) in
+    Python, where the '2:00 PM' times are easy to parse."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, business_id, date, time, patient_name, phone, reason, "
+            "COALESCE(status, 'booked') AS status FROM bookings "
+            "WHERE date >= (now() AT TIME ZONE 'Asia/Dubai')::date::text "
+            "ORDER BY date, time",
+        ).fetchall()
+    return rows
+
+
+def claim_reminder(business_id: str, booking_id: int, stage: str) -> bool:
+    """Atomically claim the right to send this (booking, stage) reminder. Returns
+    True to exactly one caller; the UNIQUE(booking_id, stage) constraint makes
+    every later attempt a no-op (returns False), so a reminder is sent once."""
+    with _connect() as conn:
+        row = conn.execute(
+            "INSERT INTO reminders (business_id, booking_id, stage) VALUES (%s, %s, %s) "
+            "ON CONFLICT (booking_id, stage) DO NOTHING RETURNING id",
+            (business_id, booking_id, stage),
+        ).fetchone()
+    return row is not None
+
+
+def set_booking_status(business_id: str, patient_name: str, date: str, time: str, status: str) -> bool:
+    """Mark a caller's booking confirmed (the two-way reminder reply). Scoped by
+    business_id + name + slot so it can only ever touch that caller's row."""
+    with _connect() as conn:
+        row = conn.execute(
+            "UPDATE bookings SET status = %s WHERE business_id = %s "
+            "AND lower(patient_name) = lower(%s) AND date = %s AND time = %s RETURNING id",
+            (status, business_id, patient_name, date, time),
+        ).fetchone()
+    return row is not None
 
 
 def bookings_with_times(business_id: str, date: str) -> list[dict]:

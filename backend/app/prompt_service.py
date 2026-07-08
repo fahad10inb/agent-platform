@@ -210,7 +210,10 @@ def build_system_prompt(business: dict) -> str:
         "without the tool call loses the customer. "
         "If a caller wants to change or cancel a visit, first call "
         "find_my_appointments with their name to see what they have, confirm which "
-        "one they mean, then call reschedule_appointment or cancel_appointment."
+        "one they mean, then call reschedule_appointment or cancel_appointment. "
+        "If a caller is replying to an appointment reminder — a short 'confirm', "
+        "'yes', 'see you then' — call confirm_appointment for that booking; if "
+        "they want a different time, reschedule it instead."
     )
 
     # 4b) ESCALATION — only worth prompting for when there's a number to give;

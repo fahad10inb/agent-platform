@@ -16,7 +16,7 @@ from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query, Requ
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
-from app import chat_core, db, digest_service, import_service, security
+from app import chat_core, db, digest_service, import_service, reminder_service, security
 from app.businesses import SEED_BUSINESSES
 from app.config import get_settings
 import secrets
@@ -70,13 +70,32 @@ async def _digest_scheduler() -> None:
                 logger.exception("weekly digest pass failed")
 
 
+async def _reminder_scheduler() -> None:
+    """Every 15 minutes, send any appointment reminders now due (24h + 2h out).
+
+    Same zero-infra pattern as the digest: an in-process loop, no cron/queue.
+    The 15-min cadence keeps the 2h reminder reasonably timely; the per-(booking,
+    stage) UNIQUE claim inside send_due_reminders makes overlapping sweeps and
+    restarts safe. Sleep FIRST so a boot doesn't fire before the app settles."""
+    while True:
+        await asyncio.sleep(900)
+        try:
+            await asyncio.to_thread(reminder_service.send_due_reminders)
+        except Exception:  # noqa: BLE001 — the loop must outlive any one bad pass
+            logger.exception("reminder pass failed")
+
+
 @contextlib.asynccontextmanager
 async def _lifespan(_app: FastAPI):
-    """Start the digest scheduler with the server, stop it with the server.
-    DIGEST_ENABLED=false switches the whole feature off from the environment."""
-    task = asyncio.create_task(_digest_scheduler()) if settings.digest_enabled else None
+    """Start the background schedulers with the server, stop them with it. Each
+    feature's *_ENABLED flag switches its loop off from the environment."""
+    tasks = []
+    if settings.digest_enabled:
+        tasks.append(asyncio.create_task(_digest_scheduler()))
+    if settings.reminders_enabled:
+        tasks.append(asyncio.create_task(_reminder_scheduler()))
     yield
-    if task:
+    for task in tasks:
         task.cancel()
 
 
@@ -514,6 +533,15 @@ def admin_send_digests(x_api_key: str | None = Header(default=None)):
     hammering this can't spam any owner."""
     security.check_admin(x_api_key)
     return {"sent": digest_service.send_weekly_digests()}
+
+
+@app.post("/admin/send-reminders")
+def admin_send_reminders(x_api_key: str | None = Header(default=None)):
+    """Run the appointment-reminder sweep RIGHT NOW (ADMIN ONLY) — the manual
+    lever for testing; the per-(booking, stage) claim still applies, so a second
+    run won't re-message anyone already reminded."""
+    security.check_admin(x_api_key)
+    return {"sent": reminder_service.send_due_reminders()}
 
 
 class ImportRequest(BaseModel):

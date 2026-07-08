@@ -413,10 +413,30 @@ def make_calendar_tools(business: dict) -> list:
             return {"status": "unavailable", "reason": f"{new_time} on {new_date} is already booked"}
         return {"status": "rescheduled" if ok else "not_found", "new_date": new_date, "new_time": new_time}
 
+    def confirm_appointment(patient_name: str, date: str, time: str) -> dict:
+        """Mark a caller's appointment as CONFIRMED — use when they reply to a
+        reminder to confirm they're coming (e.g. "confirm", "yes", "I'll be
+        there"). Low-stakes and non-destructive, so no phone verification is
+        needed. To CHANGE the time use reschedule_appointment instead.
+
+        Args:
+            patient_name: The caller's full name.
+            date: The appointment date (YYYY-MM-DD).
+            time: The appointment time.
+
+        Returns:
+            A dict with status "confirmed" or "not_found".
+        """
+        time = _norm_time(time)
+        ok = db.set_booking_status(business_id, patient_name, date, time, "confirmed")
+        print(f"  TOOL -> confirm_appointment({date!r}, {time!r}) [biz={business_id}] ok={ok}")
+        return {"status": "confirmed" if ok else "not_found", "date": date, "time": time}
+
     return [
         check_availability,
         book_appointment,
         find_my_appointments,
         cancel_appointment,
         reschedule_appointment,
+        confirm_appointment,
     ]

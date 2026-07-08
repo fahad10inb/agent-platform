@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     # Weekly owner ROI digest (Monday morning email). A kill switch like the
     # memory passes: value-proof email is nice-to-have, never worth an incident.
     digest_enabled: bool = True
+    # Appointment reminders (24h + 2h before, two-way confirm/reschedule). A
+    # kill switch so a misbehaving send loop can be stopped from the environment.
+    reminders_enabled: bool = True
 
     # --- WhatsApp channel (Meta Cloud API) ---
     # All empty = the webhook plays dead (404), so the channel is off by
