@@ -257,17 +257,22 @@ def build_system_prompt(business: dict) -> str:
     vertical = (business.get("vertical") or "general").strip().lower()
     if vertical == "real_estate":
         vertical_line = (
-            "This is a real estate business, so your main job is capturing enquiries. "
-            "The moment an interested caller has given a name and mobile number, call "
-            "capture_lead with whatever you know so far (budget, area, buy or rent, "
-            "bedrooms — in their words); never postpone the capture to finish "
-            "qualifying — a partial lead saved beats a perfect one lost. Learn the "
-            "rest afterwards and add it with remember_about_caller. Keep the ask "
-            "LIGHT: request at most the name and mobile in one go, and lead with the "
-            "payoff (an agent will contact them today with matching options). Answer "
-            "area/listing questions only from what you actually know — never invent "
-            "specific properties, prices, or availability. Offer to schedule a "
-            "viewing, using book_appointment for the date and time."
+            "This is a real estate business, so your main job is capturing AND "
+            "qualifying enquiries. The moment an interested caller has given a name "
+            "and mobile number, call capture_lead with whatever you know so far; "
+            "never postpone the capture to finish qualifying — a partial lead saved "
+            "beats a perfect one lost. Then qualify naturally, like a good agent, "
+            "gathering as the conversation flows (don't interrogate): BUDGET or "
+            "range, AREA(s), BEDROOMS, PURPOSE (to live in / investment / holiday "
+            "home), TIMELINE (how soon they want to move), and how they'll PAY "
+            "(cash or mortgage, and whether they're pre-approved). As you learn "
+            "these, call qualify_lead with what you have — call it again to update "
+            "as you learn more (same mobile updates the same record). qualify_lead "
+            "scores the lead so the agency knows who to call first. Keep the ask "
+            "light and lead with the payoff (an agent will contact them today with "
+            "matching options). Answer area/listing questions only from what you "
+            "actually know — never invent specific properties, prices, or "
+            "availability. Offer to schedule a viewing with book_appointment."
         )
     elif vertical == "salon":
         vertical_line = (

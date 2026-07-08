@@ -13,6 +13,7 @@ Differences from the SQLite version (the Postgres dialect):
   • created_at default is now() and the type is timestamptz
 """
 
+import json
 import logging
 
 import psycopg
@@ -150,6 +151,11 @@ def init_db() -> None:
         # Portal lead-intake: an unguessable token that routes forwarded portal
         # emails to this business (empty = intake not set up).
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS lead_ingest_token TEXT")
+        # CRM write-back: a webhook the agency gives us (a Bitrix24 inbound
+        # webhook URL, a Zapier/Make hook, or any endpoint) that qualified leads
+        # are POSTed to. crm_type tunes the payload shape (empty = no write-back).
+        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS crm_webhook_url TEXT")
+        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS crm_type TEXT")
         # Plan + monthly message quota (the founding plan's fair-use fuse and the
         # billing prerequisite). NULL quota = uncapped (the current founding
         # default). quota_notice_month = the 'YYYY-MM' we last warned the owner,
@@ -193,6 +199,23 @@ def init_db() -> None:
                 price        TEXT DEFAULT '',
                 category     TEXT DEFAULT '',
                 bookable     BOOLEAN DEFAULT TRUE
+            )
+            """
+        )
+        # Lead qualification — one structured, scored record per caller (the
+        # BANT/CHAMP fields the agent gathered + an A/B/C score). Unique per
+        # (business, phone) so re-qualifying the same caller updates in place.
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS qualifications (
+                id           SERIAL PRIMARY KEY,
+                business_id  TEXT NOT NULL,
+                phone        TEXT NOT NULL,
+                name         TEXT DEFAULT '',
+                fields       TEXT DEFAULT '{}',
+                score        TEXT DEFAULT '',
+                updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+                UNIQUE (business_id, phone)
             )
             """
         )
@@ -737,6 +760,32 @@ def get_business_by_whatsapp(phone_number_id: str) -> dict | None:
         ).fetchone()
 
 
+def upsert_qualification(business_id: str, phone: str, name: str, fields: dict, score: str) -> None:
+    """Store (or update) one caller's structured qualification + A/B/C score.
+    Unique on (business_id, phone) so re-qualifying overwrites, never dupes."""
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO qualifications (business_id, phone, name, fields, score) "
+            "VALUES (%s, %s, %s, %s, %s) "
+            "ON CONFLICT (business_id, phone) DO UPDATE SET "
+            "name = EXCLUDED.name, fields = EXCLUDED.fields, score = EXCLUDED.score, updated_at = now()",
+            (business_id, phone, name, json.dumps(fields), score),
+        )
+
+
+def get_qualification(business_id: str, phone: str) -> dict | None:
+    """One caller's stored qualification, fields decoded back to a dict."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT name, fields, score, updated_at FROM qualifications "
+            "WHERE business_id = %s AND phone = %s",
+            (business_id, phone),
+        ).fetchone()
+    if row:
+        row["fields"] = json.loads(row.get("fields") or "{}")
+    return row
+
+
 def get_business_by_ingest_token(token: str) -> dict | None:
     """Which tenant owns this lead-ingest token? Routes forwarded portal emails."""
     if not token:
@@ -822,6 +871,7 @@ _EDITABLE_BUSINESS_FIELDS = {
     "staff", "location", "policies",
     "min_notice_hours", "max_advance_days", "buffer_min",
     "notify_email", "transfer_number", "after_hours_mode", "whatsapp_phone_id",
+    "crm_webhook_url", "crm_type",
     # Admin-set only (no tenant-editable model exposes these) — the usage cap a
     # business must not raise on itself, plus its once-a-month notice marker.
     "plan", "monthly_msg_quota", "quota_notice_month",

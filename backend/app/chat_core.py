@@ -142,6 +142,11 @@ async def run_turn(
             + make_lead_tools(business_id)
             + make_handoff_tools(business)
         )
+        # Real-estate agencies also get structured qualification + scoring +
+        # CRM write-back — the core of the real-estate operator.
+        if (business.get("vertical") or "").strip().lower() == "real_estate":
+            from app.tools.qualify_tools import make_qualify_tools
+            tools = tools + make_qualify_tools(business)
         reply = await generate_reply(system_prompt, history, tools=tools)
 
         # Last-resort guard: llm_service already retries/recovers empty and

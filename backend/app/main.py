@@ -223,6 +223,11 @@ class BusinessSettings(BaseModel):
     # WhatsApp Cloud API phone_number_id owning this tenant's webhooks
     # (empty string disconnects the channel for this business).
     whatsapp_phone_id: str | None = Field(default=None, max_length=40)
+    # CRM write-back (real estate): the agency's own webhook that qualified leads
+    # are pushed to, and which CRM it is (tunes the payload). Tenant-editable —
+    # it's the agency's own integration.
+    crm_webhook_url: str | None = Field(default=None, max_length=500)
+    crm_type: str | None = Field(default=None, max_length=40)
     # NOTE: plan / monthly_msg_quota are deliberately NOT here — a tenant must
     # not be able to raise its own usage cap. They're set admin-only via
     # POST /admin/businesses/{id}/plan.
@@ -349,7 +354,7 @@ def manage_get(business_id: str, request: Request, x_api_key: str | None = Heade
               "staff", "location", "policies",
               "min_notice_hours", "max_advance_days", "buffer_min", "notify_email",
               "transfer_number", "after_hours_mode", "whatsapp_phone_id",
-              "lead_ingest_token"]
+              "lead_ingest_token", "crm_webhook_url", "crm_type"]
     out = {k: biz.get(k) for k in fields}
     # The structured service menu rides along so the dashboard can prefill its
     # "name | minutes | price" textarea from what's actually stored.
