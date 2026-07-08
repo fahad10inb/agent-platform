@@ -17,7 +17,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from app import (chat_core, db, digest_service, import_service, lead_intake,
-                 listing_import, reminder_service, security)
+                 listing_import, nurture_service, reminder_service, security)
 from app.businesses import SEED_BUSINESSES
 from app.config import get_settings
 import secrets
@@ -71,30 +71,35 @@ async def _digest_scheduler() -> None:
                 logger.exception("weekly digest pass failed")
 
 
-async def _reminder_scheduler() -> None:
-    """Every 15 minutes, send any appointment reminders now due (24h + 2h out).
-
-    Same zero-infra pattern as the digest: an in-process loop, no cron/queue.
-    The 15-min cadence keeps the 2h reminder reasonably timely; the per-(booking,
-    stage) UNIQUE claim inside send_due_reminders makes overlapping sweeps and
-    restarts safe. Sleep FIRST so a boot doesn't fire before the app settles."""
+async def _sweep_scheduler() -> None:
+    """Every 15 minutes, run the periodic outbound sweeps: appointment reminders
+    (24h + 2h out) and the lead-nurture cadence. Same zero-infra pattern as the
+    digest — an in-process loop, no cron/queue. Each sweep's per-row UNIQUE claim
+    makes overlapping runs and restarts safe; each is independently flag-gated.
+    Sleep FIRST so a boot doesn't fire before the app settles."""
     while True:
         await asyncio.sleep(900)
-        try:
-            await asyncio.to_thread(reminder_service.send_due_reminders)
-        except Exception:  # noqa: BLE001 — the loop must outlive any one bad pass
-            logger.exception("reminder pass failed")
+        if settings.reminders_enabled:
+            try:
+                await asyncio.to_thread(reminder_service.send_due_reminders)
+            except Exception:  # noqa: BLE001 — the loop must outlive any bad pass
+                logger.exception("reminder pass failed")
+        if settings.nurture_enabled:
+            try:
+                await asyncio.to_thread(nurture_service.send_due_nurtures)
+            except Exception:  # noqa: BLE001
+                logger.exception("nurture pass failed")
 
 
 @contextlib.asynccontextmanager
 async def _lifespan(_app: FastAPI):
     """Start the background schedulers with the server, stop them with it. Each
-    feature's *_ENABLED flag switches its loop off from the environment."""
+    feature's *_ENABLED flag switches its work off from the environment."""
     tasks = []
     if settings.digest_enabled:
         tasks.append(asyncio.create_task(_digest_scheduler()))
-    if settings.reminders_enabled:
-        tasks.append(asyncio.create_task(_reminder_scheduler()))
+    if settings.reminders_enabled or settings.nurture_enabled:
+        tasks.append(asyncio.create_task(_sweep_scheduler()))
     yield
     for task in tasks:
         task.cancel()
@@ -630,6 +635,15 @@ def admin_send_reminders(x_api_key: str | None = Header(default=None)):
     run won't re-message anyone already reminded."""
     security.check_admin(x_api_key)
     return {"sent": reminder_service.send_due_reminders()}
+
+
+@app.post("/admin/send-nurtures")
+def admin_send_nurtures(x_api_key: str | None = Header(default=None)):
+    """Run the lead-nurture sweep RIGHT NOW (ADMIN ONLY) — the manual test lever;
+    the per-(lead, stage) claim means a second run re-messages no one, and booked
+    leads are skipped."""
+    security.check_admin(x_api_key)
+    return {"sent": nurture_service.send_due_nurtures()}
 
 
 class ImportRequest(BaseModel):

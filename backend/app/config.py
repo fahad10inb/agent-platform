@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     # Appointment reminders (24h + 2h before, two-way confirm/reschedule). A
     # kill switch so a misbehaving send loop can be stopped from the environment.
     reminders_enabled: bool = True
+    # Lead nurture cadence (re-engage silent leads over days/weeks). Its own kill
+    # switch — outbound follow-up is the touchiest send to be able to stop fast.
+    nurture_enabled: bool = True
 
     # --- WhatsApp channel (Meta Cloud API) ---
     # All empty = the webhook plays dead (404), so the channel is off by

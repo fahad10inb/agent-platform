@@ -258,6 +258,21 @@ def init_db() -> None:
             )
             """
         )
+        # Nurture log — one row per (lead, stage) nurture touch actually sent.
+        # UNIQUE is the send-once guarantee, exactly like reminders: a lead is
+        # re-engaged at each cadence step at most once.
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS nurture_log (
+                id           SERIAL PRIMARY KEY,
+                business_id  TEXT NOT NULL,
+                phone        TEXT NOT NULL,
+                stage        TEXT NOT NULL,
+                sent_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+                UNIQUE (business_id, phone, stage)
+            )
+            """
+        )
         # Usage metering per business per day — the raw material for billing,
         # quotas and "your month at a glance". Without it even manual invoicing
         # has no data to stand on.
@@ -561,6 +576,47 @@ def future_bookings() -> list[dict]:
             "ORDER BY date, time",
         ).fetchall()
     return rows
+
+
+def leads_for_nurture(within_days: int = 45) -> list[dict]:
+    """Recent leads across ALL businesses — the nurture sweep's input. Bounded to
+    the last `within_days` so a launch doesn't blast ancient leads, and small
+    enough to refine (stage, conversion) in Python."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT business_id, name, phone, interest, created_at FROM leads "
+            "WHERE phone <> '' AND created_at > now() - make_interval(days => %s) "
+            "ORDER BY created_at",
+            (within_days,),
+        ).fetchall()
+    return rows
+
+
+def phone_has_booking(business_id: str, phone: str) -> bool:
+    """True if this phone already has a booking here — a converted lead we must
+    stop nurturing (messaging a booked client 'still looking?' is a bad look)."""
+    digits = "".join(ch for ch in (phone or "") if ch.isdigit())
+    if not digits:
+        return False
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM bookings WHERE business_id = %s "
+            "AND regexp_replace(COALESCE(phone,''), '\\D', '', 'g') = %s LIMIT 1",
+            (business_id, digits),
+        ).fetchone()
+    return row is not None
+
+
+def claim_nurture(business_id: str, phone: str, stage: str) -> bool:
+    """Atomically claim the right to send this (lead, stage) nurture touch — the
+    UNIQUE(business_id, phone, stage) row makes it send-once."""
+    with _connect() as conn:
+        row = conn.execute(
+            "INSERT INTO nurture_log (business_id, phone, stage) VALUES (%s, %s, %s) "
+            "ON CONFLICT (business_id, phone, stage) DO NOTHING RETURNING id",
+            (business_id, phone, stage),
+        ).fetchone()
+    return row is not None
 
 
 def claim_reminder(business_id: str, booking_id: int, stage: str) -> bool:

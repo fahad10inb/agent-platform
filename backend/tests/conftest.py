@@ -21,7 +21,8 @@ from app import db  # noqa: E402
 
 # ── in-memory state, same shape the real tables hold ─────────────────────────
 _S = {"businesses": {}, "bookings": [], "memory": [], "leads": [], "messages": [],
-      "services": [], "listings": [], "reminders": set(), "quals": {}, "usage": {}, "next_id": 1}
+      "services": [], "listings": [], "reminders": set(), "nurtures": set(),
+      "quals": {}, "usage": {}, "next_id": 1}
 
 
 def _nid() -> int:
@@ -307,8 +308,9 @@ def _fake_replace_services(business_id, services):
 
 
 def _fake_save_lead(business_id, name, phone, interest, notes=""):
-    row = {"id": _nid(), "business_id": business_id, "name": name,
-           "phone": phone, "interest": interest, "notes": notes}
+    row = {"id": _nid(), "business_id": business_id, "name": name, "phone": phone,
+           "interest": interest, "notes": notes,
+           "created_at": datetime.datetime.now(datetime.timezone.utc)}
     _S["leads"].append(row)
     return row["id"]
 
@@ -349,6 +351,24 @@ def _fake_get_business_by_whatsapp(phone_number_id):
         if b.get("whatsapp_phone_id") == phone_number_id:
             return dict(b)
     return None
+
+
+def _fake_leads_for_nurture(within_days=45):
+    return [dict(r) for r in _S["leads"] if (r.get("phone") or "")]
+
+
+def _fake_phone_has_booking(business_id, phone):
+    digits = _digits(phone)
+    return any(r["business_id"] == business_id and _digits(r.get("phone")) == digits
+               for r in _S["bookings"]) if digits else False
+
+
+def _fake_claim_nurture(business_id, phone, stage):
+    key = (business_id, phone, stage)
+    if key in _S["nurtures"]:
+        return False
+    _S["nurtures"].add(key)
+    return True
 
 
 def _fake_upsert_qualification(business_id, phone, name, fields, score):
@@ -425,6 +445,9 @@ db.get_business_by_ingest_token = _fake_get_business_by_ingest_token
 db.set_ingest_token = _fake_set_ingest_token
 db.upsert_qualification = _fake_upsert_qualification
 db.get_qualification = _fake_get_qualification
+db.leads_for_nurture = _fake_leads_for_nurture
+db.phone_has_booking = _fake_phone_has_booking
+db.claim_nurture = _fake_claim_nurture
 db.rotate_api_key = _fake_rotate_api_key
 db.save_message = _fake_save_message
 db.get_history = _fake_get_history
@@ -456,6 +479,7 @@ def _clean_state():
     _S["services"].clear()
     _S["listings"].clear()
     _S["reminders"].clear()
+    _S["nurtures"].clear()
     _S["quals"].clear()
     _S["usage"].clear()
     # Reset each SEEDED business to its pristine seed values, so no per-test
