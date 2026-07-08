@@ -86,24 +86,27 @@ async def receive_webhook(request: Request):
     if not settings.whatsapp_access_token:
         raise HTTPException(status_code=404, detail="Not found")
 
-    # Fail closed: a live channel with no app secret would accept ANY forged
-    # POST — an attacker who learns the phone_number_id could inject fake
-    # customer messages (burning Gemini tokens, poisoning caller memory, and
-    # relaying through the tenant's number). So the secret is mandatory whenever
-    # the channel is on; without it we refuse to process rather than trust
-    # unsigned traffic.
-    if not settings.whatsapp_app_secret:
-        logger.error("WHATSAPP_APP_SECRET is not set — refusing unsigned webhook traffic")
-        raise HTTPException(status_code=503, detail="WhatsApp channel misconfigured.")
-
     raw = await request.body()
-    expected = (
-        "sha256="
-        + hmac.new(settings.whatsapp_app_secret.encode(), raw, hashlib.sha256).hexdigest()
-    )
-    given = request.headers.get("X-Hub-Signature-256", "")
-    if not hmac.compare_digest(expected, given):
-        raise HTTPException(status_code=403, detail="Bad signature.")
+    # Signature verification (fail closed): a live channel with no app secret
+    # would accept ANY forged POST — an attacker who learns the phone_number_id
+    # could inject fake customer messages (burning Gemini tokens, poisoning
+    # caller memory, relaying through the tenant's number). WHATSAPP_SKIP_SIGNATURE
+    # is a DEBUG escape hatch (default off) for isolating a mis-pasted app secret
+    # during setup — turn it back off once the secret is confirmed correct.
+    if settings.whatsapp_skip_signature:
+        logger.warning("WHATSAPP_SKIP_SIGNATURE is ON — signature check bypassed (debug only)")
+    else:
+        if not settings.whatsapp_app_secret:
+            logger.error("WHATSAPP_APP_SECRET is not set — refusing unsigned webhook traffic")
+            raise HTTPException(status_code=503, detail="WhatsApp channel misconfigured.")
+        expected = (
+            "sha256="
+            + hmac.new(settings.whatsapp_app_secret.encode(), raw, hashlib.sha256).hexdigest()
+        )
+        given = request.headers.get("X-Hub-Signature-256", "")
+        if not hmac.compare_digest(expected, given):
+            logger.warning("whatsapp webhook rejected: signature mismatch (check WHATSAPP_APP_SECRET)")
+            raise HTTPException(status_code=403, detail="Bad signature.")
 
     try:
         payload = await request.json()

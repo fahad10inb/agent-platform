@@ -74,6 +74,9 @@ class Settings(BaseSettings):
     whatsapp_access_token: str = ""
     whatsapp_verify_token: str = ""
     whatsapp_app_secret: str = ""
+    # DEBUG escape hatch (default off): skip inbound webhook signature checks.
+    # Use only to isolate a mis-pasted app secret during setup; turn back off.
+    whatsapp_skip_signature: bool = False
 
     # --- Secrets ---
     gemini_api_key: str = ""
