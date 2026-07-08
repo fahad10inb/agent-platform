@@ -198,20 +198,21 @@ def _digits(s):
 
 
 def _fake_forget_caller(business_id, phone="", name=""):
+    from app.phone import to_wa_number
     counts = {}
-    digits = _digits(phone)
-    if digits:
+    key = to_wa_number(phone)
+    if key:
         before = len(_S["bookings"])
         _S["bookings"][:] = [r for r in _S["bookings"]
-                             if not (r["business_id"] == business_id and _digits(r.get("phone")) == digits)]
+                             if not (r["business_id"] == business_id and to_wa_number(r.get("phone")) == key)]
         counts["bookings"] = before - len(_S["bookings"])
         before = len(_S["leads"])
         _S["leads"][:] = [r for r in _S["leads"]
-                          if not (r["business_id"] == business_id and _digits(r.get("phone")) == digits)]
+                          if not (r["business_id"] == business_id and to_wa_number(r.get("phone")) == key)]
         counts["leads"] = before - len(_S["leads"])
         before = len(_S["messages"])
         _S["messages"][:] = [m for m in _S["messages"]
-                             if not (m["business_id"] == business_id and m["conversation_id"] == f"wa-{digits}")]
+                             if not (m["business_id"] == business_id and m["conversation_id"] == f"wa-{key}")]
         counts["whatsapp_messages"] = before - len(_S["messages"])
     if name:
         key = db._norm(name)
@@ -370,9 +371,10 @@ def _fake_leads_for_nurture(within_days=45):
 
 
 def _fake_phone_has_booking(business_id, phone):
-    digits = _digits(phone)
-    return any(r["business_id"] == business_id and _digits(r.get("phone")) == digits
-               for r in _S["bookings"]) if digits else False
+    from app.phone import to_wa_number
+    key = to_wa_number(phone)
+    return any(r["business_id"] == business_id and to_wa_number(r.get("phone")) == key
+               for r in _S["bookings"]) if key else False
 
 
 def _fake_claim_nurture(business_id, phone, stage):
@@ -410,11 +412,12 @@ def _fake_set_ingest_token(business_id, token):
 
 
 def _fake_find_recent_lead(business_id, phone, within_hours=48):
-    digits = "".join(ch for ch in phone if ch.isdigit())
-    if not digits:
+    from app.phone import to_wa_number
+    key = to_wa_number(phone)
+    if not key:
         return None
     for r in reversed(_S["leads"]):  # newest first, like the SQL ORDER BY id DESC
-        if r["business_id"] == business_id and "".join(ch for ch in r["phone"] if ch.isdigit()) == digits:
+        if r["business_id"] == business_id and to_wa_number(r["phone"]) == key:
             return dict(r)
     return None
 

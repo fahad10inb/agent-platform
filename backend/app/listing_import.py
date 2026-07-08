@@ -61,22 +61,30 @@ def parse_csv(text: str) -> list[dict]:
     return _normalize_many(list(reader))
 
 
+def _localname(tag) -> str:
+    """Drop an XML namespace prefix: '{http://ns}price' -> 'price'. Portal feeds
+    are usually namespaced, and without this every child tag canonicalizes to
+    'nsprice' and matches no alias, so the whole feed imports as 0 listings."""
+    return tag.rsplit("}", 1)[-1] if isinstance(tag, str) else tag
+
+
 def parse_xml(text: str) -> list[dict]:
     """A property XML feed → normalized listings. Generic: every element that
-    looks like a property/listing becomes a row from its child tags."""
+    looks like a property/listing becomes a row from its child tags. Namespaces
+    are stripped so namespaced feeds still map onto our field aliases."""
     root = ET.fromstring(text)
     rows = []
     for el in root.iter():
-        tag = _canon_key(el.tag)
-        if tag not in ("property", "listing", "item"):
+        if _canon_key(_localname(el.tag)) not in ("property", "listing", "item"):
             continue
         record = {}
         for child in el:
+            name = _localname(child.tag)
             if child.text and child.text.strip():
-                record[child.tag] = child.text.strip()
+                record[name] = child.text.strip()
             # portal feeds often nest the permit under an attribute or sub-tag
             for k, v in (child.attrib or {}).items():
-                record[f"{child.tag}_{k}"] = v
+                record[f"{name}_{k}"] = v
         if record:
             rows.append(record)
     return _normalize_many(rows)

@@ -534,27 +534,28 @@ def claim_quota_notice(business_id: str, month: str) -> bool:
 def forget_caller(business_id: str, phone: str = "", name: str = "") -> dict:
     """Erase one caller's data across every table (PDPL / GDPR erasure right).
 
-    Matches by phone digits where a phone column exists, and by name for
-    name-keyed rows (caller_memory) and web conversations. WhatsApp threads are
-    keyed `wa-<digits>`, so those message rows are matched by conversation_id.
+    Matches by the number's significant digits where a phone column exists, and
+    by name for name-keyed rows (caller_memory). WhatsApp threads are keyed
+    `wa-<E.164>`, so those message rows are matched on that exact conversation_id.
     Returns per-table delete counts."""
-    digits = "".join(ch for ch in phone if ch.isdigit())
+    from app.phone import to_wa_number
+    digits = _phone_digits(phone)
     counts: dict[str, int] = {}
     with _connect() as conn:
         if digits:
             counts["bookings"] = conn.execute(
                 "DELETE FROM bookings WHERE business_id = %s "
-                "AND regexp_replace(COALESCE(phone,''), '\\D', '', 'g') = %s",
+                "AND " + _PHONE_MATCH_SQL.format(col="phone"),
                 (business_id, digits),
             ).rowcount
             counts["leads"] = conn.execute(
                 "DELETE FROM leads WHERE business_id = %s "
-                "AND regexp_replace(COALESCE(phone,''), '\\D', '', 'g') = %s",
+                "AND " + _PHONE_MATCH_SQL.format(col="phone"),
                 (business_id, digits),
             ).rowcount
             counts["whatsapp_messages"] = conn.execute(
                 "DELETE FROM messages WHERE business_id = %s AND conversation_id = %s",
-                (business_id, f"wa-{digits}"),
+                (business_id, f"wa-{to_wa_number(phone)}"),
             ).rowcount
         if name:
             counts["caller_memory"] = conn.execute(
@@ -634,16 +635,27 @@ def leads_for_nurture(within_days: int = 45) -> list[dict]:
     return rows
 
 
+# Compare UAE numbers by their significant 9 digits so every format agrees —
+# '0501234567', '+971 50 123 4567' and '971501234567' all end '501234567'.
+# This is what keeps phone matching consistent with the wa-<E.164> thread ids
+# and the to_wa_number()-based opt-out keys (the review found these had drifted).
+_PHONE_MATCH_SQL = "RIGHT(regexp_replace(COALESCE({col}, ''), '\\D', '', 'g'), 9) = RIGHT(%s, 9)"
+
+
+def _phone_digits(phone: str) -> str:
+    return "".join(ch for ch in (phone or "") if ch.isdigit())
+
+
 def phone_has_booking(business_id: str, phone: str) -> bool:
     """True if this phone already has a booking here — a converted lead we must
     stop nurturing (messaging a booked client 'still looking?' is a bad look)."""
-    digits = "".join(ch for ch in (phone or "") if ch.isdigit())
+    digits = _phone_digits(phone)
     if not digits:
         return False
     with _connect() as conn:
         row = conn.execute(
             "SELECT 1 FROM bookings WHERE business_id = %s "
-            "AND regexp_replace(COALESCE(phone,''), '\\D', '', 'g') = %s LIMIT 1",
+            "AND " + _PHONE_MATCH_SQL.format(col="phone") + " LIMIT 1",
             (business_id, digits),
         ).fetchone()
     return row is not None
@@ -996,14 +1008,15 @@ def save_lead(business_id: str, name: str, phone: str, interest: str, notes: str
 
 def find_recent_lead(business_id: str, phone: str, within_hours: int = 48) -> dict | None:
     """The same caller re-captured within a couple of days is ONE lead, not two —
-    matched on the phone's digits so '050 123 4567' equals '0501234567'."""
-    digits = "".join(ch for ch in phone if ch.isdigit())
+    matched on the number's significant digits so '050 123 4567', '+971 50 123
+    4567' and '971501234567' are all the same person."""
+    digits = _phone_digits(phone)
     if not digits:
         return None
     with _connect() as conn:
         row = conn.execute(
             "SELECT id, name, phone, interest, notes FROM leads "
-            "WHERE business_id = %s AND regexp_replace(phone, '\\D', '', 'g') = %s "
+            "WHERE business_id = %s AND " + _PHONE_MATCH_SQL.format(col="phone") + " "
             "AND created_at > now() - make_interval(hours => %s) "
             "ORDER BY id DESC LIMIT 1",
             (business_id, digits, within_hours),

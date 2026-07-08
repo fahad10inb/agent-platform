@@ -76,12 +76,28 @@ def _due_stage(hours_until: float):
     return None
 
 
+def _day_word(date_str: str) -> str:
+    """'today' / 'tomorrow' / a weekday name, from the booking's ACTUAL date vs
+    today — NOT the reminder stage. The 24h stage fires for any booking 2–24h
+    out, so a same-day-afternoon booking must not be called 'tomorrow'."""
+    try:
+        d = datetime.date.fromisoformat((date_str or "").strip())
+    except ValueError:
+        return "soon"
+    delta = (d - _now().date()).days
+    if delta <= 0:
+        return "today"
+    if delta == 1:
+        return "tomorrow"
+    return d.strftime("%A")
+
+
 def compose_reminder(business: dict, booking: dict, stage: str) -> str:
     """The caller-facing reminder text. Warm, short, and actionable — names the
     business, the service, and when, then invites the two-way reply."""
     name = (booking.get("patient_name") or "there").split()[0]
     biz = business.get("name") or "your appointment"
-    when = "tomorrow" if stage == "24h" else "soon"
+    when = _day_word(booking.get("date"))
     reason = (booking.get("reason") or "").strip()
     what = f"your {reason}" if reason else "your appointment"
     return (
@@ -138,6 +154,9 @@ def _deliver(business: dict, booking: dict, stage: str) -> bool:
 
         try:
             asyncio.run(whatsapp._send_text(phone_id, to, text))
+            # Seed the reminder into the thread so a bare "CONFIRM" reply has
+            # context when it flows back through run_turn (same as nurture/outreach).
+            db.save_message(business["id"], f"wa-{to}", "model", text)
             logger.info("[reminders] whatsapp %s reminder -> booking %s", stage, booking["id"])
             return True
         except Exception:  # noqa: BLE001 — fall through to the logged path

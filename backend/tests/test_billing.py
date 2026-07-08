@@ -90,7 +90,9 @@ def test_tenant_cannot_raise_its_own_quota(client):
 def test_forget_caller_erases_every_table(client):
     db.save_booking("bright-smile", "2026-09-01", "9:00 AM", "Sara", "0501234567", "cleaning")
     db.save_lead("bright-smile", "Sara", "0501234567", "whitening quote")
-    db.save_message("bright-smile", "wa-0501234567", "user", "hi")
+    # Real WhatsApp threads are keyed wa-<E.164>, and erasure must match it even
+    # when the admin types a different format ("050 123 4567").
+    db.save_message("bright-smile", "wa-971501234567", "user", "hi")
     db.save_caller_memory("bright-smile", "Sara", "prefers mornings")
 
     r = client.post("/admin/forget-caller",

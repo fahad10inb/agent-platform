@@ -123,7 +123,10 @@ def build_system_prompt(business: dict) -> str:
                 parts.append(f"— for {r['purpose']}")
             parts.append(f"[permit {r['permit_number']}]" if permitted
                          else "[NO PERMIT — price withheld]")
-            if (r.get("notes") or "").strip():
+            # Notes come from the source description/remarks, which often carry a
+            # price ("asking 1.6M, sea view") — so for an unpermitted listing they
+            # are withheld too, not just the structured price column.
+            if permitted and (r.get("notes") or "").strip():
                 parts.append(f"({r['notes']})")
             return " ".join(parts)
 

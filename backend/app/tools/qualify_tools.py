@@ -6,13 +6,30 @@ stored, the owner's Leads tab is enriched so they see it, and it's pushed to the
 agency's CRM.
 """
 
+import re
+
 from app import crm_service, db
 
-# What "urgent" and "ready to pay" look like in a caller's own words.
-_URGENT = ("asap", "urgent", "immediately", "this week", "this month", "ready to",
-           "right away", "soon", "now", "next week", "moving")
-_PAY_READY = ("cash", "pre-approved", "preapproved", "pre approved", "approved",
-              "prequalified", "pre-qualified", "secured", "mortgage approved")
+# What "urgent" and "ready to pay" look like in a caller's own words. Ambiguous
+# bare words are deliberately left OUT ("soon"/"now"/"moving"/"approved") — they
+# match negations and unrelated words ("not moving anytime soon", "I know",
+# "not approved") and over-scored genuine C leads. _matches also guards negation.
+_URGENT = ("asap", "as soon as possible", "urgent", "immediately", "this week",
+           "this month", "next week", "right away", "ready to")
+_PAY_READY = ("cash", "pre-approved", "preapproved", "pre approved", "prequalified",
+              "pre-qualified", "mortgage approved")
+_NEG_BEFORE = re.compile(r"(?:\bnot\b|\bno\b|\bnever\b|n't)\W*$")
+
+
+def _matches(text: str, phrases: tuple) -> bool:
+    """True if any phrase appears as a whole word/phrase and is NOT negated just
+    before it — so 'cash' counts but 'not pre-approved' and 'no rush' don't."""
+    t = (text or "").lower()
+    for p in phrases:
+        for m in re.finditer(rf"(?<![a-z]){re.escape(p)}(?![a-z])", t):
+            if not _NEG_BEFORE.search(t[max(0, m.start() - 12):m.start()]):
+                return True
+    return False
 
 
 def score_lead(fields: dict) -> tuple[str, str]:
@@ -24,8 +41,8 @@ def score_lead(fields: dict) -> tuple[str, str]:
     area = bool((fields.get("area") or "").strip())
     timeline = (fields.get("timeline") or "").lower()
     pay = (str(fields.get("pay_method") or "") + " " + str(fields.get("pre_approval") or "")).lower()
-    urgent = any(k in timeline for k in _URGENT)
-    pay_ready = any(k in pay for k in _PAY_READY)
+    urgent = _matches(timeline, _URGENT)
+    pay_ready = _matches(pay, _PAY_READY)
 
     points = (1 if budget else 0) + (1 if area else 0) + (2 if urgent else 0) + (2 if pay_ready else 0)
     if points >= 4:
