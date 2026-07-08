@@ -107,6 +107,8 @@ def send_due_reminders() -> int:
             stage = _due_stage((dt - now).total_seconds() / 3600)
             if stage is None:
                 continue
+            if db.is_opted_out(booking["business_id"], booking.get("phone") or ""):
+                continue  # PDPL do-not-contact — respect it even for reminders
             # Claim BEFORE sending: the UNIQUE row is what guarantees once-only.
             if not db.claim_reminder(booking["business_id"], booking["id"], stage):
                 continue

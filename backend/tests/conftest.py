@@ -22,7 +22,7 @@ from app import db  # noqa: E402
 # ── in-memory state, same shape the real tables hold ─────────────────────────
 _S = {"businesses": {}, "bookings": [], "memory": [], "leads": [], "messages": [],
       "services": [], "listings": [], "reminders": set(), "nurtures": set(),
-      "quals": {}, "usage": {}, "next_id": 1}
+      "opt_outs": set(), "quals": {}, "usage": {}, "next_id": 1}
 
 
 def _nid() -> int:
@@ -353,6 +353,18 @@ def _fake_get_business_by_whatsapp(phone_number_id):
     return None
 
 
+def _fake_set_opt_out(business_id, phone):
+    from app.phone import to_wa_number
+    key = to_wa_number(phone)
+    if key:
+        _S["opt_outs"].add((business_id, key))
+
+
+def _fake_is_opted_out(business_id, phone):
+    from app.phone import to_wa_number
+    return (business_id, to_wa_number(phone)) in _S["opt_outs"]
+
+
 def _fake_leads_for_nurture(within_days=45):
     return [dict(r) for r in _S["leads"] if (r.get("phone") or "")]
 
@@ -448,6 +460,8 @@ db.get_qualification = _fake_get_qualification
 db.leads_for_nurture = _fake_leads_for_nurture
 db.phone_has_booking = _fake_phone_has_booking
 db.claim_nurture = _fake_claim_nurture
+db.set_opt_out = _fake_set_opt_out
+db.is_opted_out = _fake_is_opted_out
 db.rotate_api_key = _fake_rotate_api_key
 db.save_message = _fake_save_message
 db.get_history = _fake_get_history
@@ -480,6 +494,7 @@ def _clean_state():
     _S["listings"].clear()
     _S["reminders"].clear()
     _S["nurtures"].clear()
+    _S["opt_outs"].clear()
     _S["quals"].clear()
     _S["usage"].clear()
     # Reset each SEEDED business to its pristine seed values, so no per-test

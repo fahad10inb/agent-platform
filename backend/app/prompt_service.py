@@ -107,28 +107,38 @@ def build_system_prompt(business: dict) -> str:
     # exists; matching stays honest by construction.
     listing_rows = db.list_listings(business["id"]) if business.get("id") else []
     if listing_rows:
-        sheet = "; ".join(
-            f"{r['title']}"
-            + (f" — {r['area']}" if (r.get("area") or "").strip() else "")
-            + (f" — {r['bedrooms']} BR" if (r.get("bedrooms") or "").strip() else "")
-            + (f" — {r['price']}" if (r.get("price") or "").strip() else "")
-            + (f" — for {r['purpose']}" if (r.get("purpose") or "").strip() else "")
-            + (f" [permit {r['permit_number']}]" if (r.get("permit_number") or "").strip()
-               else " [NO PERMIT]")
-            + (f" ({r['notes']})" if (r.get("notes") or "").strip() else "")
-            for r in listing_rows[:60]
-        )
+        # HARD permit gate: an unpermitted listing's PRICE is withheld from the
+        # model entirely — it cannot advertise a number it was never given. Only
+        # permitted listings carry their price (and purpose) into the prompt.
+        def _row(r):
+            permitted = bool((r.get("permit_number") or "").strip())
+            parts = [r["title"]]
+            if (r.get("area") or "").strip():
+                parts.append(f"— {r['area']}")
+            if (r.get("bedrooms") or "").strip():
+                parts.append(f"— {r['bedrooms']} BR")
+            if permitted and (r.get("price") or "").strip():
+                parts.append(f"— {r['price']}")
+            if permitted and (r.get("purpose") or "").strip():
+                parts.append(f"— for {r['purpose']}")
+            parts.append(f"[permit {r['permit_number']}]" if permitted
+                         else "[NO PERMIT — price withheld]")
+            if (r.get("notes") or "").strip():
+                parts.append(f"({r['notes']})")
+            return " ".join(parts)
+
+        sheet = "; ".join(_row(r) for r in listing_rows[:60])
         facts.append(
-            f"CURRENT LISTINGS (title — area — bedrooms — price — purpose — permit): {sheet}. "
+            f"CURRENT LISTINGS: {sheet}. "
             "These are the ONLY properties that exist — never mention or invent any other. "
             "COMPLIANCE: in the UAE it is illegal to advertise a property without a valid "
             "advertising permit. You may share a specific property's price and details ONLY "
-            "when it shows a permit number; for any listing marked [NO PERMIT], do NOT quote "
-            "its price or advertise it — instead say an agent will confirm that property's "
-            "details, and offer the permitted matches. When a caller's budget, area or needs "
-            "fit some permitted listings, offer the best 2-3 by name with their real prices "
-            "and offer a viewing; if nothing fits, say so honestly and capture their lead. "
-            "Frame availability as 'currently listed' — it can change."
+            "when it shows a permit number; for any listing marked [NO PERMIT], you have not "
+            "been given its price — do NOT state or guess one, just say an agent will confirm "
+            "that property's details, and offer the permitted matches instead. When a caller's "
+            "budget, area or needs fit some permitted listings, offer the best 2-3 by name with "
+            "their real prices and offer a viewing; if nothing fits, say so honestly and "
+            "capture their lead. Frame availability as 'currently listed' — it can change."
         )
     facts_block = " ".join(facts)
 
@@ -278,7 +288,18 @@ def build_system_prompt(business: dict) -> str:
             "light and lead with the payoff (an agent will contact them today with "
             "matching options). Answer area/listing questions only from what you "
             "actually know — never invent specific properties, prices, or "
-            "availability. Offer to schedule a viewing with book_appointment."
+            "availability. Offer to schedule a viewing with book_appointment. "
+            "COMPLIANCE — never cross these lines (they require a licensed agent): "
+            "do NOT negotiate, agree a price, or commit to any terms beyond a "
+            "permitted listing's listed price; do NOT give legal, contract, or tax "
+            "advice; do NOT speculate on payment plans, rental yield, ROI, escrow, "
+            "or handover dates; and NEVER tell a caller they 'qualify' for a "
+            "specific mortgage amount — you may explain the general rules (e.g. "
+            "residents can borrow up to 80% of value) and refer them to a mortgage "
+            "advisor. For anything involving making an offer, negotiating, signing "
+            "paperwork, or a legal or financial commitment, tell the caller a "
+            "licensed agent will handle that and use request_human. If a caller "
+            "asks to stop being contacted or to be removed, call stop_contact."
         )
     elif vertical == "salon":
         vertical_line = (

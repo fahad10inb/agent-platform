@@ -85,6 +85,8 @@ def send_due_nurtures() -> int:
             business_id, phone = lead["business_id"], lead.get("phone") or ""
             if not phone or db.phone_has_booking(business_id, phone):
                 continue  # converted (or unreachable) — don't nurture
+            if db.is_opted_out(business_id, phone):
+                continue  # PDPL do-not-contact — respect it
             if not db.claim_nurture(business_id, phone, stage):
                 continue
             business = db.get_business(business_id)

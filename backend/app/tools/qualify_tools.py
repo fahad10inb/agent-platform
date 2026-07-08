@@ -105,4 +105,19 @@ def make_qualify_tools(business: dict) -> list:
         })
         return {"status": "qualified", "score": score, "reason": reason}
 
-    return [qualify_lead]
+    def stop_contact(phone: str) -> dict:
+        """Record a caller's request to stop being contacted (PDPL do-not-contact).
+        Call this whenever a caller asks to stop messages, unsubscribe, opt out,
+        or be removed — after this, no reminders or follow-ups go to that number.
+
+        Args:
+            phone: The caller's mobile number.
+
+        Returns:
+            A confirmation dict.
+        """
+        print(f"  TOOL -> stop_contact [biz={business_id}]")
+        db.set_opt_out(business_id, phone)
+        return {"status": "opted_out"}
+
+    return [qualify_lead, stop_contact]

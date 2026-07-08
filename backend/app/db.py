@@ -258,6 +258,18 @@ def init_db() -> None:
             )
             """
         )
+        # Opt-outs (PDPL): a caller who asked not to be contacted. Every outbound
+        # sweep checks this before sending — the erasure/do-not-contact right.
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS opt_outs (
+                business_id  TEXT NOT NULL,
+                phone        TEXT NOT NULL,
+                created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+                PRIMARY KEY (business_id, phone)
+            )
+            """
+        )
         # Nurture log — one row per (lead, stage) nurture touch actually sent.
         # UNIQUE is the send-once guarantee, exactly like reminders: a lead is
         # re-engaged at each cadence step at most once.
@@ -576,6 +588,36 @@ def future_bookings() -> list[dict]:
             "ORDER BY date, time",
         ).fetchall()
     return rows
+
+
+def set_opt_out(business_id: str, phone: str) -> None:
+    """Record a do-not-contact request (PDPL). Keyed on the E.164 form so any
+    format the caller gave ('0501234567', '+971 50 123 4567') stops all their
+    future outbound. Idempotent."""
+    from app.phone import to_wa_number
+    key = to_wa_number(phone)
+    if not key:
+        return
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO opt_outs (business_id, phone) VALUES (%s, %s) "
+            "ON CONFLICT (business_id, phone) DO NOTHING",
+            (business_id, key),
+        )
+
+
+def is_opted_out(business_id: str, phone: str) -> bool:
+    """True if this caller asked not to be contacted — every sweep checks it."""
+    from app.phone import to_wa_number
+    key = to_wa_number(phone)
+    if not key:
+        return False
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM opt_outs WHERE business_id = %s AND phone = %s",
+            (business_id, key),
+        ).fetchone()
+    return row is not None
 
 
 def leads_for_nurture(within_days: int = 45) -> list[dict]:
