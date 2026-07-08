@@ -113,16 +113,22 @@ def build_system_prompt(business: dict) -> str:
             + (f" — {r['bedrooms']} BR" if (r.get("bedrooms") or "").strip() else "")
             + (f" — {r['price']}" if (r.get("price") or "").strip() else "")
             + (f" — for {r['purpose']}" if (r.get("purpose") or "").strip() else "")
+            + (f" [permit {r['permit_number']}]" if (r.get("permit_number") or "").strip()
+               else " [NO PERMIT]")
             + (f" ({r['notes']})" if (r.get("notes") or "").strip() else "")
             for r in listing_rows[:60]
         )
         facts.append(
-            f"CURRENT LISTINGS (title — area — bedrooms — price — purpose): {sheet}. "
+            f"CURRENT LISTINGS (title — area — bedrooms — price — purpose — permit): {sheet}. "
             "These are the ONLY properties that exist — never mention or invent any other. "
-            "When a caller's budget, area or needs fit some, offer the best 2-3 by name with "
-            "their real prices and offer a viewing; if nothing fits, say so honestly and "
-            "capture their lead so an agent can search further. Frame availability as "
-            "'currently listed' — it can change."
+            "COMPLIANCE: in the UAE it is illegal to advertise a property without a valid "
+            "advertising permit. You may share a specific property's price and details ONLY "
+            "when it shows a permit number; for any listing marked [NO PERMIT], do NOT quote "
+            "its price or advertise it — instead say an agent will confirm that property's "
+            "details, and offer the permitted matches. When a caller's budget, area or needs "
+            "fit some permitted listings, offer the best 2-3 by name with their real prices "
+            "and offer a viewing; if nothing fits, say so honestly and capture their lead. "
+            "Frame availability as 'currently listed' — it can change."
         )
     facts_block = " ".join(facts)
 

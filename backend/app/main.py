@@ -16,7 +16,8 @@ from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query, Requ
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
-from app import chat_core, db, digest_service, import_service, lead_intake, reminder_service, security
+from app import (chat_core, db, digest_service, import_service, lead_intake,
+                 listing_import, reminder_service, security)
 from app.businesses import SEED_BUSINESSES
 from app.config import get_settings
 import secrets
@@ -427,6 +428,8 @@ class ListingRow(BaseModel):
     price: str = Field(default="", max_length=40)
     purpose: str = Field(default="", max_length=20)  # sale / rent / their words
     notes: str = Field(default="", max_length=200)
+    permit_number: str = Field(default="", max_length=60)  # Trakheesi / Madhmoun
+    reference: str = Field(default="", max_length=60)
 
 
 class ListingsPayload(BaseModel):
@@ -450,6 +453,44 @@ def manage_listings(
         raise HTTPException(status_code=404, detail="Unknown business.")
     db.replace_listings(business_id, [r.model_dump() for r in payload.listings])
     return {"status": "saved", "business_id": business_id, "count": len(payload.listings)}
+
+
+class ListingsImport(BaseModel):
+    """Import listings from what the agency already has: pasted CSV/XML text, a
+    feed URL to fetch (Google Sheet CSV, portal XML), or a Reelly API key."""
+
+    format: str = Field(pattern=r"^(csv|xml|reelly)$")
+    data: str = Field(default="", max_length=1_000_000)
+    url: str = Field(default="", max_length=500)
+    api_key: str = Field(default="", max_length=200)
+
+
+@app.post("/manage/{business_id}/listings/import")
+def manage_listings_import(
+    business_id: str,
+    payload: ListingsImport,
+    request: Request,
+    x_api_key: str | None = Header(default=None),
+):
+    """Import + normalize a listings sheet from CSV / XML feed / Reelly, keyed on
+    the Trakheesi permit number, and REPLACE the current sheet. Same auth as the
+    rest of /manage. A friendly 422 when the source has nothing usable."""
+    security.rate_limit(request, limit=10, window=60, bucket="import")
+    security.check_business_access(business_id, x_api_key)
+    if db.get_business(business_id) is None:
+        raise HTTPException(status_code=404, detail="Unknown business.")
+    try:
+        rows = listing_import.import_listings(
+            payload.format, data=payload.data, url=payload.url, api_key=payload.api_key
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    except Exception as e:  # SSRF guard / fetch / parse failure
+        logger.warning("listings import failed for %s: %s", business_id, e)
+        raise HTTPException(status_code=422, detail="Couldn't read that listings source.") from e
+    db.replace_listings(business_id, rows)
+    permitted = sum(1 for r in rows if r.get("permit_number"))
+    return {"status": "imported", "count": len(rows), "with_permit": permitted}
 
 
 @app.post("/admin/businesses")

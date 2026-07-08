@@ -468,20 +468,21 @@ DASHBOARD_HTML = """<!doctype html>
   function serviceRowsText(rows){
     return (rows||[]).map(s=>s.name+" | "+s.duration_min+(s.price?" | "+s.price:"")).join("\\n");
   }
-  // Listings lines: title | area | bedrooms | price | sale or rent | notes.
-  // Only the title is required — owners fill what they have.
+  // Listings lines: title | area | bedrooms | price | sale or rent | permit | notes.
+  // Only the title is required — owners fill what they have. The permit is the
+  // Trakheesi/Madhmoun number; a listing without one can't be advertised.
   function parseListingRows(text){
     const rows=[];
     for(const line of String(text||"").split("\\n")){
       const t=line.trim(); if(!t) continue;
       const p=t.split("|").map(x=>x.trim());
       if(!p[0]) return null;
-      rows.push({title:p[0], area:p[1]||"", bedrooms:p[2]||"", price:p[3]||"", purpose:p[4]||"", notes:p[5]||""});
+      rows.push({title:p[0], area:p[1]||"", bedrooms:p[2]||"", price:p[3]||"", purpose:p[4]||"", permit_number:p[5]||"", notes:p[6]||""});
     }
     return rows;
   }
   function listingRowsText(rows){
-    return (rows||[]).map(l=>[l.title,l.area,l.bedrooms,l.price,l.purpose,l.notes].join(" | ")
+    return (rows||[]).map(l=>[l.title,l.area,l.bedrooms,l.price,l.purpose,l.permit_number,l.notes].join(" | ")
       .replace(/( \\|)+ *$/,"")).join("\\n");
   }
 
@@ -593,8 +594,9 @@ DASHBOARD_HTML = """<!doctype html>
 
         <div class="fgroup">
           <div class="fghead"><span class="fgtitle">Property listings <span class="soft">(real estate)</span></span></div>
-          <label for="s_listings_rows">Live listings <span class="soft">(one per line: title | area | bedrooms | price | sale or rent | notes)</span></label>
-          <textarea id="s_listings_rows" rows="4" placeholder="2BR apartment, Bloom Towers | JVC | 2 | 1.2M | sale | ready, near park&#10;1BR, Marina Gate | Dubai Marina | 1 | 95k/yr | rent">${esc(lstText)}</textarea>
+          <label for="s_listings_rows">Live listings <span class="soft">(one per line: title | area | bedrooms | price | sale or rent | permit | notes)</span></label>
+          <textarea id="s_listings_rows" rows="4" placeholder="2BR apartment, Bloom Towers | JVC | 2 | 1.2M | sale | 7129XYZ | ready, near park&#10;1BR, Marina Gate | Dubai Marina | 1 | 95k/yr | rent | |">${esc(lstText)}</textarea>
+          <p class="note">The permit is the Trakheesi/Madhmoun number — a listing without one can't be legally advertised, so the agent won't quote its price. You can also bulk-import from a CSV, XML feed, or Reelly via the API.</p>
           <p class="note">The agent shortlists ONLY from these — a caller's budget and area get matched to real properties, never invented ones. Update it whenever your inventory changes.</p>
         </div>
 

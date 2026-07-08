@@ -329,7 +329,8 @@ def _fake_replace_listings(business_id, listings):
             "id": _nid(), "business_id": business_id, "title": row["title"],
             "area": row.get("area", ""), "bedrooms": row.get("bedrooms", ""),
             "price": row.get("price", ""), "purpose": row.get("purpose", ""),
-            "notes": row.get("notes", ""),
+            "notes": row.get("notes", ""), "permit_number": row.get("permit_number", ""),
+            "reference": row.get("reference", ""),
         })
 
 

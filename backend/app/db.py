@@ -237,6 +237,11 @@ def init_db() -> None:
             )
             """
         )
+        # Trakheesi/Madhmoun advertising permit + the agency's own reference —
+        # the permit is the compliance key (a listing may only be advertised
+        # WITH a valid one) and doubles as the dedup key across import sources.
+        conn.execute("ALTER TABLE listings ADD COLUMN IF NOT EXISTS permit_number TEXT DEFAULT ''")
+        conn.execute("ALTER TABLE listings ADD COLUMN IF NOT EXISTS reference TEXT DEFAULT ''")
         # Reminder log — one row per (booking, stage) actually sent. The UNIQUE
         # constraint is the send-once guarantee: the sweep INSERTs to CLAIM a
         # reminder, so two overlapping sweeps (or a restart mid-pass) can never
@@ -715,8 +720,8 @@ def list_listings(business_id: str) -> list[dict]:
     """One business's live property listings, in the order the owner wrote them."""
     with _connect() as conn:
         rows = conn.execute(
-            "SELECT id, title, area, bedrooms, price, purpose, notes FROM listings "
-            "WHERE business_id = %s ORDER BY id",
+            "SELECT id, title, area, bedrooms, price, purpose, notes, permit_number, reference "
+            "FROM listings WHERE business_id = %s ORDER BY id",
             (business_id,),
         ).fetchall()
     return rows
@@ -729,10 +734,12 @@ def replace_listings(business_id: str, listings: list[dict]) -> None:
         conn.execute("DELETE FROM listings WHERE business_id = %s", (business_id,))
         for row in listings:
             conn.execute(
-                "INSERT INTO listings (business_id, title, area, bedrooms, price, purpose, notes) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                "INSERT INTO listings "
+                "(business_id, title, area, bedrooms, price, purpose, notes, permit_number, reference) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
                 (business_id, row["title"], row.get("area", ""), row.get("bedrooms", ""),
-                 row.get("price", ""), row.get("purpose", ""), row.get("notes", "")),
+                 row.get("price", ""), row.get("purpose", ""), row.get("notes", ""),
+                 row.get("permit_number", ""), row.get("reference", "")),
             )
 
 
