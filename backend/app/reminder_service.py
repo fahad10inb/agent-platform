@@ -20,6 +20,7 @@ import zoneinfo
 
 from app import db
 from app.config import get_settings
+from app.phone import to_wa_number as _to_wa_number
 
 logger = logging.getLogger("agent-platform.reminders")
 
@@ -119,16 +120,6 @@ def send_due_reminders() -> int:
     if sent:
         logger.info("[reminders] sent %d reminder(s)", sent)
     return sent
-
-
-def _to_wa_number(phone: str) -> str:
-    """UAE mobile to WhatsApp E.164 digits: '0501234567' -> '971501234567'."""
-    digits = "".join(ch for ch in (phone or "") if ch.isdigit())
-    if digits.startswith("00"):
-        digits = digits[2:]
-    if digits.startswith("0"):
-        digits = "971" + digits[1:]
-    return digits
 
 
 def _deliver(business: dict, booking: dict, stage: str) -> bool:

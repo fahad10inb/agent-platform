@@ -16,7 +16,7 @@ from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query, Requ
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
-from app import chat_core, db, digest_service, import_service, reminder_service, security
+from app import chat_core, db, digest_service, import_service, lead_intake, reminder_service, security
 from app.businesses import SEED_BUSINESSES
 from app.config import get_settings
 import secrets
@@ -348,7 +348,8 @@ def manage_get(business_id: str, request: Request, x_api_key: str | None = Heade
               "open_hour", "close_hour", "slot_minutes", "vertical",
               "staff", "location", "policies",
               "min_notice_hours", "max_advance_days", "buffer_min", "notify_email",
-              "transfer_number", "after_hours_mode", "whatsapp_phone_id"]
+              "transfer_number", "after_hours_mode", "whatsapp_phone_id",
+              "lead_ingest_token"]
     out = {k: biz.get(k) for k in fields}
     # The structured service menu rides along so the dashboard can prefill its
     # "name | minutes | price" textarea from what's actually stored.
@@ -533,6 +534,47 @@ def admin_send_digests(x_api_key: str | None = Header(default=None)):
     hammering this can't spam any owner."""
     security.check_admin(x_api_key)
     return {"sent": digest_service.send_weekly_digests()}
+
+
+@app.post("/admin/businesses/{business_id}/ingest-token")
+def admin_ingest_token(business_id: str, x_api_key: str | None = Header(default=None)):
+    """Generate (or rotate) a business's portal lead-ingest token (ADMIN ONLY).
+
+    The agency forwards its Bayut / Property Finder / Dubizzle lead emails to
+    leads+<token>@<our domain>; the email provider POSTs them to /leads/ingest
+    with this token, which routes them to this business. Returns the token."""
+    security.check_admin(x_api_key)
+    token = "lead_" + secrets.token_urlsafe(18)
+    if not db.set_ingest_token(business_id, token):
+        raise HTTPException(status_code=404, detail="Unknown business.")
+    return {"status": "set", "id": business_id, "lead_ingest_token": token}
+
+
+class PortalLead(BaseModel):
+    """A forwarded portal lead email. `token` routes it to a business; the rest
+    is whatever the email provider's inbound-parse webhook gives us."""
+
+    token: str = Field(min_length=8, max_length=80)
+    subject: str = Field(default="", max_length=500)
+    body: str = Field(default="", max_length=20000)
+    from_email: str = Field(default="", max_length=200)
+
+
+@app.post("/leads/ingest")
+def leads_ingest(payload: PortalLead, request: Request):
+    """Inbound portal lead (from the email provider's parse webhook). Public but
+    token-gated — an unknown token 404s exactly like a wrong one, so the endpoint
+    can't be used to enumerate businesses. Rate-limited against abuse."""
+    security.rate_limit(request, limit=60, window=60, bucket="ingest")
+    business = db.get_business_by_ingest_token(payload.token.strip())
+    if business is None:
+        raise HTTPException(status_code=404, detail="Not found.")
+    parsed = lead_intake.parse_portal_lead(payload.subject, payload.body, payload.from_email)
+    if parsed is None:
+        # A forward with no usable contact isn't a lead — accept it quietly so the
+        # provider doesn't retry, but do nothing.
+        return {"status": "ignored", "reason": "no contact details found"}
+    return lead_intake.ingest_lead(business, parsed)
 
 
 @app.post("/admin/send-reminders")

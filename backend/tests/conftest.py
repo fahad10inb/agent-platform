@@ -350,6 +350,23 @@ def _fake_get_business_by_whatsapp(phone_number_id):
     return None
 
 
+def _fake_get_business_by_ingest_token(token):
+    if not token:
+        return None
+    for b in _S["businesses"].values():
+        if b.get("lead_ingest_token") == token:
+            return dict(b)
+    return None
+
+
+def _fake_set_ingest_token(business_id, token):
+    b = _S["businesses"].get(business_id)
+    if b is None:
+        return False
+    b["lead_ingest_token"] = token
+    return True
+
+
 def _fake_find_recent_lead(business_id, phone, within_hours=48):
     digits = "".join(ch for ch in phone if ch.isdigit())
     if not digits:
@@ -394,6 +411,8 @@ db.update_lead = _fake_update_lead
 db.list_listings = _fake_list_listings
 db.replace_listings = _fake_replace_listings
 db.get_business_by_whatsapp = _fake_get_business_by_whatsapp
+db.get_business_by_ingest_token = _fake_get_business_by_ingest_token
+db.set_ingest_token = _fake_set_ingest_token
 db.rotate_api_key = _fake_rotate_api_key
 db.save_message = _fake_save_message
 db.get_history = _fake_get_history

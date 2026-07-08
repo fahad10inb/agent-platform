@@ -147,6 +147,9 @@ def init_db() -> None:
         # WhatsApp channel: the Cloud API phone_number_id whose webhooks belong
         # to this business (empty = WhatsApp not connected).
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS whatsapp_phone_id TEXT")
+        # Portal lead-intake: an unguessable token that routes forwarded portal
+        # emails to this business (empty = intake not set up).
+        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS lead_ingest_token TEXT")
         # Plan + monthly message quota (the founding plan's fair-use fuse and the
         # billing prerequisite). NULL quota = uncapped (the current founding
         # default). quota_notice_month = the 'YYYY-MM' we last warned the owner,
@@ -732,6 +735,28 @@ def get_business_by_whatsapp(phone_number_id: str) -> dict | None:
             "SELECT * FROM businesses WHERE whatsapp_phone_id = %s LIMIT 1",
             (phone_number_id,),
         ).fetchone()
+
+
+def get_business_by_ingest_token(token: str) -> dict | None:
+    """Which tenant owns this lead-ingest token? Routes forwarded portal emails."""
+    if not token:
+        return None
+    with _connect() as conn:
+        return conn.execute(
+            "SELECT * FROM businesses WHERE lead_ingest_token = %s LIMIT 1",
+            (token,),
+        ).fetchone()
+
+
+def set_ingest_token(business_id: str, token: str) -> bool:
+    """(Re)generate a business's lead-ingest token — the routing key for portal
+    email forwarding. The only path that sets it; returns False if unknown."""
+    with _connect() as conn:
+        row = conn.execute(
+            "UPDATE businesses SET lead_ingest_token = %s WHERE id = %s RETURNING id",
+            (token, business_id),
+        ).fetchone()
+    return row is not None
 
 
 # --- businesses (multi-tenancy) ----------------------------------------------
