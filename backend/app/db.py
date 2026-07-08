@@ -147,6 +147,13 @@ def init_db() -> None:
         # WhatsApp channel: the Cloud API phone_number_id whose webhooks belong
         # to this business (empty = WhatsApp not connected).
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS whatsapp_phone_id TEXT")
+        # Plan + monthly message quota (the founding plan's fair-use fuse and the
+        # billing prerequisite). NULL quota = uncapped (the current founding
+        # default). quota_notice_month = the 'YYYY-MM' we last warned the owner,
+        # so the approaching/over-limit email fires at most once per month.
+        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS plan TEXT")
+        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS monthly_msg_quota INTEGER")
+        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS quota_notice_month TEXT")
         # When the weekly ROI digest last went out — the idempotency marker that
         # lets the scheduler re-check hourly without ever double-sending.
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS last_digest_at TIMESTAMPTZ")
@@ -406,6 +413,65 @@ def get_usage(business_id: str, days: int = 30) -> list[dict]:
     return rows
 
 
+def get_month_usage(business_id: str) -> int:
+    """Messages handled for this business so far THIS calendar month (Dubai) —
+    the number a monthly quota is checked against."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT COALESCE(SUM(messages), 0) AS n FROM usage_daily "
+            "WHERE business_id = %s "
+            "AND day >= date_trunc('month', (now() AT TIME ZONE 'Asia/Dubai'))::date",
+            (business_id,),
+        ).fetchone()
+    return int(row["n"])
+
+
+def claim_quota_notice(business_id: str, month: str) -> bool:
+    """Atomically claim the right to send THIS month's quota email. Returns True
+    to exactly one caller per (business, month); every later call returns False,
+    so concurrent turns crossing the threshold can't spam the owner."""
+    with _connect() as conn:
+        row = conn.execute(
+            "UPDATE businesses SET quota_notice_month = %s "
+            "WHERE id = %s AND (quota_notice_month IS DISTINCT FROM %s) RETURNING id",
+            (month, business_id, month),
+        ).fetchone()
+    return row is not None
+
+
+def forget_caller(business_id: str, phone: str = "", name: str = "") -> dict:
+    """Erase one caller's data across every table (PDPL / GDPR erasure right).
+
+    Matches by phone digits where a phone column exists, and by name for
+    name-keyed rows (caller_memory) and web conversations. WhatsApp threads are
+    keyed `wa-<digits>`, so those message rows are matched by conversation_id.
+    Returns per-table delete counts."""
+    digits = "".join(ch for ch in phone if ch.isdigit())
+    counts: dict[str, int] = {}
+    with _connect() as conn:
+        if digits:
+            counts["bookings"] = conn.execute(
+                "DELETE FROM bookings WHERE business_id = %s "
+                "AND regexp_replace(COALESCE(phone,''), '\\D', '', 'g') = %s",
+                (business_id, digits),
+            ).rowcount
+            counts["leads"] = conn.execute(
+                "DELETE FROM leads WHERE business_id = %s "
+                "AND regexp_replace(COALESCE(phone,''), '\\D', '', 'g') = %s",
+                (business_id, digits),
+            ).rowcount
+            counts["whatsapp_messages"] = conn.execute(
+                "DELETE FROM messages WHERE business_id = %s AND conversation_id = %s",
+                (business_id, f"wa-{digits}"),
+            ).rowcount
+        if name:
+            counts["caller_memory"] = conn.execute(
+                "DELETE FROM caller_memory WHERE business_id = %s AND lower(caller) = lower(%s)",
+                (business_id, name),
+            ).rowcount
+    return counts
+
+
 def booked_times(business_id: str, date: str) -> list[str]:
     """Times already booked for a business on a date (for availability + no
     double-booking)."""
@@ -657,6 +723,9 @@ _EDITABLE_BUSINESS_FIELDS = {
     "staff", "location", "policies",
     "min_notice_hours", "max_advance_days", "buffer_min",
     "notify_email", "transfer_number", "after_hours_mode", "whatsapp_phone_id",
+    # Admin-set only (no tenant-editable model exposes these) — the usage cap a
+    # business must not raise on itself, plus its once-a-month notice marker.
+    "plan", "monthly_msg_quota", "quota_notice_month",
 }
 
 

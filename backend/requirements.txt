@@ -20,3 +20,9 @@ psycopg[binary,pool]>=3.1,<4
 # tzdata : timezone database so zoneinfo("Asia/Dubai") works on any host —
 # the agent must think in Gulf time, not the server's UTC.
 tzdata>=2024.1
+
+# httpx : used directly by the WhatsApp channel (app/whatsapp.py) to POST
+# replies to Meta's Graph API. It arrives transitively via google-genai today,
+# but the WhatsApp channel must not silently break if that transitive pin
+# changes — so we declare it explicitly.
+httpx>=0.28,<1

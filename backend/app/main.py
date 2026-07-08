@@ -101,16 +101,22 @@ app.include_router(whatsapp_router)
 
 @app.middleware("http")
 async def _hardening(request: Request, call_next):
-    """Last-resort error net + baseline security headers on every response.
+    """Request id + access log + last-resort error net + baseline security
+    headers on every response.
 
-    Any exception that escapes a route (a DB hiccup, a bug) becomes a clean,
-    generic 500 with the real traceback in the LOGS — never a raw stack trace
-    in the caller's browser."""
+    A short request id ties every log line and the response's X-Request-ID
+    header together, so a customer's "it broke at 3pm" is traceable in Render's
+    logs. Any exception that escapes a route (a DB hiccup, a bug) becomes a
+    clean, generic 500 with the real traceback in the LOGS — never a raw stack
+    trace in the caller's browser."""
+    req_id = secrets.token_hex(4)
     try:
         response = await call_next(request)
     except Exception:  # noqa: BLE001 — the whole point is catching everything
-        logger.exception("unhandled error on %s %s", request.method, request.url.path)
+        logger.exception("[%s] unhandled error on %s %s", req_id, request.method, request.url.path)
         response = JSONResponse(status_code=500, content={"detail": "Something went wrong on our side. Please try again."})
+    logger.info("[%s] %s %s -> %s", req_id, request.method, request.url.path, response.status_code)
+    response.headers["X-Request-ID"] = req_id
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     # Always-HTTPS (Render terminates TLS); browsers remember for a year.
@@ -198,6 +204,9 @@ class BusinessSettings(BaseModel):
     # WhatsApp Cloud API phone_number_id owning this tenant's webhooks
     # (empty string disconnects the channel for this business).
     whatsapp_phone_id: str | None = Field(default=None, max_length=40)
+    # NOTE: plan / monthly_msg_quota are deliberately NOT here — a tenant must
+    # not be able to raise its own usage cap. They're set admin-only via
+    # POST /admin/businesses/{id}/plan.
 
 
 class NewBusiness(BaseModel):
@@ -445,6 +454,57 @@ def admin_rotate_key(business_id: str, x_api_key: str | None = Header(default=No
         raise HTTPException(status_code=404, detail="Unknown business.")
     logger.info("rotated api_key for business=%s", business_id)
     return {"status": "rotated", "id": business_id, "api_key": new_key}
+
+
+class PlanUpdate(BaseModel):
+    """Set a business's plan + monthly message quota (admin only). quota 0 =
+    uncapped (the founding default)."""
+
+    plan: str = Field(default="founding", max_length=40)
+    monthly_msg_quota: int = Field(default=0, ge=0, le=1_000_000)
+
+
+@app.post("/admin/businesses/{business_id}/plan")
+def admin_set_plan(business_id: str, payload: PlanUpdate, x_api_key: str | None = Header(default=None)):
+    """Set a business's plan + monthly quota (ADMIN ONLY) — the usage cap a
+    tenant must not be able to raise on itself, so it lives here, not in
+    /manage. Setting it clears any stale quota-notice marker so the new plan's
+    warnings fire fresh."""
+    security.check_admin(x_api_key)
+    if db.get_business(business_id) is None:
+        raise HTTPException(status_code=404, detail="Unknown business.")
+    db.update_business_settings(business_id, {
+        "plan": payload.plan,
+        "monthly_msg_quota": payload.monthly_msg_quota or None,
+        "quota_notice_month": None,
+    })
+    return {"status": "saved", "id": business_id,
+            "plan": payload.plan, "monthly_msg_quota": payload.monthly_msg_quota}
+
+
+class ForgetCaller(BaseModel):
+    """Erase one caller's data for a business (PDPL / GDPR erasure). Give a
+    phone (matches bookings/leads/WhatsApp history) and/or a name (caller
+    memory). At least one is required."""
+
+    business_id: str = Field(min_length=1, max_length=60)
+    phone: str = Field(default="", max_length=40)
+    name: str = Field(default="", max_length=120)
+
+
+@app.post("/admin/forget-caller")
+def admin_forget_caller(payload: ForgetCaller, x_api_key: str | None = Header(default=None)):
+    """Delete every trace of one caller across bookings, leads, caller memory
+    and WhatsApp history (ADMIN ONLY) — the erasure right UAE PDPL grants, which
+    was impossible before. Returns per-table delete counts."""
+    security.check_admin(x_api_key)
+    if not payload.phone.strip() and not payload.name.strip():
+        raise HTTPException(status_code=422, detail="Provide a phone and/or a name.")
+    if db.get_business(payload.business_id) is None:
+        raise HTTPException(status_code=404, detail="Unknown business.")
+    counts = db.forget_caller(payload.business_id, payload.phone.strip(), payload.name.strip())
+    logger.info("forget-caller ran for business=%s -> %s", payload.business_id, counts)
+    return {"status": "erased", "deleted": counts}
 
 
 @app.post("/admin/send-digests")

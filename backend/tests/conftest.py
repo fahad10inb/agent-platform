@@ -148,6 +148,47 @@ def _fake_get_usage(business_id, days=30):
     return [{"day": "today", "messages": n}] if n else []
 
 
+def _fake_get_month_usage(business_id):
+    return _S["usage"].get(business_id, 0)
+
+
+def _fake_claim_quota_notice(business_id, month):
+    b = _S["businesses"].get(business_id)
+    if b is None or b.get("quota_notice_month") == month:
+        return False
+    b["quota_notice_month"] = month
+    return True
+
+
+def _digits(s):
+    return "".join(ch for ch in (s or "") if ch.isdigit())
+
+
+def _fake_forget_caller(business_id, phone="", name=""):
+    counts = {}
+    digits = _digits(phone)
+    if digits:
+        before = len(_S["bookings"])
+        _S["bookings"][:] = [r for r in _S["bookings"]
+                             if not (r["business_id"] == business_id and _digits(r.get("phone")) == digits)]
+        counts["bookings"] = before - len(_S["bookings"])
+        before = len(_S["leads"])
+        _S["leads"][:] = [r for r in _S["leads"]
+                          if not (r["business_id"] == business_id and _digits(r.get("phone")) == digits)]
+        counts["leads"] = before - len(_S["leads"])
+        before = len(_S["messages"])
+        _S["messages"][:] = [m for m in _S["messages"]
+                             if not (m["business_id"] == business_id and m["conversation_id"] == f"wa-{digits}")]
+        counts["whatsapp_messages"] = before - len(_S["messages"])
+    if name:
+        key = db._norm(name)
+        before = len(_S["memory"])
+        _S["memory"][:] = [m for m in _S["memory"]
+                           if not (m["business_id"] == business_id and m["caller"] == key)]
+        counts["caller_memory"] = before - len(_S["memory"])
+    return counts
+
+
 def _fake_booked_times(business_id, date):
     return [r["time"] for r in _S["bookings"] if r["business_id"] == business_id and r["date"] == date]
 
@@ -323,6 +364,9 @@ db.save_message = _fake_save_message
 db.get_history = _fake_get_history
 db.bump_usage = _fake_bump_usage
 db.get_usage = _fake_get_usage
+db.get_month_usage = _fake_get_month_usage
+db.claim_quota_notice = _fake_claim_quota_notice
+db.forget_caller = _fake_forget_caller
 db.get_metrics = _fake_get_metrics
 db.get_week_stats = _fake_get_week_stats
 db.set_last_digest = _fake_set_last_digest
@@ -345,18 +389,16 @@ def _clean_state():
     _S["services"].clear()
     _S["listings"].clear()
     _S["usage"].clear()
-    # The seeded businesses persist, but per-test mutations must not leak into
-    # the next test: the alert email / digest stamp (a digest test's leftovers
-    # would change which businesses the next one emails), and the api_key (a
-    # rotate-key test must not revoke the demo key the auth tests rely on).
+    # Reset each SEEDED business to its pristine seed values, so no per-test
+    # mutation leaks into the next test — a changed name, a set notify_email, a
+    # rotated api_key, a quota cap, a digest stamp all vanish. (Businesses a test
+    # created via onboarding aren't seeds and are left as-is.)
     from app.businesses import SEED_BUSINESSES
 
-    seed_keys = {b["id"]: b.get("api_key") for b in SEED_BUSINESSES}
-    for bid, b in _S["businesses"].items():
-        b.pop("notify_email", None)
-        b.pop("last_digest_at", None)
-        if bid in seed_keys:
-            b["api_key"] = seed_keys[bid]
+    seed_by_id = {b["id"]: b for b in SEED_BUSINESSES}
+    for bid in list(_S["businesses"]):
+        if bid in seed_by_id:
+            _S["businesses"][bid] = dict(seed_by_id[bid])
     security._hits.clear()
     yield
 
