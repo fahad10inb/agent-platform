@@ -386,6 +386,22 @@ def get_history(business_id: str, conversation_id: str, limit: int = 40) -> list
     return list(reversed(rows))
 
 
+def list_conversations(business_id: str, limit: int = 50) -> list[dict]:
+    """One row per conversation for the owner's inbox: the thread id, how many
+    messages, when it last moved, and a preview of the latest message — newest
+    thread first. Scoped by business_id (never another tenant's threads)."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT conversation_id, COUNT(*) AS messages, MAX(created_at) AS last_at, "
+            "(array_agg(text ORDER BY id DESC))[1] AS last_text, "
+            "(array_agg(role ORDER BY id DESC))[1] AS last_role "
+            "FROM messages WHERE business_id = %s "
+            "GROUP BY conversation_id ORDER BY MAX(id) DESC LIMIT %s",
+            (business_id, limit),
+        ).fetchall()
+    return rows
+
+
 def count_user_messages(business_id: str, conversation_id: str) -> int:
     """Total caller messages EVER in a conversation — the distiller's cadence
     counter. Counting the durable total (not the capped history window) keeps

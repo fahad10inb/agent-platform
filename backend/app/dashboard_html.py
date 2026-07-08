@@ -225,6 +225,7 @@ DASHBOARD_HTML = """<!doctype html>
       <div class="tabs" role="tablist" aria-label="Dashboard sections">
         <button class="tab active" role="tab" aria-selected="true" data-tab="bookings" onclick="setTab('bookings')">Bookings</button>
         <button class="tab" role="tab" aria-selected="false" data-tab="leads" onclick="setTab('leads')">Leads</button>
+        <button class="tab" role="tab" aria-selected="false" data-tab="chats" onclick="setTab('chats')">Conversations</button>
         <button class="tab" role="tab" aria-selected="false" data-tab="settings" onclick="setTab('settings')">Settings</button>
         <button class="tab" role="tab" aria-selected="false" data-tab="widget" onclick="setTab('widget')">Widget</button>
       </div>
@@ -537,6 +538,29 @@ DASHBOARD_HTML = """<!doctype html>
     renderTab();
   }
 
+  function convChannel(cid){ return String(cid||"").startsWith("wa-") ? "WhatsApp" : "Web"; }
+  function convWho(cid){
+    const s = String(cid||"");
+    if(s.startsWith("wa-")) return "+" + s.slice(3);   // wa-971… -> +971…
+    return "Web visitor";
+  }
+  async function openThread(cid){
+    const body = $("tabBody"); body.innerHTML = skel();
+    const r = await api("/manage/"+encodeURIComponent(CURRENT)+"/conversations/"+encodeURIComponent(cid));
+    if(!r.ok){ body.innerHTML = estate("⚠️","Couldn't open the conversation","Go back and try again."); return; }
+    const msgs = await r.json();
+    const bubbles = msgs.map(m=>{
+      const mine = m.role !== "user";  // the AI/business side
+      const style = "max-width:72%;margin:6px 0;padding:9px 13px;border-radius:14px;white-space:pre-wrap;"
+        + (mine ? "background:var(--accent-soft);margin-left:auto;border-bottom-right-radius:4px"
+                : "background:#f1f1f4;border-bottom-left-radius:4px");
+      return `<div style="${style}">${esc(m.text)}</div>`;
+    }).join("");
+    body.innerHTML = `<button class="btn ghost" onclick="renderTab()">← Back to conversations</button>
+      <div style="margin:10px 2px;color:var(--muted);font-size:13px">${esc(convWho(cid))} · ${esc(convChannel(cid))}</div>
+      <div style="display:flex;flex-direction:column">${bubbles || "<div class='empty'>No messages.</div>"}</div>`;
+  }
+
   async function renderTab(){
     const body = $("tabBody"); body.innerHTML = skel();
     if(TAB==="bookings"){
@@ -555,6 +579,13 @@ DASHBOARD_HTML = """<!doctype html>
       body.innerHTML = rows.length ? `<div class="tablewrap"><table><thead><tr><th>Name</th><th>Phone</th><th>Interest</th><th>Notes</th></tr></thead>
         <tbody>${rows.map(l=>`<tr><td>${who(l.name)}</td><td class="num">${esc(l.phone)}</td><td>${l.interest?`<span class="chip new">${esc(l.interest)}</span>`:""}</td><td>${esc(l.notes)}</td></tr>`).join("")}</tbody></table></div>`
         : estate("📥","No leads yet","When someone isn't ready to book, the receptionist captures their name and number — you'll see them here.");
+    } else if(TAB==="chats"){
+      const r = await api("/manage/"+encodeURIComponent(CURRENT)+"/conversations");
+      if(!r.ok){ body.innerHTML = estate("⚠️","Couldn't load conversations","Check your connection and switch tabs to retry."); return; }
+      const rows = await r.json();
+      body.innerHTML = rows.length ? `<div class="tablewrap"><table><thead><tr><th>Who</th><th>Channel</th><th>Last message</th><th>Msgs</th></tr></thead>
+        <tbody>${rows.map(c=>`<tr style="cursor:pointer" onclick="openThread('${esc(c.conversation_id)}')"><td>${esc(convWho(c.conversation_id))}</td><td>${esc(convChannel(c.conversation_id))}</td><td>${esc((c.last_text||"").slice(0,70))}</td><td class="num">${esc(c.messages)}</td></tr>`).join("")}</tbody></table></div>`
+        : estate("💬","No conversations yet","When customers chat on your widget or WhatsApp, every thread lands here — tap one to read the whole conversation.");
     } else if(TAB==="settings"){
       const r = await api("/manage/"+encodeURIComponent(CURRENT));
       if(!r.ok){ body.innerHTML = estate("⚠️","Couldn't load settings","Check your connection and switch tabs to retry."); return; }

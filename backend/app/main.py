@@ -385,6 +385,32 @@ def manage_update(
     return {"status": "saved", "business_id": business_id}
 
 
+@app.get("/manage/{business_id}/conversations")
+def manage_conversations(
+    business_id: str, request: Request, x_api_key: str | None = Header(default=None)
+):
+    """The owner's inbox: every conversation this business has had (web + WhatsApp),
+    newest first, with a preview. AUTHENTICATED (that business's key or admin) —
+    unlike the public /chat/history, so it may include WhatsApp (wa-*) threads."""
+    security.rate_limit(request, limit=30, window=60, bucket="manage")
+    security.check_business_access(business_id, x_api_key)
+    return db.list_conversations(business_id, limit=50)
+
+
+@app.get("/manage/{business_id}/conversations/{conversation_id}")
+def manage_conversation_thread(
+    business_id: str,
+    conversation_id: str,
+    request: Request,
+    x_api_key: str | None = Header(default=None),
+):
+    """One conversation's full transcript for the inbox. AUTHENTICATED, so it's
+    allowed to show WhatsApp threads the public history route hides."""
+    security.rate_limit(request, limit=60, window=60, bucket="manage")
+    security.check_business_access(business_id, x_api_key)
+    return db.get_history(business_id, conversation_id, limit=200)
+
+
 class ServiceRow(BaseModel):
     """One structured service: the name is what callers say, the duration is
     what the calendar math reserves, the price is what the agent may quote.

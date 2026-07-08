@@ -107,6 +107,23 @@ def _fake_save_message(business_id, conversation_id, role, text):
     )
 
 
+def _fake_list_conversations(business_id, limit=50):
+    convs = {}
+    for i, m in enumerate(_S["messages"]):
+        if m["business_id"] != business_id:
+            continue
+        c = convs.setdefault(m["conversation_id"], {"conversation_id": m["conversation_id"],
+                                                    "messages": 0, "last_text": "", "last_role": "", "_ord": 0})
+        c["messages"] += 1
+        c["last_text"] = m["text"]
+        c["last_role"] = m["role"]
+        c["_ord"] = i
+    rows = sorted(convs.values(), key=lambda c: c["_ord"], reverse=True)
+    for c in rows:
+        c.pop("_ord", None)
+    return rows[:limit]
+
+
 def _fake_count_user_messages(business_id, conversation_id):
     return sum(1 for m in _S["messages"]
                if m["business_id"] == business_id and m["conversation_id"] == conversation_id
@@ -469,6 +486,7 @@ db.rotate_api_key = _fake_rotate_api_key
 db.save_message = _fake_save_message
 db.get_history = _fake_get_history
 db.count_user_messages = _fake_count_user_messages
+db.list_conversations = _fake_list_conversations
 db.bump_usage = _fake_bump_usage
 db.get_usage = _fake_get_usage
 db.get_month_usage = _fake_get_month_usage
