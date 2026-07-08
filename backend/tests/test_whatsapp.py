@@ -67,8 +67,13 @@ def test_inbound_parser_takes_texts_and_skips_receipts():
 
 
 def test_webhook_accepts_and_acks_fast(client, monkeypatch):
-    monkeypatch.setattr(get_settings(), "whatsapp_access_token", "token123")
-    r = client.post("/whatsapp/webhook", json=_sample_payload())
+    settings = get_settings()
+    monkeypatch.setattr(settings, "whatsapp_access_token", "token123")
+    monkeypatch.setattr(settings, "whatsapp_app_secret", "shhh")
+    body = json.dumps(_sample_payload()).encode()
+    sig = "sha256=" + hmac.new(b"shhh", body, hashlib.sha256).hexdigest()
+    r = client.post("/whatsapp/webhook", content=body,
+                    headers={"X-Hub-Signature-256": sig, "Content-Type": "application/json"})
     assert r.status_code == 200
     assert r.json() == {"status": "received"}
 

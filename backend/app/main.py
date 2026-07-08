@@ -29,6 +29,15 @@ from app.widget_html import WIDGET_HTML
 # Load our settings once at startup.
 settings = get_settings()
 
+# Without this, the root logger sits at WARNING with a last-resort handler, so
+# every logger.info() breadcrumb (notify sent, digest counts, distilled, empty-
+# reply recovery) is silently DROPPED in production — Render logs show only
+# warnings and tracebacks. One line turns the whole info-level story back on.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(name)s %(levelname)s %(message)s",
+)
+
 # Create the database tables if they don't exist yet (safe to run every start).
 db.init_db()
 
@@ -269,8 +278,16 @@ def chat_history(
     """The last turns of ONE conversation, for the widget to restore after a
     page reload. Public like /chat itself: the conversation_id is a random
     unguessable token minted by the widget (the industry-standard chat-widget
-    model), and it's rate-limited against scraping."""
+    model), and it's rate-limited against scraping.
+
+    The security rests ENTIRELY on the token being unguessable. The widget mints
+    `web-<random uuid>`. The WhatsApp channel does NOT: it uses `wa-<the caller's
+    phone number>`, which is trivially guessable — so those transcripts must
+    never be readable through this public route (anyone with a phone number +
+    the public business_id could otherwise pull a customer's whole chat)."""
     security.rate_limit(request, limit=30, window=60, bucket="history")
+    if conversation_id.startswith("wa-"):
+        raise HTTPException(status_code=404, detail="No such conversation.")
     return db.get_history(business_id, conversation_id, limit=40)
 
 
@@ -412,6 +429,22 @@ def admin_create_business(payload: NewBusiness, x_api_key: str | None = Header(d
     data["api_key"] = api_key
     db.upsert_business(data)
     return {"status": "created", "id": payload.id, "api_key": api_key}
+
+
+@app.post("/admin/businesses/{business_id}/rotate-key")
+def admin_rotate_key(business_id: str, x_api_key: str | None = Header(default=None)):
+    """Revoke a business's current api_key and issue a new one (ADMIN ONLY).
+
+    The only way to change an api_key — settings deliberately can't touch it.
+    This is the recovery path when a key leaks (e.g. the committed demo keys):
+    rotate here, the old key stops working instantly, hand the new one to the
+    owner. Shown once, like onboarding."""
+    security.check_admin(x_api_key)
+    new_key = "bizkey_" + secrets.token_urlsafe(24)
+    if not db.rotate_api_key(business_id, new_key):
+        raise HTTPException(status_code=404, detail="Unknown business.")
+    logger.info("rotated api_key for business=%s", business_id)
+    return {"status": "rotated", "id": business_id, "api_key": new_key}
 
 
 @app.post("/admin/send-digests")

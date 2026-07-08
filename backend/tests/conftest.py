@@ -260,6 +260,14 @@ def _fake_replace_listings(business_id, listings):
         })
 
 
+def _fake_rotate_api_key(business_id, new_key):
+    b = _S["businesses"].get(business_id)
+    if b is None:
+        return False
+    b["api_key"] = new_key
+    return True
+
+
 def _fake_get_business_by_whatsapp(phone_number_id):
     if not phone_number_id:
         return None
@@ -310,6 +318,7 @@ db.update_lead = _fake_update_lead
 db.list_listings = _fake_list_listings
 db.replace_listings = _fake_replace_listings
 db.get_business_by_whatsapp = _fake_get_business_by_whatsapp
+db.rotate_api_key = _fake_rotate_api_key
 db.save_message = _fake_save_message
 db.get_history = _fake_get_history
 db.bump_usage = _fake_bump_usage
@@ -336,12 +345,18 @@ def _clean_state():
     _S["services"].clear()
     _S["listings"].clear()
     _S["usage"].clear()
-    # The seeded businesses persist, but per-test mutations to their alert
-    # email / digest stamp must not — a digest test's leftovers would silently
-    # change which businesses the next test emails.
-    for b in _S["businesses"].values():
+    # The seeded businesses persist, but per-test mutations must not leak into
+    # the next test: the alert email / digest stamp (a digest test's leftovers
+    # would change which businesses the next one emails), and the api_key (a
+    # rotate-key test must not revoke the demo key the auth tests rely on).
+    from app.businesses import SEED_BUSINESSES
+
+    seed_keys = {b["id"]: b.get("api_key") for b in SEED_BUSINESSES}
+    for bid, b in _S["businesses"].items():
         b.pop("notify_email", None)
         b.pop("last_digest_at", None)
+        if bid in seed_keys:
+            b["api_key"] = seed_keys[bid]
     security._hits.clear()
     yield
 

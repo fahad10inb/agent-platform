@@ -13,11 +13,15 @@ Differences from the SQLite version (the Postgres dialect):
   • created_at default is now() and the type is timestamptz
 """
 
+import logging
+
 import psycopg
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
 from app.config import get_settings
+
+logger = logging.getLogger("agent-platform.db")
 
 # One shared pool per process. Before this, EVERY db call opened a fresh TLS
 # connection to Supabase (a full handshake per query — the dominant latency tax
@@ -230,7 +234,11 @@ def init_db() -> None:
                 "ON bookings (business_id, date, time)"
             )
     except Exception:
-        pass
+        # This index IS the double-booking guarantee — if it can't be created
+        # (e.g. legacy duplicate rows), the app must still boot, but we can't let
+        # the loss of the guarantee be invisible. Log LOUD so it's noticed and
+        # the duplicates cleaned up; the tool-level check still applies meanwhile.
+        logger.exception("CRITICAL: could not create uq_booking_slot — double-booking guard is OFF")
 
 
 # --- bookings ----------------------------------------------------------------
@@ -560,6 +568,19 @@ def replace_listings(business_id: str, listings: list[dict]) -> None:
                 (business_id, row["title"], row.get("area", ""), row.get("bedrooms", ""),
                  row.get("price", ""), row.get("purpose", ""), row.get("notes", "")),
             )
+
+
+def rotate_api_key(business_id: str, new_key: str) -> bool:
+    """Set a business's api_key to a freshly generated value. `api_key` is
+    deliberately absent from _EDITABLE_BUSINESS_FIELDS (settings can never touch
+    it), so this is the ONLY path that changes it — the revoke button for a
+    leaked key. Returns False if the business doesn't exist."""
+    with _connect() as conn:
+        row = conn.execute(
+            "UPDATE businesses SET api_key = %s WHERE id = %s RETURNING id",
+            (new_key, business_id),
+        ).fetchone()
+    return row is not None
 
 
 def get_business_by_whatsapp(phone_number_id: str) -> dict | None:

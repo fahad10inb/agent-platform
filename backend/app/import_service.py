@@ -9,9 +9,11 @@ menus go stale, and hours change.
 """
 
 import asyncio
+import ipaddress
 import json
 import logging
 import re
+import socket
 import urllib.parse
 import urllib.request
 from html.parser import HTMLParser
@@ -120,10 +122,44 @@ def _pick_links(base_url: str, hrefs: list[str], limit: int = 4) -> list[str]:
     return [full for _, _, full in scored[:limit]]
 
 
+class _BlockPrivateRedirects(urllib.request.HTTPRedirectHandler):
+    """A public URL can 302 to an internal address (cloud metadata at
+    169.254.169.254, localhost, RFC-1918) — the classic SSRF pivot. Re-validate
+    every redirect hop's host against the private-range block before following."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        _guard_public_url(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_SSRF_OPENER = urllib.request.build_opener(_BlockPrivateRedirects())
+
+
+def _guard_public_url(url: str) -> None:
+    """Reject anything that isn't http(s) to a public IP. Raises ValueError.
+
+    Resolves the host and checks EVERY resolved address, so a hostname that
+    points at a private range (DNS rebinding, *.localtest.me, an internal CNAME)
+    is caught too — not just literal 10.x/127.x URLs."""
+    parts = urllib.parse.urlparse(url)
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        raise ValueError(f"refusing non-public URL: {url!r}")
+    try:
+        infos = socket.getaddrinfo(parts.hostname, parts.port or 80, proto=socket.IPPROTO_TCP)
+    except OSError as exc:
+        raise ValueError(f"could not resolve host: {parts.hostname}") from exc
+    for *_, sockaddr in infos:
+        ip = ipaddress.ip_address(sockaddr[0])
+        if (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+            raise ValueError(f"refusing private/internal address {ip} for {parts.hostname}")
+
+
 def _fetch_raw(url: str) -> str:
-    """One bounded, time-limited page fetch."""
+    """One bounded, time-limited, SSRF-guarded page fetch."""
+    _guard_public_url(url)
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (ReceptionAI onboarding importer)"})
-    with urllib.request.urlopen(req, timeout=15) as resp:
+    with _SSRF_OPENER.open(req, timeout=15) as resp:
         return resp.read(400_000).decode("utf-8", "ignore")
 
 
@@ -232,21 +268,26 @@ _SCHEMA = {
 async def _extract(text: str) -> dict:
     """One low-temperature LLM pass turning site text into form JSON."""
     settings = get_settings()
-    response = await _get_client().aio.models.generate_content(
-        # Deliberately the MAIN model (not gemini_background_model): this runs
-        # once per business and seeds everything the agent will ever say about
-        # it — a missed price here is wrong answers forever. Quality > pennies.
-        model=settings.gemini_model,
-        contents=_EXTRACT_PROMPT + text,
-        config=types.GenerateContentConfig(
-            temperature=0.1,
-            max_output_tokens=2000,
-            # Gemini 2.5's hidden "thinking" tokens count AGAINST the output
-            # budget — without this the JSON comes back truncated mid-string.
-            thinking_config=types.ThinkingConfig(thinking_budget=0),
-            response_mime_type="application/json",
-            response_schema=_SCHEMA,
+    # A hard timeout like every other Gemini call — without it a hung upstream
+    # holds the admin's onboarding request open indefinitely.
+    response = await asyncio.wait_for(
+        _get_client().aio.models.generate_content(
+            # Deliberately the MAIN model (not gemini_background_model): this runs
+            # once per business and seeds everything the agent will ever say about
+            # it — a missed price here is wrong answers forever. Quality > pennies.
+            model=settings.gemini_model,
+            contents=_EXTRACT_PROMPT + text,
+            config=types.GenerateContentConfig(
+                temperature=0.1,
+                max_output_tokens=2000,
+                # Gemini 2.5's hidden "thinking" tokens count AGAINST the output
+                # budget — without this the JSON comes back truncated mid-string.
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
+                response_mime_type="application/json",
+                response_schema=_SCHEMA,
+            ),
         ),
+        timeout=settings.llm_timeout_seconds,
     )
     raw = (response.text or "").strip()
     raw = re.sub(r"^```(json)?|```$", "", raw, flags=re.MULTILINE).strip()  # belt-and-suspenders

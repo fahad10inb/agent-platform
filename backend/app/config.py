@@ -61,8 +61,10 @@ class Settings(BaseSettings):
     # All empty = the webhook plays dead (404), so the channel is off by
     # default. verify_token is a string YOU invent and paste in both Meta's
     # webhook form and here; access_token comes from the Meta app (the test
-    # number's temp token first, a System User token in production);
-    # app_secret enables signature checks on inbound webhooks (set in prod).
+    # number's temp token first, a System User token in production). app_secret
+    # is the Meta app's App Secret and is REQUIRED once access_token is set —
+    # the webhook fails closed (503) without it, because an unsigned webhook is
+    # forgeable (fake customers → token burn + poisoned memory + number relay).
     whatsapp_access_token: str = ""
     whatsapp_verify_token: str = ""
     whatsapp_app_secret: str = ""
