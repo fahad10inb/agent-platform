@@ -159,6 +159,49 @@ def landing():
     return LANDING_HTML
 
 
+_PRIVACY_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy — ReceptionAI</title>
+<style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:760px;
+margin:40px auto;padding:0 20px;line-height:1.6;color:#222}h1{font-size:26px}h2{font-size:18px;
+margin-top:28px}small{color:#666}</style></head><body>
+<h1>Privacy Policy</h1>
+<small>Last updated: 8 July 2026</small>
+<p>ReceptionAI ("we", "us") provides an AI assistant that answers, qualifies and books
+enquiries on behalf of the businesses that use our service. This policy explains what we
+process and why.</p>
+<h2>What we process</h2>
+<p>When a customer contacts a business through our chat widget or WhatsApp, we process the
+message content and, where the customer provides it, their name, mobile number, email, and the
+details of their enquiry (e.g. budget, area, preferred time). We process this <em>on behalf of
+the business</em> so it can respond to and serve the customer.</p>
+<h2>How we use it</h2>
+<p>Solely to operate the service: to answer the customer, qualify and record the enquiry, book
+appointments, remind the customer, and pass the lead to the business. We do not sell personal
+data or use it for advertising.</p>
+<h2>WhatsApp</h2>
+<p>When a business connects WhatsApp, messages are delivered via the WhatsApp Business Platform
+(Meta) and are subject to Meta's terms in addition to this policy.</p>
+<h2>Retention &amp; your rights</h2>
+<p>We retain conversation and enquiry data for as long as needed to provide the service. A
+customer may request that their data be deleted; we honour do-not-contact and deletion requests
+and remove the person's records across our systems on request.</p>
+<h2>Security</h2>
+<p>Data is transmitted over encrypted connections and access is restricted to the business it
+belongs to and our operators. Each business's data is isolated from every other business.</p>
+<h2>Contact</h2>
+<p>For any privacy request or question, contact the business you were speaking with, or reach us
+at the email address that business has on file. We will respond promptly.</p>
+</body></html>"""
+
+
+@app.get("/privacy", response_class=HTMLResponse)
+def privacy():
+    """Public privacy policy — required by Meta to publish the app, and good
+    practice for a service that handles customer enquiry data (PDPL)."""
+    return _PRIVACY_HTML
+
+
 @app.get("/health")
 def health():
     """A simple 'is the server alive?' check.
