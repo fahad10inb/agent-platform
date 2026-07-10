@@ -22,7 +22,8 @@ from app import db  # noqa: E402
 # ── in-memory state, same shape the real tables hold ─────────────────────────
 _S = {"businesses": {}, "bookings": [], "memory": [], "leads": [], "messages": [],
       "services": [], "listings": [], "reminders": set(), "nurtures": set(),
-      "opt_outs": set(), "quals": {}, "usage": {}, "next_id": 1}
+      "opt_outs": set(), "quals": {}, "usage": {}, "ai_pauses": set(),
+      "review_requests": set(), "next_id": 1}
 
 
 def _nid() -> int:
@@ -86,6 +87,20 @@ def _fake_claim_reminder(business_id, booking_id, stage):
     return True
 
 
+def _fake_recent_past_bookings(within_days=14):
+    # Like _fake_future_bookings: return all rows and let review_service's frozen
+    # clock decide which are recently-past-and-settled, so the test's clock — not
+    # the wall clock — drives eligibility.
+    return [dict(r) for r in _S["bookings"]]
+
+
+def _fake_claim_review_request(business_id, booking_id):
+    if booking_id in _S["review_requests"]:
+        return False
+    _S["review_requests"].add(booking_id)
+    return True
+
+
 def _fake_set_booking_status(business_id, patient_name, date, time, status):
     name = (patient_name or "").strip().lower()
     for r in _S["bookings"]:
@@ -137,6 +152,18 @@ def _fake_get_history(business_id, conversation_id, limit=40):
         if m["business_id"] == business_id and m["conversation_id"] == conversation_id
     ]
     return rows[-limit:]
+
+
+def _fake_pause_ai(business_id, conversation_id):
+    _S["ai_pauses"].add((business_id, conversation_id))
+
+
+def _fake_resume_ai(business_id, conversation_id):
+    _S["ai_pauses"].discard((business_id, conversation_id))
+
+
+def _fake_is_ai_paused(business_id, conversation_id):
+    return (business_id, conversation_id) in _S["ai_pauses"]
 
 
 def _fake_bump_usage(business_id, messages=1):
@@ -465,6 +492,8 @@ db.get_caller_memory = _fake_get_caller_memory
 db.replace_caller_memory = _fake_replace_caller_memory
 db.future_bookings = _fake_future_bookings
 db.claim_reminder = _fake_claim_reminder
+db.recent_past_bookings = _fake_recent_past_bookings
+db.claim_review_request = _fake_claim_review_request
 db.set_booking_status = _fake_set_booking_status
 db.save_lead = _fake_save_lead
 db.list_leads = _fake_list_leads
@@ -487,6 +516,9 @@ db.save_message = _fake_save_message
 db.get_history = _fake_get_history
 db.count_user_messages = _fake_count_user_messages
 db.list_conversations = _fake_list_conversations
+db.pause_ai = _fake_pause_ai
+db.resume_ai = _fake_resume_ai
+db.is_ai_paused = _fake_is_ai_paused
 db.bump_usage = _fake_bump_usage
 db.get_usage = _fake_get_usage
 db.get_month_usage = _fake_get_month_usage
@@ -518,6 +550,8 @@ def _clean_state():
     _S["opt_outs"].clear()
     _S["quals"].clear()
     _S["usage"].clear()
+    _S["ai_pauses"].clear()
+    _S["review_requests"].clear()
     # Reset each SEEDED business to its pristine seed values, so no per-test
     # mutation leaks into the next test — a changed name, a set notify_email, a
     # rotated api_key, a quota cap, a digest stamp all vanish. (Businesses a test

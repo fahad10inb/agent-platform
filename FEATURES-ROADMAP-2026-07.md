@@ -6,6 +6,18 @@ win the **conversation**; the vertical booking platforms (Fresha, Simplybook, Ze
 conversation layer. **Our gap and our moat are the retention layer**, and it's mostly
 cron + WhatsApp + Resend + Supabase — squarely in solo-dev reach.
 
+## Shipped (2026-07-10)
+- ✅ **Appointment reminders + two-way confirm** (#1) — the 24h/2h sweep is live.
+- ✅ **Post-visit Google review requests** (roadmap #2). `review_service.py` sweep +
+  per-business `google_review_url` + `/admin/send-review-requests`. Timed per vertical
+  (salon 2h, clinic 24h), once per booking, skips no-link / opted-out / cancelled.
+- ✅ **Human takeover / supervised mode** (roadmap #5, "do #3" in the working list).
+  Owner replies from the inbox → the AI pauses for that thread (`ai_pauses`), delivers
+  over WhatsApp, "Hand back to AI" resumes. Endpoints: `/manage/{id}/conversations/{cid}/`
+  `reply` · `resume` · `status`.
+- **Next up:** deposits/payment links (#3), Google Calendar sync (#4). Then the working
+  list's #1 (Arabic voice) and #2 (developer/off-plan mode).
+
 ## TOP 5 — build next (one coherent "retention core": show up → pay → get reviewed → stay booked → owner in control)
 1. **Appointment reminders + two-way confirm/reschedule** (quick win). Cron → WhatsApp
    utility template (+ Resend fallback) at 24h/2h; reply 1=confirm, 2=reschedule routes

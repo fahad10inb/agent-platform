@@ -546,9 +546,11 @@ DASHBOARD_HTML = """<!doctype html>
   }
   async function openThread(cid){
     const body = $("tabBody"); body.innerHTML = skel();
-    const r = await api("/manage/"+encodeURIComponent(CURRENT)+"/conversations/"+encodeURIComponent(cid));
+    const base = "/manage/"+encodeURIComponent(CURRENT)+"/conversations/"+encodeURIComponent(cid);
+    const [r, sr] = await Promise.all([api(base), api(base+"/status")]);
     if(!r.ok){ body.innerHTML = estate("⚠️","Couldn't open the conversation","Go back and try again."); return; }
     const msgs = await r.json();
+    const paused = sr.ok ? (await sr.json()).ai_paused : false;
     const bubbles = msgs.map(m=>{
       const mine = m.role !== "user";  // the AI/business side
       const style = "max-width:72%;margin:6px 0;padding:9px 13px;border-radius:14px;white-space:pre-wrap;"
@@ -556,9 +558,44 @@ DASHBOARD_HTML = """<!doctype html>
                 : "background:#f1f1f4;border-bottom-left-radius:4px");
       return `<div style="${style}">${esc(m.text)}</div>`;
     }).join("");
+    // When a human has taken the thread over the AI is silent — show a banner and
+    // a "Hand back to AI" button; otherwise a hint that replying takes it over.
+    const banner = paused
+      ? `<div style="margin:8px 2px;padding:8px 11px;border-radius:10px;background:#fff5e6;color:#8a5a00;font-size:13px">
+           ✋ You're handling this conversation — the AI is paused.
+           <button class="btn ghost" style="margin-left:8px;padding:3px 9px" onclick="resumeThread('${esc(cid)}')">Hand back to AI</button>
+         </div>`
+      : `<div style="margin:8px 2px;color:var(--muted);font-size:12px">The AI is answering this thread. Send a reply to take it over.</div>`;
     body.innerHTML = `<button class="btn ghost" onclick="renderTab()">← Back to conversations</button>
       <div style="margin:10px 2px;color:var(--muted);font-size:13px">${esc(convWho(cid))} · ${esc(convChannel(cid))}</div>
-      <div style="display:flex;flex-direction:column">${bubbles || "<div class='empty'>No messages.</div>"}</div>`;
+      ${banner}
+      <div style="display:flex;flex-direction:column">${bubbles || "<div class='empty'>No messages.</div>"}</div>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <input id="replyText" type="text" placeholder="Type a reply…" style="flex:1;padding:9px 12px;border:1px solid var(--line,#ddd);border-radius:10px"
+               onkeydown="if(event.key==='Enter')sendReply('${esc(cid)}')">
+        <button class="btn" onclick="sendReply('${esc(cid)}')">Send</button>
+      </div>`;
+  }
+
+  async function sendReply(cid){
+    const input = $("replyText"); const text = (input.value||"").trim();
+    if(!text){ return; }
+    input.disabled = true;
+    const r = await api("/manage/"+encodeURIComponent(CURRENT)+"/conversations/"+encodeURIComponent(cid)+"/reply",
+      {method:"POST", body: JSON.stringify({text})});
+    if(!r.ok){ const d = await r.json().catch(()=>null); toast(apiErr(d,"Couldn't send the reply.")); input.disabled=false; return; }
+    const d = await r.json();
+    if(cid.startsWith("wa-") && !d.delivered){ toast("Saved — but WhatsApp delivery failed (check the channel)."); }
+    else { toast("Sent — you're handling this thread now."); }
+    openThread(cid);  // refresh: shows the new bubble + the paused banner
+  }
+
+  async function resumeThread(cid){
+    const r = await api("/manage/"+encodeURIComponent(CURRENT)+"/conversations/"+encodeURIComponent(cid)+"/resume",
+      {method:"POST"});
+    if(!r.ok){ toast("Couldn't hand back to the AI."); return; }
+    toast("Handed back — the AI is answering again.");
+    openThread(cid);
   }
 
   async function renderTab(){
@@ -639,6 +676,8 @@ DASHBOARD_HTML = """<!doctype html>
           <select id="s_afterhours"><option value="take_message">Take a message (name + number for a callback)</option><option value="book_only">Keep booking — staff confirm when you open</option><option value="info_only">Answer questions only — no bookings</option></select>
           <label for="s_whatsapp">WhatsApp phone_number_id <span class="soft">(from Meta's Cloud API — empty = WhatsApp off)</span></label>
           <input id="s_whatsapp" value="${esc(b.whatsapp_phone_id)}" placeholder="123456789012345">
+          <label for="s_review">Google review link <span class="soft">(clients get this after a visit — empty = off)</span></label>
+          <input id="s_review" value="${esc(b.google_review_url)}" placeholder="https://g.page/r/…/review">
         </div>
 
         <div class="fgroup">
@@ -679,7 +718,7 @@ DASHBOARD_HTML = """<!doctype html>
       min_notice_hours:+val("s_notice"), max_advance_days:+val("s_advance"), buffer_min:+val("s_buffer"),
       notify_email:val("s_notify").trim(),
       transfer_number:val("s_transfer").trim(), after_hours_mode:val("s_afterhours"),
-      whatsapp_phone_id:val("s_whatsapp").trim() };
+      whatsapp_phone_id:val("s_whatsapp").trim(), google_review_url:val("s_review").trim() };
     // Validate the menu and listings BEFORE saving anything, so a typo'd line
     // can't leave settings saved but the sheet silently unchanged.
     const svcRows = parseServiceRows(val("s_services_rows"));

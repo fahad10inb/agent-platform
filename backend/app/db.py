@@ -148,6 +148,9 @@ def init_db() -> None:
         # WhatsApp channel: the Cloud API phone_number_id whose webhooks belong
         # to this business (empty = WhatsApp not connected).
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS whatsapp_phone_id TEXT")
+        # Google review deep link (…/review?placeid=… or a g.page/…/review short
+        # link). Empty = the review-request sweep skips this business.
+        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS google_review_url TEXT")
         # Portal lead-intake: an unguessable token that routes forwarded portal
         # emails to this business (empty = intake not set up).
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS lead_ingest_token TEXT")
@@ -258,6 +261,18 @@ def init_db() -> None:
             )
             """
         )
+        # Human takeover: when an owner replies in a thread from the inbox, the
+        # AI is PAUSED for that conversation (a row here) so it won't also reply.
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ai_pauses (
+                business_id      TEXT NOT NULL,
+                conversation_id  TEXT NOT NULL,
+                paused_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+                PRIMARY KEY (business_id, conversation_id)
+            )
+            """
+        )
         # Opt-outs (PDPL): a caller who asked not to be contacted. Every outbound
         # sweep checks this before sending — the erasure/do-not-contact right.
         conn.execute(
@@ -282,6 +297,19 @@ def init_db() -> None:
                 stage        TEXT NOT NULL,
                 sent_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
                 UNIQUE (business_id, phone, stage)
+            )
+            """
+        )
+        # Review-request log — one row per booking we've asked for a Google
+        # review on. UNIQUE(booking_id) is the send-once guarantee (same claim
+        # pattern as reminders): a client is asked for a review at most once.
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS review_requests (
+                id           SERIAL PRIMARY KEY,
+                business_id  TEXT NOT NULL,
+                booking_id   INTEGER NOT NULL UNIQUE,
+                sent_at      TIMESTAMPTZ NOT NULL DEFAULT now()
             )
             """
         )
@@ -400,6 +428,35 @@ def list_conversations(business_id: str, limit: int = 50) -> list[dict]:
             (business_id, limit),
         ).fetchall()
     return rows
+
+
+def pause_ai(business_id: str, conversation_id: str) -> None:
+    """Hand a conversation to a human — the AI stops auto-replying to it."""
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO ai_pauses (business_id, conversation_id) VALUES (%s, %s) "
+            "ON CONFLICT (business_id, conversation_id) DO NOTHING",
+            (business_id, conversation_id),
+        )
+
+
+def resume_ai(business_id: str, conversation_id: str) -> None:
+    """Hand a conversation back to the AI."""
+    with _connect() as conn:
+        conn.execute(
+            "DELETE FROM ai_pauses WHERE business_id = %s AND conversation_id = %s",
+            (business_id, conversation_id),
+        )
+
+
+def is_ai_paused(business_id: str, conversation_id: str) -> bool:
+    """True when a human has taken this conversation over."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM ai_pauses WHERE business_id = %s AND conversation_id = %s",
+            (business_id, conversation_id),
+        ).fetchone()
+    return row is not None
 
 
 def count_user_messages(business_id: str, conversation_id: str) -> int:
@@ -607,6 +664,28 @@ def future_bookings() -> list[dict]:
     return rows
 
 
+def recent_past_bookings(within_days: int = 14) -> list[dict]:
+    """Bookings whose date is in the last `within_days` up to today, across ALL
+    businesses — the review-request sweep's input. Bounded so a launch never
+    asks for reviews on ancient visits; whether the appointment TIME has passed
+    (plus the per-vertical settle delay) is refined in Python, exactly like the
+    reminder sweep refines 24h/2h. `date` is ISO TEXT, so the lexicographic
+    range on ISO dates is a correct date filter."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, business_id, date, time, patient_name, phone, reason, "
+            "COALESCE(status, 'booked') AS status FROM bookings "
+            # `date - integer` stays a DATE (subtracting days), so ::text is a
+            # clean 'YYYY-MM-DD' the ISO-text range compares against correctly.
+            # (`date - make_interval` would return a timestamp — wrong text shape.)
+            "WHERE date >= ((now() AT TIME ZONE 'Asia/Dubai')::date - %s)::text "
+            "AND date <= (now() AT TIME ZONE 'Asia/Dubai')::date::text "
+            "ORDER BY date, time",
+            (within_days,),
+        ).fetchall()
+    return rows
+
+
 def set_opt_out(business_id: str, phone: str) -> None:
     """Record a do-not-contact request (PDPL). Keyed on the E.164 form so any
     format the caller gave ('0501234567', '+971 50 123 4567') stops all their
@@ -698,6 +777,19 @@ def claim_reminder(business_id: str, booking_id: int, stage: str) -> bool:
             "INSERT INTO reminders (business_id, booking_id, stage) VALUES (%s, %s, %s) "
             "ON CONFLICT (booking_id, stage) DO NOTHING RETURNING id",
             (business_id, booking_id, stage),
+        ).fetchone()
+    return row is not None
+
+
+def claim_review_request(business_id: str, booking_id: int) -> bool:
+    """Atomically claim the right to send this booking's review request. Returns
+    True to exactly one sweep; the UNIQUE(booking_id) constraint makes every
+    later attempt a no-op, so a client is asked for a review at most once."""
+    with _connect() as conn:
+        row = conn.execute(
+            "INSERT INTO review_requests (business_id, booking_id) VALUES (%s, %s) "
+            "ON CONFLICT (booking_id) DO NOTHING RETURNING id",
+            (business_id, booking_id),
         ).fetchone()
     return row is not None
 
@@ -1004,7 +1096,7 @@ _EDITABLE_BUSINESS_FIELDS = {
     "staff", "location", "policies",
     "min_notice_hours", "max_advance_days", "buffer_min",
     "notify_email", "transfer_number", "after_hours_mode", "whatsapp_phone_id",
-    "crm_webhook_url", "crm_type",
+    "google_review_url", "crm_webhook_url", "crm_type",
     # Admin-set only (no tenant-editable model exposes these) — the usage cap a
     # business must not raise on itself, plus its once-a-month notice marker.
     "plan", "monthly_msg_quota", "quota_notice_month",

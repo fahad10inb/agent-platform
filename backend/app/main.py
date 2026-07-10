@@ -17,7 +17,8 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from app import (chat_core, db, digest_service, import_service, lead_intake,
-                 listing_import, nurture_service, reminder_service, security)
+                 listing_import, nurture_service, reminder_service,
+                 review_service, security)
 from app.businesses import SEED_BUSINESSES
 from app.config import get_settings
 import secrets
@@ -89,6 +90,11 @@ async def _sweep_scheduler() -> None:
                 await asyncio.to_thread(nurture_service.send_due_nurtures)
             except Exception:  # noqa: BLE001
                 logger.exception("nurture pass failed")
+        if settings.review_requests_enabled:
+            try:
+                await asyncio.to_thread(review_service.send_due_review_requests)
+            except Exception:  # noqa: BLE001
+                logger.exception("review-request pass failed")
 
 
 @contextlib.asynccontextmanager
@@ -98,7 +104,7 @@ async def _lifespan(_app: FastAPI):
     tasks = []
     if settings.digest_enabled:
         tasks.append(asyncio.create_task(_digest_scheduler()))
-    if settings.reminders_enabled or settings.nurture_enabled:
+    if settings.reminders_enabled or settings.nurture_enabled or settings.review_requests_enabled:
         tasks.append(asyncio.create_task(_sweep_scheduler()))
     yield
     for task in tasks:
@@ -272,6 +278,9 @@ class BusinessSettings(BaseModel):
     # WhatsApp Cloud API phone_number_id owning this tenant's webhooks
     # (empty string disconnects the channel for this business).
     whatsapp_phone_id: str | None = Field(default=None, max_length=40)
+    # Google review deep link — clients are sent this after a visit. Empty
+    # switches post-visit review requests off for this business.
+    google_review_url: str | None = Field(default=None, max_length=500)
     # CRM write-back (real estate): the agency's own webhook that qualified leads
     # are pushed to, and which CRM it is (tunes the payload). Tenant-editable —
     # it's the agency's own integration.
@@ -348,6 +357,11 @@ async def chat(req: ChatRequest, request: Request, background_tasks: BackgroundT
         raise HTTPException(
             status_code=500, detail="Sorry — something went wrong. Please try again."
         ) from e
+    # An empty reply here means a human took the conversation over (run_turn
+    # stays silent then). Give the web visitor a brief holding line so the
+    # widget isn't left blank; the human's reply arrives via the inbox.
+    if not reply:
+        reply = "Thanks! One of our team will reply to you shortly."
     return ChatResponse(reply=reply)
 
 
@@ -403,7 +417,7 @@ def manage_get(business_id: str, request: Request, x_api_key: str | None = Heade
               "staff", "location", "policies",
               "min_notice_hours", "max_advance_days", "buffer_min", "notify_email",
               "transfer_number", "after_hours_mode", "whatsapp_phone_id",
-              "lead_ingest_token", "crm_webhook_url", "crm_type"]
+              "google_review_url", "lead_ingest_token", "crm_webhook_url", "crm_type"]
     out = {k: biz.get(k) for k in fields}
     # The structured service menu rides along so the dashboard can prefill its
     # "name | minutes | price" textarea from what's actually stored.
@@ -452,6 +466,82 @@ def manage_conversation_thread(
     security.rate_limit(request, limit=60, window=60, bucket="manage")
     security.check_business_access(business_id, x_api_key)
     return db.get_history(business_id, conversation_id, limit=200)
+
+
+@app.get("/manage/{business_id}/conversations/{conversation_id}/status")
+def manage_conversation_status(
+    business_id: str,
+    conversation_id: str,
+    request: Request,
+    x_api_key: str | None = Header(default=None),
+):
+    """Is a human currently handling this thread? Lets the inbox show the right
+    toggle (Take over vs Hand back to AI) when a thread is opened or reloaded."""
+    security.rate_limit(request, limit=60, window=60, bucket="manage")
+    security.check_business_access(business_id, x_api_key)
+    return {"ai_paused": db.is_ai_paused(business_id, conversation_id)}
+
+
+class ReplyPayload(BaseModel):
+    """One human reply typed by the owner in the inbox."""
+
+    text: str = Field(min_length=1, max_length=4000)
+
+
+@app.post("/manage/{business_id}/conversations/{conversation_id}/reply")
+async def manage_conversation_reply(
+    business_id: str,
+    conversation_id: str,
+    payload: ReplyPayload,
+    request: Request,
+    x_api_key: str | None = Header(default=None),
+):
+    """The owner replies to a caller by hand from the inbox. This TAKES the
+    thread over: we save the reply as the business's turn, pause the AI for this
+    conversation (so it won't also answer), and — for a WhatsApp thread — deliver
+    the reply through the Graph API. Web threads just store it; the widget shows
+    it on the visitor's next poll. Hand back with the /resume endpoint."""
+    security.rate_limit(request, limit=30, window=60, bucket="manage")
+    security.check_business_access(business_id, x_api_key)
+    biz = db.get_business(business_id)
+    if biz is None:
+        raise HTTPException(status_code=404, detail="Unknown business.")
+
+    text = payload.text.strip()
+    # min_length=1 only bounds the RAW string — a spaces-only body strips to
+    # empty here, which must not save a blank bubble or (worse) pause the AI.
+    if not text:
+        raise HTTPException(status_code=422, detail="Reply text cannot be empty.")
+    db.save_message(business_id, conversation_id, "model", text)
+    # Taking over silences the AI for this thread until the owner hands it back.
+    db.pause_ai(business_id, conversation_id)
+
+    delivered = False
+    phone_id = biz.get("whatsapp_phone_id")
+    # WhatsApp threads carry the caller's number as the conversation id (wa-<e164>);
+    # deliver there when the channel is configured. Web threads store-only.
+    if conversation_id.startswith("wa-") and phone_id and settings.whatsapp_access_token:
+        from app import whatsapp
+        try:
+            await whatsapp._send_text(phone_id, conversation_id[3:], text)
+            delivered = True
+        except Exception:
+            logger.exception("manual reply send failed for %s", conversation_id)
+    return {"status": "sent", "delivered": delivered, "ai_paused": True}
+
+
+@app.post("/manage/{business_id}/conversations/{conversation_id}/resume")
+def manage_conversation_resume(
+    business_id: str,
+    conversation_id: str,
+    request: Request,
+    x_api_key: str | None = Header(default=None),
+):
+    """Hand a thread back to the AI — the companion resumes auto-replying."""
+    security.rate_limit(request, limit=30, window=60, bucket="manage")
+    security.check_business_access(business_id, x_api_key)
+    db.resume_ai(business_id, conversation_id)
+    return {"status": "resumed", "ai_paused": False}
 
 
 class ServiceRow(BaseModel):
@@ -713,6 +803,15 @@ def admin_send_nurtures(x_api_key: str | None = Header(default=None)):
     leads are skipped."""
     security.check_admin(x_api_key)
     return {"sent": nurture_service.send_due_nurtures()}
+
+
+@app.post("/admin/send-review-requests")
+def admin_send_review_requests(x_api_key: str | None = Header(default=None)):
+    """Run the post-visit review-request sweep RIGHT NOW (ADMIN ONLY) — the manual
+    test lever; the per-booking claim means a second run re-asks no one, and only
+    businesses that set a Google review link are touched."""
+    security.check_admin(x_api_key)
+    return {"sent": review_service.send_due_review_requests()}
 
 
 class ImportRequest(BaseModel):

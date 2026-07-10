@@ -111,6 +111,15 @@ async def run_turn(
     if business is None:
         raise LookupError(f"Unknown business_id: {business_id}")
 
+    # Human takeover: if an owner has taken this conversation over from the
+    # inbox, the AI stays silent — we still SAVE the caller's message so the
+    # human sees it, but generate no reply. The empty return tells the WhatsApp
+    # webhook not to send, and the web route to show a brief holding line.
+    if db.is_ai_paused(business_id, conversation_id):
+        db.save_message(business_id, conversation_id, "user", message)
+        logger.info("conversation %s is human-handled — AI staying silent", conversation_id)
+        return ""
+
     # Monthly quota = the founding plan's fair-use fuse and the cost cap that
     # stops one abused/viral business_id from draining the shared Gemini bill.
     # Over the cap we DECLINE gracefully (no model call, no 500) and email the

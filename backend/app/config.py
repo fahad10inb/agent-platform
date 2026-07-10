@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     # Lead nurture cadence (re-engage silent leads over days/weeks). Its own kill
     # switch — outbound follow-up is the touchiest send to be able to stop fast.
     nurture_enabled: bool = True
+    # Post-visit Google review requests (one message after an appointment, if the
+    # business set a review link). Kill switch like the other outbound sweeps.
+    review_requests_enabled: bool = True
 
     # --- WhatsApp channel (Meta Cloud API) ---
     # All empty = the webhook plays dead (404), so the channel is off by

@@ -150,7 +150,10 @@ async def _handle_message(business_id: str, phone_id: str, sender: str, text: st
             text,
             _schedule_background,
         )
-        await _send_text(phone_id, sender, reply)
+        # Empty = a human took this thread over (run_turn stayed silent) — send
+        # nothing; the owner replies from the inbox. Otherwise deliver the AI's reply.
+        if reply and reply.strip():
+            await _send_text(phone_id, sender, reply)
     except Exception:
         logger.exception("whatsapp turn failed for business=%s", business_id)
 
