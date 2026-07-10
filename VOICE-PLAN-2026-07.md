@@ -1,5 +1,24 @@
 # Voice channel plan — 2026-07-08 (research-backed)
 
+## Build status — 2026-07-10 (SCAFFOLD shipped, default OFF)
+The server side of "smallest viable build" (§below) is now in code, flag-gated and
+unit-tested, but **NOT yet verified against a live call**. What's done:
+- `backend/app/voice.py` — `POST /voice/incoming` (answers ConversationRelay TwiML,
+  tenant via `?business_id=`, Twilio-signature check when `TWILIO_AUTH_TOKEN` set) +
+  the `/voice/relay` WebSocket (setup → prompt → `run_turn` → spoken reply; the
+  caller's number is the conversation id `call-<e164>`, so voice shares caller memory).
+- Config flags (all default OFF/safe): `voice_enabled=False`, `voice_language=ar-AE`,
+  `voice_stt_provider=Deepgram`, `voice_tts_provider=ElevenLabs`, `twilio_auth_token`.
+- 9 tests in `backend/tests/test_voice.py` (flag-gating, TwiML shape, signature,
+  setup/prompt/paused/unknown-tenant handling). The brain is unchanged.
+
+**Still needs a human (can't be done/verified solo):** a Twilio number with
+ConversationRelay + Deepgram + ElevenLabs accounts, an e&/du line forwarding to it,
+and a **real phone call** to confirm the CR message shapes, Arabic STT/TTS quality,
+latency (~1-1.5s target) and barge-in. Set `VOICE_ENABLED=true` + the creds, point a
+Twilio number's Voice webhook at `https://<host>/voice/incoming?business_id=<id>`, and
+call it. Expect to tune the `prompt`/`interrupt` handling against what CR actually sends.
+
 ## Recommendation
 Pilot **Twilio ConversationRelay**, wrapping the existing `chat_core.run_turn` behind ONE
 FastAPI WebSocket, with **Deepgram (Arabic STT) + ElevenLabs (Arabic TTS)**, positioned

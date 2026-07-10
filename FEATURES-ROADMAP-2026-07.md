@@ -15,8 +15,12 @@ cron + WhatsApp + Resend + Supabase — squarely in solo-dev reach.
   Owner replies from the inbox → the AI pauses for that thread (`ai_pauses`), delivers
   over WhatsApp, "Hand back to AI" resumes. Endpoints: `/manage/{id}/conversations/{cid}/`
   `reply` · `resume` · `status`.
-- **Next up:** deposits/payment links (#3), Google Calendar sync (#4). Then the working
-  list's #1 (Arabic voice) and #2 (developer/off-plan mode).
+- 🟡 **Arabic voice channel — SCAFFOLD** (working-list #1). Arabic *text* was already
+  live (prompt mirrors the caller's language). The phone channel's server side is now
+  built + tested behind `VOICE_ENABLED` (default off) — see VOICE-PLAN-2026-07.md "Build
+  status". Going live needs Twilio/Deepgram/ElevenLabs accounts + a real call to verify.
+- **Next up:** deposits/payment links (#3), Google Calendar sync (#4), and the working
+  list's #2 (developer/off-plan mode). Finish voice when the accounts are ready.
 
 ## TOP 5 — build next (one coherent "retention core": show up → pay → get reviewed → stay booked → owner in control)
 1. **Appointment reminders + two-way confirm/reschedule** (quick win). Cron → WhatsApp

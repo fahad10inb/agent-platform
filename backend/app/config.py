@@ -81,6 +81,24 @@ class Settings(BaseSettings):
     # Use only to isolate a mis-pasted app secret during setup; turn back off.
     whatsapp_skip_signature: bool = False
 
+    # --- Inbound voice channel (Twilio ConversationRelay — Arabic-first) ---
+    # DEFAULT OFF: this is the phone-call channel (an after-hours e&/du line
+    # forwards to /voice/incoming → ConversationRelay bridges audio, we pump the
+    # transcript through the SAME chat_core.run_turn brain and speak the reply).
+    # The webhook + relay play dead (404 / immediate close) until voice_enabled
+    # is true. Twilio does all the real-time audio (STT/TTS/barge-in); the STT/TTS
+    # providers + language below are stamped into the TwiML for the pilot. See
+    # VOICE-PLAN-2026-07.md. Requires a Twilio number/relay + Deepgram + ElevenLabs
+    # accounts and a LIVE call to verify — not exercised by the unit tests.
+    voice_enabled: bool = False
+    # Gulf-Arabic first; ConversationRelay can switch per-turn if the caller does.
+    voice_language: str = "ar-AE"
+    voice_stt_provider: str = "Deepgram"      # Nova-3 has ar-AE; the CR default
+    voice_tts_provider: str = "ElevenLabs"    # good Arabic; the CR TTS option
+    # Twilio signs relay/webhook requests with this (the account's Auth Token).
+    # Empty = signature checks are skipped (dev only; set it in production).
+    twilio_auth_token: str = ""
+
     # --- Secrets ---
     gemini_api_key: str = ""
     database_url: str = ""

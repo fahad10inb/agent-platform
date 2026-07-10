@@ -25,6 +25,7 @@ import secrets
 
 from app.dashboard_html import DASHBOARD_HTML
 from app.landing_html import LANDING_HTML
+from app.voice import router as voice_router
 from app.whatsapp import router as whatsapp_router
 from app.widget_html import WIDGET_HTML
 
@@ -128,6 +129,10 @@ app = FastAPI(
 # The WhatsApp channel (webhook verify + inbound messages). Plays dead (404)
 # until the WHATSAPP_* env vars are configured.
 app.include_router(whatsapp_router)
+
+# The inbound voice channel (Twilio ConversationRelay → run_turn). Plays dead
+# (404 / immediate ws close) until voice_enabled is set. See VOICE-PLAN.
+app.include_router(voice_router)
 
 
 @app.middleware("http")
