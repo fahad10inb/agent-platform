@@ -819,6 +819,60 @@ def admin_send_review_requests(x_api_key: str | None = Header(default=None)):
     return {"sent": review_service.send_due_review_requests()}
 
 
+@app.get("/admin/whatsapp-status")
+async def admin_whatsapp_status(
+    waba_id: str = "", x_api_key: str | None = Header(default=None)
+):
+    """ADMIN ONLY — diagnose why inbound WhatsApp might not be arriving, using the
+    server's own token (never returned). The key check: is the WhatsApp Business
+    Account SUBSCRIBED to this app? That subscription is what makes Meta actually
+    DELIVER a number's inbound messages to our webhook — a fresh number/token can
+    be fully set up yet still not subscribed, so messages silently never arrive.
+    Pass ?waba_id=<the entry.id from a webhook payload>."""
+    security.check_admin(x_api_key)
+    token = settings.whatsapp_access_token
+    if not token:
+        return {"error": "WHATSAPP_ACCESS_TOKEN is not set on the server."}
+    if not waba_id:
+        return {"hint": "pass ?waba_id=<WhatsApp Business Account id> to check its app subscription"}
+    import httpx
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.get(
+            f"https://graph.facebook.com/v20.0/{waba_id}/subscribed_apps",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    try:
+        body = r.json()
+    except Exception:  # noqa: BLE001
+        body = {"raw": r.text[:500]}
+    subscribed = bool(isinstance(body, dict) and body.get("data"))
+    return {"waba_id": waba_id, "http": r.status_code, "subscribed": subscribed, "body": body}
+
+
+@app.post("/admin/whatsapp-subscribe")
+async def admin_whatsapp_subscribe(
+    waba_id: str, x_api_key: str | None = Header(default=None)
+):
+    """ADMIN ONLY — subscribe THIS app to a WhatsApp Business Account so Meta starts
+    delivering that number's inbound messages to our webhook. The fix when
+    /admin/whatsapp-status shows subscribed=false. Uses the server's token."""
+    security.check_admin(x_api_key)
+    token = settings.whatsapp_access_token
+    if not token:
+        return {"error": "WHATSAPP_ACCESS_TOKEN is not set on the server."}
+    import httpx
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.post(
+            f"https://graph.facebook.com/v20.0/{waba_id}/subscribed_apps",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    try:
+        body = r.json()
+    except Exception:  # noqa: BLE001
+        body = {"raw": r.text[:500]}
+    return {"waba_id": waba_id, "http": r.status_code, "body": body}
+
+
 class ImportRequest(BaseModel):
     """A website URL and/or a plain-text description to bootstrap onboarding
     from (description covers businesses that have no website at all)."""
