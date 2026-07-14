@@ -102,7 +102,10 @@ DEMO_HTML = """<!doctype html>
     background:var(--hairline-2);transition:background .15s,transform .1s}
   #send.on{background:var(--ink)} #send.on:hover{background:var(--ink-3)}
   #send:active{transform:scale(.95)}
-  #send svg{width:17px;height:17px;fill:#fff}
+  /* Icon follows state — white on the inactive tan fill is ~1.6:1 and reads as a
+     broken control rather than a waiting one. */
+  #send svg{width:17px;height:17px;fill:var(--muted);transition:fill .15s}
+  #send.on svg{fill:#fff}
 
   /* ── right: the operations console ─────────────────────────────────── */
   #right{display:flex;flex-direction:column;min-height:0;background:var(--ink);color:#dce8ee}

@@ -91,7 +91,10 @@ WIDGET_HTML = """<!doctype html>
   #send.ready:hover{background:#1b3340}
   #send:active{transform:scale(.94)}
   #send:disabled{opacity:.5;cursor:default}
-  #send svg{width:18px;height:18px;fill:#fff}
+  /* The icon must follow the button's state: white-on-tan (the empty/inactive
+     fill) is ~1.6:1 contrast and reads as a broken control, not a waiting one. */
+  #send svg{width:18px;height:18px;fill:var(--muted);transition:fill .15s}
+  #send.ready svg{fill:#fff}
   .foot{flex:none;text-align:center;font-size:11px;color:var(--muted);padding:0 0 8px;background:var(--card)}
   .foot a{color:var(--muted);text-decoration:none}
   .foot a b{font-weight:600;color:var(--body)}
