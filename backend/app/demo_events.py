@@ -28,13 +28,28 @@ def _joined(args: dict, keys: tuple[str, ...]) -> str:
     return " · ".join(p for p in parts if p)
 
 
-def _grade(result) -> str:
-    """The A/B/C grade a qualification returned, if any."""
+def _unwrap(result) -> dict:
+    """A tool's own return value, out of the SDK's envelope.
+
+    google-genai reports a function response as {"result": <what the tool
+    returned>}. Reading the envelope instead of the payload silently loses every
+    field — which is exactly how the A/B/C grade and the free-slot count went
+    missing from the feed. Tolerates both shapes."""
     if isinstance(result, dict):
-        for key in ("grade", "score", "rating", "tier"):
-            value = result.get(key)
-            if isinstance(value, str) and value.strip().upper() in {"A", "B", "C"}:
-                return value.strip().upper()
+        if set(result.keys()) == {"result"} and isinstance(result["result"], dict):
+            return result["result"]
+        return result
+    return {}
+
+
+def _grade(result) -> str:
+    """The A/B/C grade a qualification returned. qualify_lead returns it as
+    `score`; the other keys are defensive."""
+    payload = _unwrap(result)
+    for key in ("score", "grade", "rating", "tier"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip().upper() in {"A", "B", "C"}:
+            return value.strip().upper()
     return ""
 
 
@@ -67,7 +82,7 @@ def humanize(calls: list[dict]) -> list[dict]:
                 ) or "buyer details captured",
             })
         elif name == "check_availability":
-            slots = result.get("available_slots") if isinstance(result, dict) else None
+            slots = _unwrap(result).get("available_slots")
             detail = _s(args.get("date"))
             if isinstance(slots, list):
                 detail = f"{detail} — {len(slots)} slots free".strip(" —")
@@ -76,7 +91,7 @@ def humanize(calls: list[dict]) -> list[dict]:
                 "title": "Checked the calendar", "detail": detail,
             })
         elif name == "book_appointment":
-            ok = not (isinstance(result, dict) and result.get("status") == "unavailable")
+            ok = _unwrap(result).get("status") != "unavailable"
             events.append({
                 "kind": name, "tone": "ok" if ok else "warn", "badge": "",
                 "title": "Viewing booked" if ok else "Slot unavailable — no double-booking",
@@ -98,8 +113,9 @@ def humanize(calls: list[dict]) -> list[dict]:
                 "title": "Appointment confirmed", "detail": _joined(args, ("date", "time")),
             })
         elif name == "recall_caller":
-            returning = isinstance(result, dict) and result.get("returning_caller")
-            visits = result.get("visit_count") if isinstance(result, dict) else None
+            payload = _unwrap(result)
+            returning = bool(payload.get("returning_caller"))
+            visits = payload.get("visit_count")
             events.append({
                 "kind": name, "tone": "ok" if returning else "info", "badge": "",
                 "title": "Recognised the caller" if returning else "Checked caller history",

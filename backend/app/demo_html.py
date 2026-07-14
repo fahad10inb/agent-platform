@@ -244,12 +244,15 @@ DEMO_HTML = """<!doctype html>
       setChips(c.vertical);
     }).catch(() => setChips("general"));
 
-  // Prompts curated to walk a prospect straight into the moments that sell:
-  // qualification + scoring, the permit refusal, and a booked viewing.
+  // Prompts curated to walk a prospect straight into the moments that sell —
+  // in order: a real price from real inventory, qualification + an A score, the
+  // PERMIT REFUSAL (chip 3 hits the unpermitted listing on purpose), a booked
+  // viewing. These MUST match the seeded inventory or the demo opens on a miss.
   function setChips(vertical) {
     const re = [
       "Hi, I saw a 2-bedroom in JVC — what's the price?",
       "Budget is 1.5M, cash, I want to move next month",
+      "What about the 3-bedroom in JVC?",
       "Can I view it Thursday at 4pm?",
       "أبحث عن شقة في دبي مارينا",
     ];

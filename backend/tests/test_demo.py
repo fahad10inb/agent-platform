@@ -57,6 +57,30 @@ def test_no_tools_run_means_an_empty_feed():
     assert humanize([]) == []
 
 
+def test_the_sdk_result_envelope_is_unwrapped():
+    """google-genai reports a tool result as {"result": {...}}. Reading the
+    envelope instead of the payload silently loses every field — that is exactly
+    how the A/B/C grade and the free-slot count vanished from a live demo run.
+    qualify_lead returns its grade as `score`."""
+    (graded,) = humanize([
+        {"name": "qualify_lead", "args": {"budget": "1.5M", "area": "JVC"},
+         "result": {"result": {"status": "qualified", "score": "A", "reason": "cash + urgent"}}},
+    ])
+    assert graded["badge"] == "A" and graded["tone"] == "hot"
+
+    (slots,) = humanize([
+        {"name": "check_availability", "args": {"date": "2026-07-16"},
+         "result": {"result": {"available_slots": ["9:00 AM", "9:30 AM"]}}},
+    ])
+    assert "2 slots free" in slots["detail"]
+
+    (refused,) = humanize([
+        {"name": "book_appointment", "args": {"date": "2026-07-16", "time": "4:00 PM"},
+         "result": {"result": {"status": "unavailable"}}},
+    ])
+    assert refused["tone"] == "warn" and "no double-booking" in refused["title"]
+
+
 # ── the endpoints ────────────────────────────────────────────────────────────
 def test_demo_page_and_context_are_served(client):
     assert client.get("/demo").status_code == 200
