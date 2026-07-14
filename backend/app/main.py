@@ -174,9 +174,14 @@ def landing():
 _PRIVACY_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Privacy Policy — ReceptionAI</title>
-<style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:760px;
-margin:40px auto;padding:0 20px;line-height:1.6;color:#222}h1{font-size:26px}h2{font-size:18px;
-margin-top:28px}small{color:#666}</style></head><body>
+<style>body{font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:760px;
+margin:40px auto;padding:0 20px;line-height:1.6;color:#16232b;background:#faf9f6}
+h1{font-size:26px;letter-spacing:-.02em}h2{font-size:18px;margin-top:28px}small{color:#7a8892}
+a.home{display:inline-block;margin-bottom:22px;font-weight:600;font-size:15px;color:#0d1b26;
+text-decoration:none}a.home:hover{color:#8a6224}a.home span{color:#8a6224}
+footer{margin-top:44px;padding-top:18px;border-top:1px solid #e6e1d8;font-size:14px}
+footer a{color:#8a6224}</style></head><body>
+<a class="home" href="/">&larr; Reception<span>AI</span></a>
 <h1>Privacy Policy</h1>
 <small>Last updated: 8 July 2026</small>
 <p>ReceptionAI ("we", "us") provides an AI assistant that answers, qualifies and books
@@ -204,6 +209,8 @@ belongs to and our operators. Each business's data is isolated from every other 
 <h2>Contact</h2>
 <p>For any privacy request or question, contact the business you were speaking with, or reach us
 at the email address that business has on file. We will respond promptly.</p>
+<footer><a href="/">Home</a> &nbsp;·&nbsp; <a href="/demo?business_id=skyline-realty">Live demo</a>
+&nbsp;·&nbsp; <a href="/dashboard">Dashboard</a></footer>
 </body></html>"""
 
 
