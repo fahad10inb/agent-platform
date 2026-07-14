@@ -3,14 +3,16 @@
 Same pattern as widget_html.py / dashboard_html.py: one self-contained HTML
 string served by the backend, no separate frontend deploy, vanilla CSS/JS.
 
-Conversion story (top to bottom): hero with the differentiator — a receptionist
-that REMEMBERS every customer — and a live demo with an industry selector
-(salon / clinic / real estate, all real seed businesses); proof beats for
-memory and booking; how-it-works; benefit-first feature grid; a trust/security
-section grounded in real guarantees (per-business isolation, identity
-verification, DB-level double-booking protection); a founder's-promise card in
-place of testimonials we don't have yet; honest founding-customer pricing with
-no invented numbers; FAQ; final CTA. No fake logos, metrics or reviews.
+Positioning: REAL-ESTATE FIRST. The buyer is a Dubai brokerage owner (10-50
+agents), so the page opens on his leak — he already paid a portal for the lead,
+then nobody answered it at 11pm — and states the money in dirhams (45-60k/yr
+portal spend, ~40k commission on one 2M sale, 18k/yr for this). Salon and clinic
+remain reachable via the industry tab, but they are not who this page argues with.
+
+Rules kept: no fake logos, no invented metrics, no testimonials we don't have,
+and integrations are listed honestly — WhatsApp / website / portal lead emails /
+CRM webhook are LIVE, Google Calendar sync is marked NOT YET because it isn't
+built. A pilot would expose any lie here in week two.
 """
 
 LANDING_HTML = """<!doctype html>
@@ -49,10 +51,10 @@ LANDING_HTML = """<!doctype html>
   h1{font-size:clamp(38px,5.2vw,64px);font-weight:600;line-height:1.06;letter-spacing:-.035em}
   h2{font-size:clamp(28px,3.4vw,42px);font-weight:600;line-height:1.12;letter-spacing:-.025em}
   h3{font-size:19px;font-weight:600;letter-spacing:-.015em}
-  .eyebrow{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--accent-deep);margin-bottom:14px}
+  .eyebrow{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--gold-deep);margin-bottom:14px}
   .subhead{font-size:16.5px;color:var(--muted);margin-top:14px;max-width:620px}
   .center .subhead{margin-left:auto;margin-right:auto}
-  .grad{background:linear-gradient(90deg,var(--accent),#a86bff);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent}
+  .grad{background:linear-gradient(90deg,var(--gold-deep),var(--gold));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent}
   .num{font-variant-numeric:tabular-nums}
   /* buttons */
   .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:13px 24px;border-radius:999px;
@@ -61,13 +63,13 @@ LANDING_HTML = """<!doctype html>
   .btn-primary{background:var(--accent);color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 1px 2px rgba(13,27,38,.24)}
   .btn-primary:hover{background:var(--accent-deep);transform:translateY(-1px)}
   .btn-secondary{background:var(--card);color:var(--ink);border:1px solid var(--hairline-2)}
-  .btn-secondary:hover{border-color:#c9c2e2;transform:translateY(-1px)}
+  .btn-secondary:hover{border-color:var(--gold);transform:translateY(-1px)}
   /* nav */
   #nav{position:fixed;top:0;left:0;right:0;height:60px;z-index:50;transition:background .2s,border-color .2s}
   #nav.scrolled{background:rgba(250,249,246,.86);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--hairline)}
   .nav-inner{max-width:1120px;margin:0 auto;padding:0 24px;height:60px;display:flex;align-items:center;gap:28px}
   .logo{font-size:16px;font-weight:700;letter-spacing:-.015em;color:var(--ink);text-decoration:none}
-  .logo span{color:var(--accent-deep)}
+  .logo span{color:var(--gold-deep)}
   .nav-links{display:flex;gap:22px;margin-left:8px}
   .nav-links a{font-size:14px;font-weight:500;color:var(--body);text-decoration:none}
   .nav-links a:hover{color:var(--ink)}
@@ -361,8 +363,6 @@ LANDING_HTML = """<!doctype html>
   </div>
 </section>
 
-<!-- The money. An owner does not buy "AI" — he buys back the commission he is
-     currently leaking. Everything above this is noise if this doesn't land. -->
 <section class="band">
   <div class="container reveal">
     <div class="sechead">
@@ -392,7 +392,6 @@ LANDING_HTML = """<!doctype html>
   </div>
 </section>
 
-<!-- Answers the four questions every owner asks BEFORE they'll read the page. -->
 <section id="quick">
   <div class="container reveal">
     <div class="quick-grid">
@@ -408,8 +407,6 @@ LANDING_HTML = """<!doctype html>
   </div>
 </section>
 
-<!-- Show the work, don't describe it. This is the operations console from the live
-     demo — the rows below are the events the product actually emits. -->
 <section id="console-sec" class="band">
   <div class="container reveal">
     <div class="sechead">
@@ -707,8 +704,6 @@ LANDING_HTML = """<!doctype html>
       AED 45–60k a year for the leads — this just makes sure you don't lose them. At 2% on a 2M sale,
       <b>one saved deal covers it for more than two years.</b> No long-term contract.</p>
 
-    <!-- Honest integrations only. We do NOT have Google Calendar / Instagram /
-         Messenger / Outlook — putting those up would blow up in a pilot. -->
     <div class="works reveal">
       <p class="works-h">Works with what you already use</p>
       <div class="works-row">
