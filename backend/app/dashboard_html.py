@@ -112,6 +112,41 @@ DASHBOARD_HTML = """<!doctype html>
   .kpi:first-child{border-left:0}
   .klabel{display:block;font-size:12.5px;font-weight:500;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .knum{display:block;font-size:26px;font-weight:600;letter-spacing:-.015em;font-variant-numeric:tabular-nums;margin-top:2px}
+  /* calendar view — the owner reads bookings as a diary, not a spreadsheet */
+  .calsub{display:flex;align-items:center;gap:16px;flex-wrap:wrap;background:var(--card);
+    border:1px solid var(--hairline);border-radius:12px;padding:16px 18px;margin-bottom:18px;
+    box-shadow:var(--shadow-card)}
+  .calsub-h{flex:1;min-width:260px}
+  .calsub-h b{display:block;font-size:14.5px;font-weight:650;color:var(--ink)}
+  .calsub-h span{display:block;font-size:13px;color:var(--muted);margin-top:3px;line-height:1.5}
+  .calsub-a{flex:none}
+  .calsub #calUrlBox{flex-basis:100%}
+  .calsub .note{font-size:12px;color:var(--muted);margin-top:7px}
+  .calwrap{display:flex;flex-direction:column;gap:14px}
+  .calday{background:var(--card);border:1px solid var(--hairline);border-radius:12px;
+    overflow:hidden;box-shadow:var(--shadow-card)}
+  .calday.is-today{border-color:var(--gold)}
+  .caldate{display:flex;align-items:center;gap:9px;padding:11px 16px;background:var(--surface);
+    border-bottom:1px solid var(--hairline)}
+  .caldate b{font-size:14.5px;font-weight:650;color:var(--ink)}
+  .caldate span{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .todaytag{font-style:normal;font-size:10.5px;font-weight:700;letter-spacing:.06em;
+    text-transform:uppercase;padding:2px 7px;border-radius:5px;background:var(--accent-soft);color:var(--gold-deep)}
+  .calslots{display:flex;flex-direction:column}
+  .calslot{display:grid;grid-template-columns:88px 1fr auto auto;align-items:center;gap:14px;
+    padding:12px 16px;border-top:1px solid var(--surface-2)}
+  .calslot:first-child{border-top:0}
+  .ctime{font-size:14px;font-weight:650;color:var(--ink);font-variant-numeric:tabular-nums}
+  .cwho b{display:block;font-size:14px;font-weight:600;color:var(--ink)}
+  .cwho span{display:block;font-size:12.5px;color:var(--muted)}
+  .cphone{font-size:13px;color:var(--muted);white-space:nowrap}
+  .cadd{font-size:12.5px;font-weight:600;color:var(--gold-deep);text-decoration:none;white-space:nowrap;
+    border:1px solid var(--hairline-2);padding:6px 11px;border-radius:8px;transition:background .15s}
+  .cadd:hover{background:var(--accent-soft);border-color:var(--gold)}
+  @media (max-width:640px){
+    .calslot{grid-template-columns:70px 1fr;row-gap:6px}
+    .cphone,.cadd{grid-column:2}
+  }
   /* tabs — segmented control */
   .tabs{display:inline-flex;gap:2px;background:var(--surface);border:1px solid var(--hairline);border-radius:999px;padding:4px;margin-bottom:16px}
   .tab{padding:8px 16px;border-radius:999px;background:transparent;color:var(--muted);font-weight:500;font-size:14px;cursor:pointer;transition:color .15s,background .15s,box-shadow .15s}
@@ -541,6 +576,66 @@ DASHBOARD_HTML = """<!doctype html>
     renderTab();
   }
 
+  // ── calendar view helpers ───────────────────────────────────────────────
+  function minutesOf(t){
+    const m = String(t||"").trim().toUpperCase().match(/^(\\d{1,2})(?::(\\d{2}))?\\s*(AM|PM)?$/);
+    if(!m) return 0;
+    let h = +m[1]; const mins = +(m[2]||0), suf = m[3];
+    if(suf==="AM" && h===12) h = 0;
+    if(suf==="PM" && h!==12) h += 12;
+    return h*60 + mins;
+  }
+  function dayName(d){
+    const dt = new Date(d + "T00:00:00");
+    return isNaN(dt) ? d : dt.toLocaleDateString(undefined,{weekday:"long"});
+  }
+  function prettyDate(d){
+    const dt = new Date(d + "T00:00:00");
+    return isNaN(dt) ? d : dt.toLocaleDateString(undefined,{day:"numeric",month:"short"});
+  }
+
+  // The .ics endpoint is API-key protected, so a plain <a href> can't fetch it —
+  // pull it with the key, then hand the browser a blob to open in its calendar.
+  async function addToCal(ev, bookingId){
+    ev.preventDefault();
+    const r = await api("/manage/"+encodeURIComponent(CURRENT)+"/bookings/"+bookingId+".ics");
+    if(!r.ok){ toast("Couldn't build the calendar invite."); return; }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "viewing-" + bookingId + ".ics";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 4000);
+    toast("Invite downloaded — open it to add it to your calendar.");
+  }
+
+  function calSubscribeBox(){
+    return `<div class="calsub">
+      <div class="calsub-h">
+        <b>See these in your own calendar</b>
+        <span>Get one link, paste it into Google Calendar (Other calendars → From URL) — every booking appears automatically. Works with Outlook and Apple too.</span>
+      </div>
+      <div class="calsub-a">
+        <button class="btn ghost" onclick="makeCalUrl()">Get my calendar link</button>
+      </div>
+      <div id="calUrlBox" class="hidden">
+        <div class="keybox" id="calUrl"></div>
+        <p class="note">Anyone with this link can see your bookings — keep it private.
+          Generating a new link cancels the old one.</p>
+      </div>
+    </div>`;
+  }
+
+  async function makeCalUrl(){
+    const r = await api("/manage/"+encodeURIComponent(CURRENT)+"/calendar-token", {method:"POST"});
+    if(!r.ok){ toast("Couldn't create the calendar link."); return; }
+    const d = await r.json();
+    $("calUrl").textContent = d.url;
+    $("calUrlBox").classList.remove("hidden");
+    try { await navigator.clipboard.writeText(d.url); toast("Link copied — paste it into Google Calendar."); }
+    catch(e){ toast("Link ready — copy it into Google Calendar."); }
+  }
+
   function convChannel(cid){ return String(cid||"").startsWith("wa-") ? "WhatsApp" : "Web"; }
   function convWho(cid){
     const s = String(cid||"");
@@ -608,9 +703,31 @@ DASHBOARD_HTML = """<!doctype html>
       if(!r.ok){ body.innerHTML = estate("⚠️","Couldn't load bookings","Check your connection and switch tabs to retry."); return; }
       const rows = await r.json();
       loadStats();
-      body.innerHTML = rows.length ? `<div class="tablewrap"><table><thead><tr><th>Customer</th><th>Date</th><th>Time</th><th>Phone</th><th>Reason</th></tr></thead>
-        <tbody>${rows.map(b=>`<tr><td>${who(b.patient_name)}</td><td class="num">${esc(b.date)}</td><td class="num">${esc(b.time)}</td><td class="num">${esc(b.phone)}</td><td>${esc(b.reason)}</td></tr>`).join("")}</tbody></table></div>`
-        : estate("📅","No bookings yet","Share your chat link — every appointment the receptionist books lands here, in real time.");
+      if(!rows.length){
+        body.innerHTML = calSubscribeBox() + estate("📅","No bookings yet","Share your chat link — every appointment the receptionist books lands here, in real time.");
+        return;
+      }
+      // Group by day so the owner reads it as a diary, not a spreadsheet — this
+      // is the "can I see my calendar?" answer, and it demos far better.
+      const byDay = {};
+      rows.forEach(b => { (byDay[b.date] = byDay[b.date] || []).push(b); });
+      const days = Object.keys(byDay).sort();
+      const today = new Date().toISOString().slice(0,10);
+      const cal = days.map(d => {
+        const items = byDay[d].slice().sort((a,b)=> minutesOf(a.time) - minutesOf(b.time));
+        return `<div class="calday${d===today?" is-today":""}">
+          <div class="caldate"><b>${esc(dayName(d))}</b><span>${esc(prettyDate(d))}</span>
+            ${d===today?'<em class="todaytag">Today</em>':""}</div>
+          <div class="calslots">${items.map(b=>`
+            <div class="calslot">
+              <div class="ctime">${esc(b.time)}</div>
+              <div class="cwho"><b>${who(b.patient_name)}</b>${b.reason?`<span>${esc(b.reason)}</span>`:""}</div>
+              <div class="cphone num">${esc(b.phone||"")}</div>
+              <a class="cadd" href="#" onclick="addToCal(event, ${Number(b.id)})" title="Add to your calendar">+ Calendar</a>
+            </div>`).join("")}</div>
+        </div>`;
+      }).join("");
+      body.innerHTML = calSubscribeBox() + `<div class="calwrap">${cal}</div>`;
     } else if(TAB==="leads"){
       const r = await api("/leads?business_id="+encodeURIComponent(CURRENT));
       if(!r.ok){ body.innerHTML = estate("⚠️","Couldn't load leads","Check your connection and switch tabs to retry."); return; }

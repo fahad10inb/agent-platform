@@ -154,6 +154,10 @@ def init_db() -> None:
         # Portal lead-intake: an unguessable token that routes forwarded portal
         # emails to this business (empty = intake not set up).
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS lead_ingest_token TEXT")
+        # Calendar feed token. Google Calendar subscribes to a bare URL and cannot
+        # send an auth header, so the secret rides in the path — long, random, and
+        # rotatable (rotating instantly kills every old subscription).
+        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS calendar_token TEXT")
         # CRM write-back: a webhook the agency gives us (a Bitrix24 inbound
         # webhook URL, a Zapier/Make hook, or any endpoint) that qualified leads
         # are POSTed to. crm_type tunes the payload shape (empty = no write-back).
@@ -384,7 +388,10 @@ def list_bookings(business_id: str, limit: int = 100, offset: int = 0) -> list[d
     WHERE clause is the isolation wall — never returns another business's rows."""
     with _connect() as conn:
         rows = conn.execute(
-            "SELECT id, date, time, patient_name, phone, reason, created_at FROM bookings "
+            # status rides along so the calendar feed can mark a cancelled booking
+            # CANCELLED rather than leaving a ghost viewing in the owner's calendar.
+            "SELECT id, date, time, patient_name, phone, reason, created_at, "
+            "COALESCE(status, 'booked') AS status FROM bookings "
             "WHERE business_id = %s ORDER BY id DESC LIMIT %s OFFSET %s",
             (business_id, limit, offset),
         ).fetchall()
@@ -1020,6 +1027,30 @@ def get_business_by_ingest_token(token: str) -> dict | None:
             "SELECT * FROM businesses WHERE lead_ingest_token = %s LIMIT 1",
             (token,),
         ).fetchone()
+
+
+def get_business_by_calendar_token(token: str) -> dict | None:
+    """Which tenant owns this calendar-feed token? Google Calendar subscribes to a
+    plain URL and CANNOT send an auth header, so the secret has to ride in the
+    path — which is why the token is long, random, and rotatable."""
+    if not token:
+        return None
+    with _connect() as conn:
+        return conn.execute(
+            "SELECT * FROM businesses WHERE calendar_token = %s LIMIT 1",
+            (token,),
+        ).fetchone()
+
+
+def set_calendar_token(business_id: str, token: str) -> bool:
+    """(Re)generate a business's calendar-feed token. Rotating it instantly kills
+    every calendar that was subscribed with the old URL."""
+    with _connect() as conn:
+        row = conn.execute(
+            "UPDATE businesses SET calendar_token = %s WHERE id = %s RETURNING id",
+            (token, business_id),
+        ).fetchone()
+    return row is not None
 
 
 def set_ingest_token(business_id: str, token: str) -> bool:

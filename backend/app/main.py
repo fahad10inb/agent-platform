@@ -12,11 +12,12 @@ import datetime
 import logging
 import zoneinfo
 
-from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query, Request
+from fastapi import (BackgroundTasks, FastAPI, Header, HTTPException, Query,
+                     Request, Response)
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
-from app import (chat_core, db, demo_events, digest_service, import_service,
+from app import (chat_core, db, demo_events, digest_service, ics, import_service,
                  lead_intake, listing_import, nurture_service, reminder_service,
                  review_service, security)
 from app.businesses import SEED_BUSINESSES
@@ -543,6 +544,77 @@ def manage_conversation_thread(
     security.rate_limit(request, limit=60, window=60, bucket="manage")
     security.check_business_access(business_id, x_api_key)
     return db.get_history(business_id, conversation_id, limit=200)
+
+
+def _ics_response(business: dict, bookings: list[dict], filename: str) -> Response:
+    """An .ics body with the headers calendars actually need."""
+    return Response(
+        content=ics.build_ics(business, bookings),
+        media_type="text/calendar; charset=utf-8",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
+
+@app.get("/calendar/{token}.ics")
+def calendar_feed(token: str, request: Request):
+    """The owner's bookings as a subscribable calendar feed.
+
+    This is the honest answer to "does it sync with my calendar?" — the owner
+    pastes this URL into Google Calendar (Other calendars → From URL), Outlook or
+    Apple Calendar, and every booking appears and stays updated. No OAuth, no
+    Google verification, no 7-day token expiry.
+
+    PUBLIC but token-gated: a calendar app cannot send an auth header, so the
+    secret is the URL itself. An unknown token 404s exactly like a wrong one, so
+    the endpoint can't be used to enumerate businesses. Rotating the token in the
+    dashboard instantly kills every old subscription.
+
+    Google polls external feeds slowly (hours), so a freshly booked viewing shows
+    up immediately via the per-booking invite below; this feed is the backstop."""
+    security.rate_limit(request, limit=60, window=60, bucket="calendar")
+    business = db.get_business_by_calendar_token(token.strip())
+    if business is None:
+        raise HTTPException(status_code=404, detail="Not found.")
+    bookings = db.list_bookings(business["id"], limit=500)
+    return _ics_response(business, bookings, "bookings.ics")
+
+
+@app.get("/manage/{business_id}/bookings/{booking_id}.ics")
+def booking_invite(
+    business_id: str,
+    booking_id: int,
+    request: Request,
+    x_api_key: str | None = Header(default=None),
+):
+    """One booking as a calendar invite — the "Add to calendar" button. Lands in
+    Google / Outlook / Apple in one tap, immediately (the feed's poll is slow)."""
+    security.rate_limit(request, limit=60, window=60, bucket="manage")
+    security.check_business_access(business_id, x_api_key)
+    business = db.get_business(business_id)
+    if business is None:
+        raise HTTPException(status_code=404, detail="Unknown business.")
+    booking = next(
+        (b for b in db.list_bookings(business_id, limit=500) if b.get("id") == booking_id),
+        None,
+    )
+    if booking is None:
+        raise HTTPException(status_code=404, detail="Unknown booking.")
+    return _ics_response(business, [booking], f"viewing-{booking_id}.ics")
+
+
+@app.post("/manage/{business_id}/calendar-token")
+def manage_calendar_token(
+    business_id: str, request: Request, x_api_key: str | None = Header(default=None)
+):
+    """Mint (or rotate) this business's calendar-feed token and return the URL to
+    paste into Google Calendar. Rotating revokes every existing subscription."""
+    security.rate_limit(request, limit=10, window=60, bucket="manage")
+    security.check_business_access(business_id, x_api_key)
+    token = "cal_" + secrets.token_urlsafe(24)
+    if not db.set_calendar_token(business_id, token):
+        raise HTTPException(status_code=404, detail="Unknown business.")
+    base = str(request.base_url).rstrip("/")
+    return {"status": "set", "url": f"{base}/calendar/{token}.ics"}
 
 
 @app.get("/manage/{business_id}/conversations/{conversation_id}/status")

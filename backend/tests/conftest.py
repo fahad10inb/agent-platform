@@ -455,6 +455,23 @@ def _fake_set_ingest_token(business_id, token):
     return True
 
 
+def _fake_get_business_by_calendar_token(token):
+    if not token:
+        return None
+    for b in _S["businesses"].values():
+        if b.get("calendar_token") == token:
+            return dict(b)
+    return None
+
+
+def _fake_set_calendar_token(business_id, token):
+    b = _S["businesses"].get(business_id)
+    if b is None:
+        return False
+    b["calendar_token"] = token
+    return True
+
+
 def _fake_find_recent_lead(business_id, phone, within_hours=48):
     from app.phone import to_wa_number
     key = to_wa_number(phone)
@@ -504,6 +521,8 @@ db.replace_listings = _fake_replace_listings
 db.get_business_by_whatsapp = _fake_get_business_by_whatsapp
 db.get_business_by_ingest_token = _fake_get_business_by_ingest_token
 db.set_ingest_token = _fake_set_ingest_token
+db.get_business_by_calendar_token = _fake_get_business_by_calendar_token
+db.set_calendar_token = _fake_set_calendar_token
 db.upsert_qualification = _fake_upsert_qualification
 db.get_qualification = _fake_get_qualification
 db.leads_for_nurture = _fake_leads_for_nurture

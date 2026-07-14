@@ -711,11 +711,13 @@ LANDING_HTML = """<!doctype html>
         <span class="wpill live">Your website <b>live</b></span>
         <span class="wpill live">Bayut / Property Finder lead emails <b>live</b></span>
         <span class="wpill live">Bitrix24 · Zoho · any CRM webhook <b>live</b></span>
-        <span class="wpill soon">Google Calendar sync <b>not yet</b></span>
+        <span class="wpill live">Google Calendar · Outlook · Apple <b>live</b></span>
       </div>
-      <p class="works-note">We list what's built and what isn't. Bookings land in your dashboard and
-        your CRM today — two-way calendar sync is on the roadmap, and we'd rather say so now than
-        surprise you in week two.</p>
+      <p class="works-note">Every viewing it books lands in <b>your</b> calendar — paste one link
+        into Google Calendar and they appear automatically, or tap once to add a single viewing.
+        Outlook and Apple work the same way. We still list what <i>isn't</i> built: reading your
+        existing appointments back (<b>two-way</b> sync) is on the roadmap — we'd rather say so now
+        than surprise you in week two.</p>
     </div>
   </div>
 </section>
