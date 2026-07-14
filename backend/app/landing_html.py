@@ -64,7 +64,7 @@ LANDING_HTML = """<!doctype html>
   .btn-secondary:hover{border-color:#c9c2e2;transform:translateY(-1px)}
   /* nav */
   #nav{position:fixed;top:0;left:0;right:0;height:60px;z-index:50;transition:background .2s,border-color .2s}
-  #nav.scrolled{background:rgba(253,253,255,.84);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--hairline)}
+  #nav.scrolled{background:rgba(250,249,246,.86);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--hairline)}
   .nav-inner{max-width:1120px;margin:0 auto;padding:0 24px;height:60px;display:flex;align-items:center;gap:28px}
   .logo{font-size:16px;font-weight:700;letter-spacing:-.015em;color:var(--ink);text-decoration:none}
   .logo span{color:var(--accent-deep)}
@@ -104,6 +104,65 @@ LANDING_HTML = """<!doctype html>
   /* problem band */
   .band{background:var(--surface);border-top:1px solid var(--hairline);border-bottom:1px solid var(--hairline)}
   .band .lede{font-size:17px;color:var(--body);max-width:640px;margin-top:16px}
+  /* the money — an owner buys back a commission, not "AI" */
+  .money-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:34px}
+  .money-cell{background:var(--card);border:1px solid var(--hairline);border-radius:12px;
+    padding:22px 20px;box-shadow:var(--shadow-card)}
+  .money-cell b{display:block;font-size:30px;font-weight:700;letter-spacing:-.025em;color:var(--ink);
+    font-variant-numeric:tabular-nums;line-height:1.1}
+  .money-cell span{display:block;margin-top:8px;font-size:14px;color:var(--muted);line-height:1.5}
+  .money-cell.hi{border-color:var(--gold);background:linear-gradient(180deg,#fdf8ee,var(--card))}
+  .money-cell.hi b{color:var(--gold-deep)}
+  .money-foot{margin-top:20px;font-size:15px;color:var(--body);max-width:640px}
+  /* the four questions asked before anyone reads the page */
+  .quick-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  .quick{background:var(--card);border:1px solid var(--hairline);border-radius:12px;padding:18px 18px;
+    box-shadow:var(--shadow-card)}
+  .quick b{display:block;font-size:14.5px;font-weight:650;color:var(--ink);margin-bottom:6px}
+  .quick span{display:block;font-size:13.5px;color:var(--muted);line-height:1.55}
+  /* real product shot — the operations console a broker watches while it works */
+  .console{background:#0d1b26;border:1px solid #24404e;border-radius:14px;overflow:hidden;
+    box-shadow:0 20px 44px -18px rgba(13,27,38,.4)}
+  .console-head{display:flex;align-items:center;gap:9px;padding:12px 16px;border-bottom:1px solid #24404e}
+  .console-head .pulse{width:7px;height:7px;border-radius:50%;background:#3fcf7f}
+  .console-head span{font-family:ui-monospace,'SF Mono',Consolas,monospace;font-size:10.5px;
+    letter-spacing:.12em;text-transform:uppercase;color:#8fa5b1}
+  .console-body{padding:6px 16px 14px}
+  .crow{display:flex;gap:11px;padding:11px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+  .crow:last-child{border-bottom:0}
+  .crow .rail{width:3px;flex:none;border-radius:3px;background:#5d7d8f}
+  .crow.ok .rail{background:#3fcf7f} .crow.hot .rail{background:#ff8a4c} .crow.warn .rail{background:#d5a24c}
+  .crow .cb{flex:1;min-width:0}
+  .crow .ct{display:flex;align-items:center;gap:8px}
+  .crow .ct b{font-size:14px;font-weight:600;color:#fff}
+  .crow .cd{font-family:ui-monospace,'SF Mono',Consolas,monospace;font-size:11.5px;color:#8fa5b1;margin-top:3px}
+  .cbadge{font-family:ui-monospace,Consolas,monospace;font-size:10px;font-weight:700;padding:2px 6px;
+    border-radius:4px;background:#ff8a4c;color:#2a1305}
+  .cbadge.gold{background:#d5a24c;color:#2a1d05}
+  .console-foot{display:flex;border-top:1px solid #24404e}
+  .console-foot div{flex:1;padding:12px;text-align:center;border-left:1px solid #24404e}
+  .console-foot div:first-child{border-left:0}
+  .console-foot b{display:block;font-size:19px;font-weight:700;color:#fff;font-variant-numeric:tabular-nums}
+  .console-foot span{font-family:ui-monospace,Consolas,monospace;font-size:9.5px;letter-spacing:.09em;
+    text-transform:uppercase;color:#7e97a5}
+  /* honest integrations — built vs not-yet, stated plainly */
+  .works{margin-top:38px;text-align:center}
+  .works-h{font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  .works-row{display:flex;flex-wrap:wrap;gap:9px;justify-content:center;margin-top:14px}
+  .wpill{display:inline-flex;align-items:center;gap:7px;font-size:13.5px;font-weight:500;
+    padding:8px 14px;border-radius:999px;border:1px solid var(--hairline-2);background:var(--card);color:var(--body)}
+  .wpill b{font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+    padding:2px 6px;border-radius:4px}
+  .wpill.live b{background:var(--ok-soft);color:var(--ok)}
+  .wpill.soon{opacity:.72}
+  .wpill.soon b{background:var(--surface-2);color:var(--muted)}
+  .works-note{max-width:600px;margin:16px auto 0;font-size:13.5px;color:var(--muted);line-height:1.6}
+  @media (max-width:860px){
+    .money-grid,.quick-grid{grid-template-columns:1fr 1fr}
+  }
+  @media (max-width:560px){
+    .money-grid,.quick-grid{grid-template-columns:1fr}
+  }
   /* conversation vignettes (memory duo + booking beat) */
   .duo{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:44px}
   .convo{background:var(--card);border:1px solid var(--hairline);border-radius:14px;box-shadow:var(--shadow-card);overflow:hidden;display:flex;flex-direction:column}
@@ -246,7 +305,7 @@ LANDING_HTML = """<!doctype html>
   <div class="nav-inner">
     <a class="logo" href="/">Reception<span>AI</span></a>
     <nav class="nav-links" aria-label="Primary">
-      <a href="#product">Product</a>
+      <a href="#console-sec">What you get</a>
       <a href="#how">How it works</a>
       <a href="#pricing">Pricing</a>
       <a href="#faq">FAQ</a>
@@ -261,29 +320,31 @@ LANDING_HTML = """<!doctype html>
   <div class="hero-glow"></div>
   <div class="container hero-grid">
     <div>
-      <p class="eyebrow">AI receptionist for salons, clinics &amp; agencies — English + العربية</p>
-      <h1>The AI receptionist that <span class="grad">remembers</span> every customer</h1>
-      <p class="sub">It answers in seconds at any hour, books real appointments straight into your
-        calendar, and greets returning customers by name — in English or Arabic.</p>
+      <p class="eyebrow">AI lead operator for Dubai real-estate brokerages — English + العربية</p>
+      <h1>You pay for the leads.<br>Then <span class="grad">lose half of them</span> after 6pm.</h1>
+      <p class="sub">Every enquiry answered in seconds — on WhatsApp, in Arabic or English. It
+        qualifies the buyer, scores them A/B/C, matches your listings, and books the viewing.
+        While you sleep.</p>
       <div class="cta-row">
-        <a class="btn btn-primary" id="heroDemo" href="/demo?business_id=velvet-hair" target="_blank" rel="noopener">Watch it work — live</a>
-        <a class="btn btn-secondary" href="#how">How it works</a>
+        <a class="btn btn-primary" id="heroDemo" href="/demo?business_id=skyline-realty" target="_blank" rel="noopener">See it qualify a lead in 60 seconds</a>
+        <a class="btn btn-secondary" href="#pricing">What it costs</a>
       </div>
-      <p class="micro">No signup. Chat with it below — or open the live demo to watch it capture, score and book in real time →</p>
+      <p class="micro"><b>AED 1,499/month.</b> Free 2-week pilot on your real leads — no card, no contract.
+        <b>One saved deal pays for two years.</b></p>
     </div>
     <div>
       <div class="ind-tabs" role="tablist" aria-label="Choose an industry demo">
-        <button class="ind-tab" role="tab" aria-selected="true" data-biz="velvet-hair"
+        <button class="ind-tab" role="tab" aria-selected="true" data-biz="skyline-realty"
+          data-line="Never lets a buyer go cold — budget, area and phone captured, scored, and a viewing booked while you sleep.">Real estate</button>
+        <button class="ind-tab" role="tab" aria-selected="false" data-biz="velvet-hair"
           data-line="Remembers every regular — their usual service, their favourite stylist, their last visit.">Salon</button>
         <button class="ind-tab" role="tab" aria-selected="false" data-biz="bright-smile"
           data-line="Fills your calendar with real appointments and answers insurance questions at 2am.">Clinic</button>
-        <button class="ind-tab" role="tab" aria-selected="false" data-biz="skyline-realty"
-          data-line="Never lets a buyer go cold — budget, area and phone number captured while you sleep.">Real estate</button>
       </div>
-      <p class="ind-line" id="indLine">Remembers every regular — their usual service, their favourite stylist, their last visit.</p>
+      <p class="ind-line" id="indLine">Never lets a buyer go cold — budget, area and phone captured, scored, and a viewing booked while you sleep.</p>
       <div class="demo-frame">
         <div class="titlebar"><span></span><span></span><span></span></div>
-        <iframe id="demoFrame" src="/widget?business_id=velvet-hair" title="Live demo — chat with the receptionist" loading="lazy"></iframe>
+        <iframe id="demoFrame" src="/widget?business_id=skyline-realty" title="Live demo — chat with the receptionist" loading="lazy"></iframe>
       </div>
     </div>
   </div>
@@ -293,23 +354,100 @@ LANDING_HTML = """<!doctype html>
   <div class="container reveal">
     <div class="ribbon">
       <div>Answers in seconds, 24/7</div>
-      <div>English + Arabic</div>
+      <div>English + العربية</div>
+      <div>Trakheesi permit-safe</div>
       <div>Double-booking impossible</div>
-      <div>Every customer remembered</div>
     </div>
   </div>
 </section>
 
+<!-- The money. An owner does not buy "AI" — he buys back the commission he is
+     currently leaking. Everything above this is noise if this doesn't land. -->
 <section class="band">
   <div class="container reveal">
     <div class="sechead">
-      <p class="eyebrow">Why it exists</p>
-      <h2>A missed message is a lost booking.</h2>
-      <p class="lede">Front desks close at night, get slammed at noon, and can't answer two chats at
-        once — so customers quietly book somewhere else. ReceptionAI answers every message the
-        moment it arrives, books straight into your calendar, and hands your team a tidy list of
-        bookings and leads instead of a pile of missed calls.</p>
+      <p class="eyebrow">The leak</p>
+      <h2>You already paid for that lead.<br>Then nobody answered it.</h2>
+      <p class="lede">A buyer messages at 11pm. Your agent is asleep, or on a viewing, or handling
+        three other chats. By morning that buyer has messaged four other agencies — and the first
+        one to reply usually wins the deal. You didn't lose a lead. <b>You lost a lead you had
+        already bought.</b></p>
     </div>
+    <div class="money-grid">
+      <div class="money-cell">
+        <b>AED 45–60k</b>
+        <span>a year, what a brokerage pays the portals for leads</span>
+      </div>
+      <div class="money-cell">
+        <b>~AED 40,000</b>
+        <span>your commission on a single 2M sale, at 2%</span>
+      </div>
+      <div class="money-cell hi">
+        <b>AED 18,000</b>
+        <span>a year for this. One saved deal covers it twice over.</span>
+      </div>
+    </div>
+    <p class="money-foot">That's the whole pitch. It doesn't have to make you smarter — it just has
+      to stop you losing the ones you've already paid for.</p>
+  </div>
+</section>
+
+<!-- Answers the four questions every owner asks BEFORE they'll read the page. -->
+<section id="quick">
+  <div class="container reveal">
+    <div class="quick-grid">
+      <div class="quick"><b>Does it answer WhatsApp?</b><span>Yes — WhatsApp and your website, same
+        brain, same memory. That's where your buyers actually are.</span></div>
+      <div class="quick"><b>Could it double-book us?</b><span>No. Two people cannot take the same
+        slot — it's blocked at the database, not by the AI's good intentions.</span></div>
+      <div class="quick"><b>How long is setup?</b><span>An afternoon. Send your listings, connect a
+        number. No migration, no new CRM.</span></div>
+      <div class="quick"><b>What does it cost?</b><span><b>AED 1,499/month.</b> Free 2-week pilot on
+        your real leads first — decide after you've seen it work.</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- Show the work, don't describe it. This is the operations console from the live
+     demo — the rows below are the events the product actually emits. -->
+<section id="console-sec" class="band">
+  <div class="container reveal">
+    <div class="sechead">
+      <p class="eyebrow">What you actually get</p>
+      <h2>Not a chatbot. An operator that works the lead.</h2>
+      <p class="lede">A chatbot gives you a transcript. This gives you a <b>scored lead, a permit-safe
+        answer, and a booked viewing</b> — and shows you every action it took. Here's the console from
+        a real conversation:</p>
+    </div>
+    <div class="console" style="margin-top:30px">
+      <div class="console-head"><span class="pulse"></span><span>Live — what the agent is doing</span></div>
+      <div class="console-body">
+        <div class="crow ok"><div class="rail"></div><div class="cb">
+          <div class="ct"><b>Lead captured</b></div>
+          <div class="cd">Ahmed Al Mansoori · +971 50 ••• •••• · 2BR, JVC</div></div></div>
+        <div class="crow hot"><div class="rail"></div><div class="cb">
+          <div class="ct"><b>Qualified &amp; scored</b><span class="cbadge">A</span></div>
+          <div class="cd">1.5M · JVC · 2 bed · cash · moving next month</div></div></div>
+        <div class="crow warn"><div class="rail"></div><div class="cb">
+          <div class="ct"><b>Permit check — price withheld</b><span class="cbadge gold">TRAKHEESI</span></div>
+          <div class="cd">Belgravia Square: no permit on file — refused to quote</div></div></div>
+        <div class="crow"><div class="rail"></div><div class="cb">
+          <div class="ct"><b>Checked the calendar</b></div>
+          <div class="cd">Thu 16 Jul — 22 slots free</div></div></div>
+        <div class="crow ok"><div class="rail"></div><div class="cb">
+          <div class="ct"><b>Viewing booked</b></div>
+          <div class="cd">Thu 16 Jul · 4:00 PM · Bloom Heights, JVC</div></div></div>
+      </div>
+      <div class="console-foot">
+        <div><b>1</b><span>Lead</span></div>
+        <div><b>A</b><span>Score</span></div>
+        <div><b>1</b><span>Booked</span></div>
+        <div><b>5</b><span>Actions</span></div>
+      </div>
+    </div>
+    <p class="money-foot" style="margin-top:22px">Four messages from the buyer. One scored lead, one
+      booked viewing — at 11pm, in Arabic if they'd wanted.
+      <a href="/demo?business_id=skyline-realty" target="_blank" rel="noopener"><b>Try it yourself →</b></a></p>
   </div>
 </section>
 
@@ -536,38 +674,54 @@ LANDING_HTML = """<!doctype html>
     </div>
     <div class="tiers">
       <div class="tier reveal">
-        <div class="tname">Starter</div>
-        <div class="tfor">For a single location</div>
-        <div class="tprice">Founding rate</div>
-        <div class="tnote">Locked in for as long as you stay</div>
+        <div class="tname">Free pilot</div>
+        <div class="tfor">Two weeks, on your real leads</div>
+        <div class="tprice">AED 0</div>
+        <div class="tnote">No card. No contract. Set up with you, personally.</div>
         <ul>
-          <li>24/7 chat receptionist on your site &amp; socials</li>
-          <li>Real bookings with double-booking protection</li>
-          <li>Lead capture with names &amp; numbers</li>
-          <li>Customer memory — regulars greeted by name</li>
-          <li>English + Arabic</li>
-          <li>Owner dashboard with hours-saved tracking</li>
+          <li>We import your listings and connect a number</li>
+          <li>It works your real enquiries for two weeks</li>
+          <li>You see every lead it captured and scored</li>
+          <li>If it isn't catching you business, you walk away</li>
         </ul>
-        <a class="btn btn-secondary" href="/widget?business_id=bright-smile" target="_blank" rel="noopener">Try the live demo</a>
+        <a class="btn btn-secondary" href="/demo?business_id=skyline-realty" target="_blank" rel="noopener">See it work first</a>
       </div>
       <div class="tier featured reveal">
         <span class="tbadge">Founding customers</span>
-        <div class="tname">Growth</div>
-        <div class="tfor">For multiple locations or high volume</div>
-        <div class="tprice">Founding rate</div>
-        <div class="tnote">Locked in for as long as you stay</div>
+        <div class="tname">Full</div>
+        <div class="tfor">Everything, one flat fee — not per agent</div>
+        <div class="tprice">AED 1,499<span style="font-size:16px;font-weight:500;color:var(--muted)">/month</span></div>
+        <div class="tnote">Setup <b>waived</b> for founding customers. Rate locked while you stay.</div>
         <ul>
-          <li>Everything in Starter</li>
-          <li>A receptionist per location — data isolated for each</li>
-          <li>Higher conversation volume</li>
-          <li>Priority, founder-level support</li>
-          <li>Onboarding done with you, personally</li>
+          <li>WhatsApp + website, English &amp; Arabic, 24/7</li>
+          <li>Qualifies and scores every lead A / B / C</li>
+          <li>Matches your listings — permit-gated, Trakheesi-safe</li>
+          <li>Books viewings, no double-booking, ever</li>
+          <li>Chases leads that go quiet, so they don't go cold</li>
+          <li>Owner dashboard + full transcripts + CRM push</li>
         </ul>
-        <a class="btn btn-primary" href="/widget?business_id=velvet-hair" target="_blank" rel="noopener">Start with the demo</a>
+        <a class="btn btn-primary" href="/demo?business_id=skyline-realty" target="_blank" rel="noopener">See it qualify a lead</a>
       </div>
     </div>
-    <p class="pfoot">Final pricing is being set with our founding customers — early businesses lock
-      in their rate before public launch. No long-term contracts.</p>
+    <p class="pfoot"><b>AED 1,499/month is AED 18,000 a year.</b> You're already paying the portals
+      AED 45–60k a year for the leads — this just makes sure you don't lose them. At 2% on a 2M sale,
+      <b>one saved deal covers it for more than two years.</b> No long-term contract.</p>
+
+    <!-- Honest integrations only. We do NOT have Google Calendar / Instagram /
+         Messenger / Outlook — putting those up would blow up in a pilot. -->
+    <div class="works reveal">
+      <p class="works-h">Works with what you already use</p>
+      <div class="works-row">
+        <span class="wpill live">WhatsApp <b>live</b></span>
+        <span class="wpill live">Your website <b>live</b></span>
+        <span class="wpill live">Bayut / Property Finder lead emails <b>live</b></span>
+        <span class="wpill live">Bitrix24 · Zoho · any CRM webhook <b>live</b></span>
+        <span class="wpill soon">Google Calendar sync <b>not yet</b></span>
+      </div>
+      <p class="works-note">We list what's built and what isn't. Bookings land in your dashboard and
+        your CRM today — two-way calendar sync is on the roadmap, and we'd rather say so now than
+        surprise you in week two.</p>
+    </div>
   </div>
 </section>
 
@@ -668,11 +822,11 @@ LANDING_HTML = """<!doctype html>
 <section class="final">
   <div class="hero-glow"></div>
   <div class="container reveal">
-    <h2>Right now, someone is messaging a business that won't answer until morning.</h2>
-    <p class="subhead">Make sure it isn't yours.</p>
+    <h2>Right now, a buyer you paid for is messaging an agency that won't reply until morning.</h2>
+    <p class="subhead">Make sure it isn't yours. Free 2-week pilot on your real leads — you decide after.</p>
     <div class="cta-row">
-      <a class="btn btn-primary" href="/widget?business_id=bright-smile" target="_blank" rel="noopener">See it answer your customers</a>
-      <a class="btn btn-secondary" href="/dashboard">Open the dashboard</a>
+      <a class="btn btn-primary" href="/demo?business_id=skyline-realty" target="_blank" rel="noopener">See it qualify a lead in 60 seconds</a>
+      <a class="btn btn-secondary" href="#pricing">What it costs</a>
     </div>
   </div>
 </section>
