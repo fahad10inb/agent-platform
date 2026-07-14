@@ -75,7 +75,9 @@ DASHBOARD_HTML = """<!doctype html>
       radial-gradient(30% 40% at 68% 20%,rgba(255,158,122,.16),transparent 70%);
     filter:blur(60px);pointer-events:none;opacity:.55}
   #login .card{position:relative;padding:32px 28px;width:100%;max-width:400px;box-shadow:var(--shadow-float)}
-  .wordmark{font-size:17px;font-weight:700;letter-spacing:-.015em}
+  .wordmark{font-size:17px;font-weight:700;letter-spacing:-.015em;
+    text-decoration:none;color:var(--ink);display:inline-block}
+  a.wordmark:hover{opacity:.75}
   .wordmark span{color:var(--gold-deep)}
   #login h1{margin:18px 0 4px;font-size:20px;font-weight:600;letter-spacing:-.015em}
   #login .hint{margin:0 0 6px;color:var(--muted);font-size:13px}
@@ -186,7 +188,7 @@ DASHBOARD_HTML = """<!doctype html>
 <div id="login">
   <div class="hero-glow"></div>
   <div class="card">
-    <div class="wordmark">Reception<span>AI</span></div>
+    <a class="wordmark" href="/" title="Back to the site">Reception<span>AI</span></a>
     <h1>Sign in to your dashboard</h1>
     <p class="hint">Business owners: enter your Business ID and API key. Admin: leave Business ID blank.</p>
     <form onsubmit="event.preventDefault(); signIn()">
@@ -203,7 +205,7 @@ DASHBOARD_HTML = """<!doctype html>
 <!-- APP -->
 <div id="app" class="hidden">
   <div class="side hidden" id="side">
-    <span class="wordmark">Reception<span>AI</span></span>
+    <a class="wordmark" href="/" title="Back to the site">Reception<span>AI</span></a>
     <button class="onboard-row" onclick="showOnboard()">+ Add a business</button>
     <div class="side-label">Businesses</div>
     <div id="bizList"></div>

@@ -45,7 +45,9 @@ DEMO_HTML = """<!doctype html>
   #shell{display:flex;flex-direction:column;height:100dvh}
   .topbar{flex:none;display:flex;align-items:center;gap:14px;padding:12px 20px;
     background:var(--ink);color:#fff;border-bottom:1px solid var(--ink-line)}
-  .brand{display:flex;align-items:center;gap:10px;min-width:0}
+  .brand{display:flex;align-items:center;gap:10px;min-width:0;text-decoration:none;color:inherit;
+    border-radius:8px;padding:2px;transition:opacity .15s}
+  .brand:hover{opacity:.8}
   .mark{width:30px;height:30px;flex:none;border-radius:7px;display:grid;place-items:center;
     background:linear-gradient(150deg,var(--brass-bright),var(--brass));color:#1a1206;
     font-weight:700;font-size:14px;letter-spacing:-.02em}
@@ -58,9 +60,13 @@ DEMO_HTML = """<!doctype html>
     background:rgba(255,255,255,.06);border:1px solid var(--ink-line);padding:5px 10px;border-radius:999px}
   .pulse{width:7px;height:7px;border-radius:50%;background:#3fcf7f;animation:pulse 1.8s infinite}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
-  .reset{font-size:13px;font-weight:500;color:#c8dbe4;border:1px solid var(--ink-line);
+  .reset{display:inline-flex;align-items:center;font-size:13px;font-weight:500;color:#c8dbe4;
+    border:1px solid var(--ink-line);text-decoration:none;
     padding:6px 13px;border-radius:8px;transition:background .15s}
   .reset:hover{background:rgba(255,255,255,.07);color:#fff}
+  .reset.gold{border-color:var(--brass);color:var(--brass-bright)}
+  .reset.gold:hover{background:rgba(213,162,76,.12);color:#fff}
+  @media (max-width:640px){ .live,.reset.gold{display:none} }
 
   /* ── split ─────────────────────────────────────────────────────────── */
   #split{flex:1;display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);min-height:0}
@@ -156,15 +162,18 @@ DEMO_HTML = """<!doctype html>
 <body>
 <div id="shell">
   <div class="topbar">
-    <div class="brand">
+    <a class="brand" href="/" title="Back to ReceptionAI">
       <div class="mark" id="mark">R</div>
       <div style="min-width:0">
         <div class="bizname" id="bizname">Loading…</div>
         <div class="bizsub" id="bizsub">live demo</div>
       </div>
-    </div>
+    </a>
     <div class="grow"></div>
     <div class="live"><span class="pulse"></span>Live — not a recording</div>
+    <!-- The last beat of the pitch: the lead you just watched it capture is
+         waiting in the owner's dashboard. Without this the demo dead-ends. -->
+    <a class="reset gold" href="/dashboard" target="_blank" rel="noopener">Owner's view ↗</a>
     <button class="reset" id="reset">Reset</button>
   </div>
 

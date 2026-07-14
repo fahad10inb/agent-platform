@@ -681,10 +681,11 @@ LANDING_HTML = """<!doctype html>
   <div class="container foot-grid">
     <a class="logo" href="/">Reception<span>AI</span></a>
     <nav class="foot-links" aria-label="Footer">
-      <a href="/widget?business_id=bright-smile">Clinic demo</a>
-      <a href="/widget?business_id=velvet-hair">Salon demo</a>
-      <a href="/widget?business_id=skyline-realty">Real estate demo</a>
+      <a href="/demo?business_id=skyline-realty">Real estate demo</a>
+      <a href="/demo?business_id=bright-smile">Clinic demo</a>
+      <a href="/demo?business_id=velvet-hair">Salon demo</a>
       <a href="/dashboard">Dashboard</a>
+      <a href="/privacy">Privacy</a>
     </nav>
     <span class="foot-note">Made for the UAE 🇦🇪</span>
   </div>
