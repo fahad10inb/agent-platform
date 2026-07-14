@@ -37,10 +37,33 @@ def _get_client() -> genai.Client:
     return genai.Client(api_key=key)
 
 
+def _tool_calls(response) -> list[dict]:
+    """Structured {name, args, result} for every tool the model ACTUALLY ran this
+    turn, scraped from the SDK's automatic-function-calling transcript. This is
+    what powers the live "what the AI just did" feed on the demo page — real
+    executed work, never a scripted animation."""
+    calls: list[dict] = []
+    for content in getattr(response, "automatic_function_calling_history", None) or []:
+        for part in getattr(content, "parts", None) or []:
+            call = getattr(part, "function_call", None)
+            if call is not None:
+                calls.append({"name": call.name, "args": dict(call.args or {}), "result": None})
+            result = getattr(part, "function_response", None)
+            if result is not None:
+                # Results arrive in order after their call — fill the earliest
+                # call still waiting on one.
+                for c in calls:
+                    if c["result"] is None:
+                        c["result"] = result.response
+                        break
+    return calls
+
+
 async def generate_reply(
     system_prompt: str,
     history: list[dict],
     tools: list | None = None,
+    activity_sink: list | None = None,
 ) -> str:
     """Send the WHOLE conversation + instructions to Gemini; return the reply.
 
@@ -100,6 +123,10 @@ async def generate_reply(
                 ),
                 timeout=settings.llm_timeout_seconds,
             )
+            # Record what the model DID before any early return, so the demo feed
+            # sees the tool work even on the happy path.
+            if activity_sink is not None:
+                activity_sink.extend(_tool_calls(response))
             text = (response.text or "").strip()
             leaked = bool(text) and _looks_like_leaked_tool_call(text, tool_names)
             if text and not leaked:

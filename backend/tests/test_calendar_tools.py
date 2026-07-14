@@ -1,9 +1,27 @@
 """Slot generation, time normalization, and the no-double-booking guarantees."""
 
+import datetime
+import zoneinfo
+
+import pytest
+
 from app import db
+from app.tools import calendar_tools as ct
 from app.tools.calendar_tools import _all_slots, _norm_time, make_calendar_tools
 
 BIZ = {"id": "bright-smile", "open_hour": 9, "close_hour": 11, "slot_minutes": 30}
+
+# These tests book on FIXED dates (2026-07-10). Against the real wall clock they
+# rot the moment that date passes — and worse, they can pass for the WRONG reason
+# (a past date is refused as "unavailable", which is what some tests assert). So
+# freeze "now" for the whole module and keep the fixed dates meaningfully future.
+# Tests needing a different now still monkeypatch ct._now themselves.
+_FROZEN = datetime.datetime(2026, 7, 7, 10, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Dubai"))
+
+
+@pytest.fixture(autouse=True)
+def _frozen_clock(monkeypatch):
+    monkeypatch.setattr(ct, "_now", lambda: _FROZEN)
 
 
 def _tools(business=BIZ):

@@ -16,14 +16,15 @@ from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query, Requ
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
-from app import (chat_core, db, digest_service, import_service, lead_intake,
-                 listing_import, nurture_service, reminder_service,
+from app import (chat_core, db, demo_events, digest_service, import_service,
+                 lead_intake, listing_import, nurture_service, reminder_service,
                  review_service, security)
 from app.businesses import SEED_BUSINESSES
 from app.config import get_settings
 import secrets
 
 from app.dashboard_html import DASHBOARD_HTML
+from app.demo_html import DEMO_HTML
 from app.landing_html import LANDING_HTML
 from app.voice import router as voice_router
 from app.whatsapp import router as whatsapp_router
@@ -405,6 +406,70 @@ def dashboard():
     """The management dashboard page (clinic + admin). It's just the app shell;
     every data call from it requires an API key entered at login."""
     return DASHBOARD_HTML
+
+
+@app.get("/demo", response_class=HTMLResponse)
+def demo():
+    """The LIVE DEMO page — the thing that actually sells this.
+
+    The widget shows a conversation and hides the work; an owner watching it sees
+    "a chatbot". This page puts the chat beside a live feed of what the agent
+    ACTUALLY did that turn — captured the lead, scored it A/B/C, checked the
+    calendar, withheld an unpermitted price, booked the viewing. Same brain, same
+    /chat pipeline; the only difference is that the work is visible."""
+    return DEMO_HTML
+
+
+@app.get("/demo/context")
+def demo_context(business_id: str, request: Request):
+    """What the agent is working WITH — shown in the demo's side panel so the
+    owner sees the agent is grounded in THEIR business, not inventing. Public but
+    deliberately non-sensitive: names and counts only, never prices or contacts."""
+    security.rate_limit(request, limit=30, window=60, bucket="demo")
+    business = db.get_business(business_id)
+    if business is None:
+        raise HTTPException(status_code=404, detail="Unknown business.")
+    listings = db.list_listings(business_id)
+    permitted = sum(1 for row in listings if (row.get("permit_number") or "").strip())
+    return {
+        "id": business["id"],
+        "name": business.get("name") or business["id"],
+        "type": business.get("type") or "",
+        "vertical": business.get("vertical") or "general",
+        "services": len(db.list_services(business_id)),
+        "listings": len(listings),
+        "listings_permitted": permitted,
+        "listings_unpermitted": len(listings) - permitted,
+    }
+
+
+class DemoChatResponse(BaseModel):
+    reply: str
+    events: list[dict]
+
+
+@app.post("/demo/chat", response_model=DemoChatResponse)
+async def demo_chat(req: ChatRequest, request: Request, background_tasks: BackgroundTasks):
+    """A demo turn: the SAME run_turn every real channel uses, but it also returns
+    the tools the model actually executed, so the page can show the work. Nothing
+    here is scripted — an empty feed means the agent genuinely ran no tools."""
+    security.rate_limit(request, limit=30, window=60, bucket="demo")
+    activity: list[dict] = []
+    try:
+        reply = await chat_core.run_turn(
+            req.business_id, req.conversation_id, req.message,
+            background_tasks.add_task, activity=activity,
+        )
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except Exception as e:
+        logger.exception("demo chat failed for business=%s", req.business_id)
+        raise HTTPException(
+            status_code=500, detail="Sorry — something went wrong. Please try again."
+        ) from e
+    if not reply:
+        reply = "Thanks! One of our team will reply to you shortly."
+    return DemoChatResponse(reply=reply, events=demo_events.humanize(activity))
 
 
 @app.get("/manage/{business_id}")

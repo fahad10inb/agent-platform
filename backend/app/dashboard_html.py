@@ -25,19 +25,20 @@ DASHBOARD_HTML = """<!doctype html>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --canvas:#fdfdff; --surface:#f7f6fb; --surface-2:#f1effa; --card:#ffffff;
-    --hairline:#e9e7f2; --hairline-2:#dcd8ea; --ink:#16141d; --body:#4c4a58; --muted:#716e80;
-    --accent:#7c5cff; --accent-deep:#6847e6; --accent-soft:#efeaff;
+    --canvas:#faf9f6; --surface:#f7f5f1; --surface-2:#f1eee7; --card:#ffffff;
+    --hairline:#e6e1d8; --hairline-2:#d5cec1; --ink:#0d1b26; --body:#46565f; --muted:#7a8892;
+    --accent:#0d1b26; --accent-deep:#1b3340; --accent-soft:#f3e9d7;
+    --gold:#b8863b; --gold-deep:#8a6224;
     --ok:#147a3d; --ok-soft:#e8f7ee; --danger:#c02543;
-    --focus:rgba(124,92,255,.35);
-    --shadow-card:0 0 0 1px rgba(23,21,31,.04),0 1px 1px rgba(46,26,110,.03),0 2px 4px rgba(46,26,110,.04),0 8px 16px -4px rgba(46,26,110,.06);
-    --shadow-float:0 1px 1px rgba(46,26,110,.03),0 8px 16px -4px rgba(46,26,110,.06),0 24px 32px -8px rgba(46,26,110,.12);
+    --focus:rgba(184,134,59,.35);
+    --shadow-card:0 0 0 1px rgba(23,21,31,.04),0 1px 1px rgba(13,27,38,.03),0 2px 4px rgba(13,27,38,.04),0 8px 16px -4px rgba(13,27,38,.06);
+    --shadow-float:0 1px 1px rgba(13,27,38,.03),0 8px 16px -4px rgba(13,27,38,.06),0 24px 32px -8px rgba(13,27,38,.12);
   }
   *{box-sizing:border-box}
   body{margin:0;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;
     font-feature-settings:'cv11','ss01';-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
     color:var(--ink);background:var(--canvas);font-size:16px;line-height:1.55}
-  ::selection{background:rgba(124,92,255,.22)}
+  ::selection{background:rgba(184,134,59,.22)}
   :focus-visible{outline:2px solid var(--focus);outline-offset:2px}
   .hidden{display:none !important}
   .visually-hidden{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
@@ -47,7 +48,7 @@ DASHBOARD_HTML = """<!doctype html>
   button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
   .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px 22px;border-radius:999px;
     font-size:14.5px;font-weight:600;background:var(--accent);color:#fff;
-    box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 1px 2px rgba(46,26,110,.24);transition:background .15s,transform .15s}
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 1px 2px rgba(13,27,38,.24);transition:background .15s,transform .15s}
   .btn:hover{background:var(--accent-deep);transform:translateY(-1px)}
   .btn:active{transform:translateY(0)}
   .btn.ghost{background:var(--card);color:var(--body);border:1px solid var(--hairline-2);box-shadow:none}
@@ -55,7 +56,7 @@ DASHBOARD_HTML = """<!doctype html>
   /* forms */
   input,textarea,select{font:inherit;font-size:14.5px;width:100%;padding:10px 12px;border:1px solid var(--hairline-2);
     border-radius:8px;outline:none;background:var(--card);color:var(--ink);transition:border-color .15s,box-shadow .15s}
-  input::placeholder,textarea::placeholder{color:#a3a0b0}
+  input::placeholder,textarea::placeholder{color:#9aa6ae}
   input:focus,textarea:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--focus)}
   label{display:block;font-size:13px;font-weight:500;color:var(--body);margin:14px 0 6px}
   .card{background:var(--card);border:1px solid var(--hairline);border-radius:12px;box-shadow:var(--shadow-card)}
@@ -63,19 +64,19 @@ DASHBOARD_HTML = """<!doctype html>
   .fgroup{margin-top:28px;padding-top:24px;border-top:1px solid var(--surface-2)}
   .fgroup.first{margin-top:12px;padding-top:0;border-top:0}
   .fghead{display:flex;align-items:center;gap:10px}
-  .fgnum{flex:none;width:24px;height:24px;border-radius:50%;background:var(--accent-soft);color:var(--accent-deep);
+  .fgnum{flex:none;width:24px;height:24px;border-radius:50%;background:var(--accent-soft);color:var(--gold-deep);
     display:inline-flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:600;font-variant-numeric:tabular-nums}
   .fgtitle{font-size:15px;font-weight:600;letter-spacing:-.01em}
   .fgwhy{font-size:13px;color:var(--muted);margin:5px 0 0 34px}
   /* login */
   #login{position:relative;min-height:100vh;display:grid;place-items:center;padding:20px;overflow:hidden}
   .hero-glow{position:absolute;inset:-20% -10% auto;height:70%;
-    background:radial-gradient(38% 45% at 22% 30%,rgba(124,92,255,.22),transparent 70%),
+    background:radial-gradient(38% 45% at 22% 30%,rgba(184,134,59,.22),transparent 70%),
       radial-gradient(30% 40% at 68% 20%,rgba(255,158,122,.16),transparent 70%);
     filter:blur(60px);pointer-events:none;opacity:.55}
   #login .card{position:relative;padding:32px 28px;width:100%;max-width:400px;box-shadow:var(--shadow-float)}
   .wordmark{font-size:17px;font-weight:700;letter-spacing:-.015em}
-  .wordmark span{color:var(--accent-deep)}
+  .wordmark span{color:var(--gold-deep)}
   #login h1{margin:18px 0 4px;font-size:20px;font-weight:600;letter-spacing:-.015em}
   #login .hint{margin:0 0 6px;color:var(--muted);font-size:13px}
   label .soft{font-weight:400;color:var(--muted)}
@@ -86,8 +87,8 @@ DASHBOARD_HTML = """<!doctype html>
     padding:18px 12px;position:sticky;top:0;height:100vh;overflow-y:auto}
   .side .wordmark{display:block;padding:4px 10px 16px}
   .onboard-row{display:block;width:100%;text-align:left;padding:10px 12px;margin-bottom:14px;border-radius:8px;
-    font-size:14px;font-weight:600;color:var(--accent-deep);background:var(--accent-soft);transition:background .15s}
-  .onboard-row:hover{background:#e4dcff}
+    font-size:14px;font-weight:600;color:var(--gold-deep);background:var(--accent-soft);transition:background .15s}
+  .onboard-row:hover{background:#ead9bd}
   .side-label{font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);
     padding:2px 12px 8px}
   .biz-item{display:flex;width:100%;text-align:left;padding:9px 12px;border-radius:8px;cursor:pointer;

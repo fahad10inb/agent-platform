@@ -35,7 +35,9 @@ def test_uae_number_normalizes_to_whatsapp_e164():
     assert reminder_service._to_wa_number("00971501234567") == "971501234567"
 
 
-def test_reminder_copy_names_the_business_service_and_when():
+def test_reminder_copy_names_the_business_service_and_when(frozen):
+    # `frozen` pins now to 2026-07-08, so the 2026-07-09 booking really IS
+    # "tomorrow" — without it this rots against the real clock.
     biz = {"name": "Bright Smile Dental"}
     booking = {"patient_name": "Sara Ali", "reason": "cleaning", "date": "2026-07-09", "time": "10:00 AM"}
     text = reminder_service.compose_reminder(biz, booking, "24h")

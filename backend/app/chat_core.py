@@ -97,7 +97,11 @@ def _notify_quota(business: dict, reason: str, schedule: Callable) -> None:
 
 
 async def run_turn(
-    business_id: str, conversation_id: str, message: str, schedule: Callable
+    business_id: str,
+    conversation_id: str,
+    message: str,
+    schedule: Callable,
+    activity: list | None = None,
 ) -> str:
     """One full conversation turn; returns the reply text.
 
@@ -156,7 +160,15 @@ async def run_turn(
         if (business.get("vertical") or "").strip().lower() == "real_estate":
             from app.tools.qualify_tools import make_qualify_tools
             tools = tools + make_qualify_tools(business)
-        reply = await generate_reply(system_prompt, history, tools=tools)
+        # `activity` (the demo's live "what the AI did" feed) is opt-in: pass the
+        # sink ONLY when a caller asked for it, so every other caller — and every
+        # test that stubs generate_reply — keeps its existing signature.
+        if activity is not None:
+            reply = await generate_reply(
+                system_prompt, history, tools=tools, activity_sink=activity
+            )
+        else:
+            reply = await generate_reply(system_prompt, history, tools=tools)
 
         # Last-resort guard: llm_service already retries/recovers empty and
         # leaked replies; if EVERYTHING came back blank the caller still gets words.

@@ -21,13 +21,16 @@ WIDGET_HTML = """<!doctype html>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
+  /* Ink + brass — a property brand, not a generic "AI purple" chatbot. The
+     customer-facing widget should read as the BUSINESS's front desk, so it stays
+     calm and premium and lets the business's own name carry the header. */
   :root{
-    --canvas:#fdfdff; --surface:#f7f6fb; --surface-2:#f1effa; --card:#ffffff;
-    --hairline:#e9e7f2; --hairline-2:#dcd8ea; --ink:#16141d; --body:#4c4a58; --muted:#716e80;
-    --accent:#7c5cff; --accent-deep:#6847e6; --accent-soft:#efeaff;
-    --focus:rgba(124,92,255,.35);
-    --shadow-card:0 0 0 1px rgba(23,21,31,.04),0 1px 1px rgba(46,26,110,.03),0 2px 4px rgba(46,26,110,.04),0 8px 16px -4px rgba(46,26,110,.06);
-    --shadow-float:0 1px 1px rgba(46,26,110,.03),0 8px 16px -4px rgba(46,26,110,.06),0 24px 32px -8px rgba(46,26,110,.12);
+    --canvas:#faf9f6; --surface:#f7f5f1; --surface-2:#f1eee7; --card:#ffffff;
+    --hairline:#e6e1d8; --hairline-2:#d5cec1; --ink:#0d1b26; --body:#46565f; --muted:#7a8892;
+    --accent:#b8863b; --accent-deep:#9c6f2c; --accent-soft:#f3e9d7;
+    --focus:rgba(184,134,59,.38);
+    --shadow-card:0 0 0 1px rgba(13,27,38,.04),0 1px 2px rgba(13,27,38,.04),0 8px 16px -6px rgba(13,27,38,.07);
+    --shadow-float:0 1px 2px rgba(13,27,38,.05),0 10px 20px -6px rgba(13,27,38,.08),0 28px 40px -12px rgba(13,27,38,.14);
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{margin:0;height:100%}
@@ -45,9 +48,9 @@ WIDGET_HTML = """<!doctype html>
   }
   /* header */
   header{display:flex;align-items:center;gap:12px;padding:14px 16px;flex:none;
-    background:linear-gradient(135deg,#8f6fff,#6847e6);color:#fff}
-  .avatar{width:36px;height:36px;border-radius:50%;flex:none;display:grid;place-items:center;
-    background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.3);font-size:15px;font-weight:600}
+    background:var(--ink);color:#fff}
+  .avatar{width:36px;height:36px;border-radius:9px;flex:none;display:grid;place-items:center;
+    background:linear-gradient(150deg,#d5a24c,#b8863b);color:#1a1206;font-size:15px;font-weight:700}
   .htext{min-width:0}
   .htext b{display:block;font-size:16px;font-weight:600;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .status{display:flex;align-items:center;gap:6px;font-size:12px;color:rgba(255,255,255,.85);margin-top:1px}
@@ -63,7 +66,7 @@ WIDGET_HTML = """<!doctype html>
     white-space:pre-wrap;word-wrap:break-word;animation:msgin .18s cubic-bezier(.16,1,.3,1)}
   @keyframes msgin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
   .ai .b{background:var(--surface-2);color:var(--ink);border-bottom-left-radius:6px}
-  .me .b{background:linear-gradient(135deg,#8f6fff,#6847e6);color:#fff;border-bottom-right-radius:6px}
+  .me .b{background:var(--ink);color:#f2f6f8;border-bottom-right-radius:6px}
   /* typing indicator */
   .typing{display:flex;gap:5px;padding:13px 14px}
   .typing span{width:6px;height:6px;border-radius:50%;background:var(--muted);animation:blink 1.2s infinite}
@@ -82,10 +85,10 @@ WIDGET_HTML = """<!doctype html>
   #m{flex:1;border:0;outline:none;resize:none;background:transparent;color:var(--ink);
     font:inherit;font-size:15px;line-height:1.4;padding:9px 4px;max-height:96px}
   #m::placeholder{color:var(--muted)}
-  #send{width:40px;height:40px;flex:none;border:0;border-radius:999px;cursor:pointer;display:grid;place-items:center;
-    background:var(--muted);transition:background .15s,transform .12s}
-  #send.ready{background:var(--accent)}
-  #send.ready:hover{background:var(--accent-deep)}
+  #send{width:40px;height:40px;flex:none;border:0;border-radius:11px;cursor:pointer;display:grid;place-items:center;
+    background:var(--hairline-2);transition:background .15s,transform .12s}
+  #send.ready{background:var(--ink)}
+  #send.ready:hover{background:#1b3340}
   #send:active{transform:scale(.94)}
   #send:disabled{opacity:.5;cursor:default}
   #send svg{width:18px;height:18px;fill:#fff}

@@ -1,8 +1,23 @@
 """The differentiator: the platform remembers callers — automatically, deduped,
 and scoped to one business."""
 
+import datetime
+import zoneinfo
+
+import pytest
+
+from app.tools import calendar_tools as ct
 from app.tools.calendar_tools import make_calendar_tools
 from app.tools.memory_tools import make_memory_tools
+
+# The booking test uses a fixed date — freeze "now" so it stays in the future and
+# the test can't rot against the real clock (see test_calendar_tools).
+_FROZEN = datetime.datetime(2026, 7, 7, 10, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Dubai"))
+
+
+@pytest.fixture(autouse=True)
+def _frozen_clock(monkeypatch):
+    monkeypatch.setattr(ct, "_now", lambda: _FROZEN)
 
 
 def _mem(business_id="bright-smile"):
