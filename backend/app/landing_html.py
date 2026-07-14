@@ -253,7 +253,7 @@ LANDING_HTML = """<!doctype html>
     </nav>
     <span class="nav-spacer"></span>
     <a class="nav-ghost" href="/dashboard">Sign in</a>
-    <a class="btn btn-primary" href="/widget?business_id=bright-smile">Try the demo</a>
+    <a class="btn btn-primary" id="navDemo" href="/demo?business_id=velvet-hair">See it work</a>
   </div>
 </header>
 
@@ -266,10 +266,10 @@ LANDING_HTML = """<!doctype html>
       <p class="sub">It answers in seconds at any hour, books real appointments straight into your
         calendar, and greets returning customers by name — in English or Arabic.</p>
       <div class="cta-row">
-        <a class="btn btn-primary" href="/widget?business_id=bright-smile" target="_blank" rel="noopener">See it answer your customers</a>
+        <a class="btn btn-primary" id="heroDemo" href="/demo?business_id=velvet-hair" target="_blank" rel="noopener">Watch it work — live</a>
         <a class="btn btn-secondary" href="#how">How it works</a>
       </div>
-      <p class="micro">No signup. Pick your industry and chat with a live demo business →</p>
+      <p class="micro">No signup. Chat with it below — or open the live demo to watch it capture, score and book in real time →</p>
     </div>
     <div>
       <div class="ind-tabs" role="tablist" aria-label="Choose an industry demo">
@@ -698,14 +698,19 @@ LANDING_HTML = """<!doctype html>
   addEventListener("scroll", onScroll, { passive: true });
   onScroll();
 
-  // industry selector — swaps the live demo iframe + one benefit line
+  // Industry selector — swaps the embedded widget, the benefit line, AND the two
+  // "watch it work" links, so a visitor who picks Real estate lands in the
+  // real-estate operator demo rather than a salon's.
   const frame = document.getElementById("demoFrame");
   const line = document.getElementById("indLine");
+  const demoLinks = [document.getElementById("heroDemo"), document.getElementById("navDemo")];
   document.querySelectorAll(".ind-tab").forEach(tab => {
     tab.addEventListener("click", () => {
       document.querySelectorAll(".ind-tab").forEach(t => t.setAttribute("aria-selected", t === tab ? "true" : "false"));
       line.textContent = tab.dataset.line;
-      frame.src = "/widget?business_id=" + encodeURIComponent(tab.dataset.biz);
+      const biz = encodeURIComponent(tab.dataset.biz);
+      frame.src = "/widget?business_id=" + biz;
+      demoLinks.forEach(a => { if (a) a.href = "/demo?business_id=" + biz; });
     });
   });
 
