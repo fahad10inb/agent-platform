@@ -34,6 +34,23 @@ from app.widget_html import WIDGET_HTML
 # Load our settings once at startup.
 settings = get_settings()
 
+# Error monitoring — a no-op unless SENTRY_DSN is set. Wrapped so a missing
+# package or a bad DSN can never stop the server from starting; monitoring is
+# nice-to-have, never worth an outage.
+if settings.sentry_dsn:
+    try:
+        import sentry_sdk
+
+        sentry_sdk.init(
+            dsn=settings.sentry_dsn,
+            environment=settings.environment,
+            # Errors only — no performance traces (keeps it free-tier friendly).
+            traces_sample_rate=0.0,
+            send_default_pii=False,  # never ship request bodies / headers to Sentry
+        )
+    except Exception:  # noqa: BLE001 — monitoring must never break boot
+        logging.getLogger("agent-platform").warning("sentry init failed — continuing without it")
+
 # Without this, the root logger sits at WARNING with a last-resort handler, so
 # every logger.info() breadcrumb (notify sent, digest counts, distilled, empty-
 # reply recovery) is silently DROPPED in production — Render logs show only
@@ -814,7 +831,9 @@ def admin_create_business(payload: NewBusiness, x_api_key: str | None = Header(d
         raise HTTPException(status_code=409, detail="A business with that id already exists.")
     api_key = "bizkey_" + secrets.token_urlsafe(24)
     data = payload.model_dump()
-    data["api_key"] = api_key
+    # Store only the HASH; the plaintext is shown to the owner once, here, and is
+    # never recoverable from the database afterwards.
+    data["api_key"] = security.hash_key(api_key)
     db.upsert_business(data)
     return {"status": "created", "id": payload.id, "api_key": api_key}
 
@@ -829,7 +848,9 @@ def admin_rotate_key(business_id: str, x_api_key: str | None = Header(default=No
     owner. Shown once, like onboarding."""
     security.check_admin(x_api_key)
     new_key = "bizkey_" + secrets.token_urlsafe(24)
-    if not db.rotate_api_key(business_id, new_key):
+    # The old key stops working the instant the new HASH lands; the owner gets
+    # the plaintext once, here.
+    if not db.rotate_api_key(business_id, security.hash_key(new_key)):
         raise HTTPException(status_code=404, detail="Unknown business.")
     logger.info("rotated api_key for business=%s", business_id)
     return {"status": "rotated", "id": business_id, "api_key": new_key}

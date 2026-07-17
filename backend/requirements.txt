@@ -26,3 +26,8 @@ tzdata>=2024.1
 # but the WhatsApp channel must not silently break if that transitive pin
 # changes — so we declare it explicitly.
 httpx>=0.28,<1
+
+# sentry-sdk : error monitoring. Completely inert unless SENTRY_DSN is set, so
+# it changes nothing until you paste a DSN — then unhandled 500s get reported
+# with the request context instead of vanishing into the logs.
+sentry-sdk>=2,<3

@@ -11,6 +11,7 @@ Access model:
 Secure by default: if no key matches, access is denied.
 """
 
+import hashlib
 import secrets
 import time
 
@@ -18,6 +19,36 @@ from fastapi import Header, HTTPException, Request
 
 from app import db
 from app.config import get_settings
+
+# ── api-key hashing ──────────────────────────────────────────────────────────
+# We store a HASH of each business key, never the key itself — so a database
+# dump doesn't hand an attacker every tenant's live credential. SHA-256 (not
+# bcrypt/argon2) is the correct choice HERE: our keys are high-entropy random
+# tokens ("bizkey_" + 24 url-safe bytes ≈ 192 bits), so they're not brute-
+# forceable and don't need a slow password KDF — a fast cryptographic hash is
+# both standard and right for API tokens. The "sha256:" tag lets verify_key tell
+# a hashed value from a legacy plaintext one during migration.
+_HASH_PREFIX = "sha256:"
+
+
+def hash_key(plain: str) -> str:
+    """The stored form of an API key."""
+    return _HASH_PREFIX + hashlib.sha256((plain or "").encode()).hexdigest()
+
+
+def verify_key(presented: str, stored: str) -> bool:
+    """Constant-time check of a presented key against its stored form.
+
+    Handles BOTH shapes so a live migration can't lock anyone out: a hashed
+    value ('sha256:…') is compared by hashing the presented key; a legacy
+    plaintext value is compared directly (still constant-time). New writes are
+    always hashed, and init_db upgrades old plaintext rows, so the legacy branch
+    fades away on its own."""
+    if not presented or not stored:
+        return False
+    if stored.startswith(_HASH_PREFIX):
+        return secrets.compare_digest(hash_key(presented), stored)
+    return secrets.compare_digest(presented, stored)  # legacy plaintext row
 
 # ── rate limiting (in-memory, per process) ──────────────────────────────────
 # Fine for a single instance (our case). At multi-instance scale this moves to
@@ -71,7 +102,7 @@ def check_business_access(business_id: str, x_api_key: str | None) -> None:
     biz = db.get_business(business_id)
     # Unknown business and wrong key answer IDENTICALLY (403): a distinct 404
     # here let anyone with any key enumerate which business ids exist.
-    if biz is None or not biz.get("api_key") or not secrets.compare_digest(x_api_key, biz["api_key"]):
+    if biz is None or not verify_key(x_api_key, biz.get("api_key") or ""):
         raise HTTPException(status_code=403, detail="API key does not match this business.")
 
 

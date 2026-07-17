@@ -99,6 +99,11 @@ class Settings(BaseSettings):
     # Empty = signature checks are skipped (dev only; set it in production).
     twilio_auth_token: str = ""
 
+    # --- Observability ---
+    # Error monitoring. Empty = OFF (nothing is sent anywhere). Paste the DSN
+    # from your Sentry project to start receiving unhandled-error reports.
+    sentry_dsn: str = ""
+
     # --- Secrets ---
     gemini_api_key: str = ""
     database_url: str = ""

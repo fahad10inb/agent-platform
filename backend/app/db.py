@@ -338,6 +338,24 @@ def init_db() -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_services_biz ON services (business_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_listings_biz ON listings (business_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages (business_id, conversation_id, id)")
+        # One-time (idempotent) migration: hash any api_key still stored in
+        # plaintext, so a DB dump never exposes a live tenant credential. New keys
+        # are already stored hashed at the route layer; this catches rows that
+        # predate hashing. security.verify_key still accepts a plaintext row, so
+        # this can run lazily without ever locking anyone out. Import is lazy to
+        # avoid a security<->db import cycle at module load.
+        from app.security import hash_key  # noqa: PLC0415
+        legacy = conn.execute(
+            "SELECT id, api_key FROM businesses "
+            "WHERE api_key IS NOT NULL AND api_key <> '' AND api_key NOT LIKE 'sha256:%'"
+        ).fetchall()
+        for row in legacy:
+            conn.execute(
+                "UPDATE businesses SET api_key = %s WHERE id = %s",
+                (hash_key(row["api_key"]), row["id"]),
+            )
+        if legacy:
+            logger.info("hashed %d legacy plaintext api_key(s)", len(legacy))
     # One slot = one booking, enforced by the DATABASE — the tool's check-then-
     # insert has a race window (two simultaneous callers both pass the check);
     # this unique index is what actually guarantees no double-booking. Separate

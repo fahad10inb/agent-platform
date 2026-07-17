@@ -21,3 +21,30 @@ jobs:
       - name: Run tests
         working-directory: backend
         run: python -m pytest tests/ -q
+
+  # Deploy ONLY after tests pass, and only on main. This is the gate: Render's
+  # own auto-deploy ships whatever is on main even if the tests are red, so turn
+  # Render auto-deploy OFF and let this job be the only thing that deploys.
+  #
+  # One-time setup (both are dashboard clicks, done once):
+  #   1. Render → your service → Settings → set "Auto-Deploy" to OFF.
+  #   2. Render → Settings → Deploy Hook → copy the URL → add it to GitHub as a
+  #      repo secret named RENDER_DEPLOY_HOOK (Settings → Secrets → Actions).
+  # Until the secret exists this job is a safe no-op, so merging this changes
+  # nothing on its own.
+  deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy (only reached if tests passed)
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "RENDER_DEPLOY_HOOK not set — skipping deploy."
+            echo "Set the secret + turn Render auto-deploy OFF to gate deploys on green tests."
+            exit 0
+          fi
+          curl -fsS -X POST "$HOOK" > /dev/null
+          echo "Tests passed → Render deploy triggered."
