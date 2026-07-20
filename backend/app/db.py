@@ -133,6 +133,15 @@ def init_db() -> None:
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS staff TEXT")
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS location TEXT")
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS policies TEXT")
+        # Real-estate agency profile — what the AI needs to KNOW about the agency
+        # to answer, route and build trust: the communities they cover, whether
+        # they do sale/rent/off-plan, the languages the team speaks, and the
+        # RERA ORN (broker registration number, the trust signal). Empty for
+        # non-real-estate tenants; the prompt only surfaces what's present.
+        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS areas_covered TEXT")
+        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS deal_focus TEXT")
+        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS languages TEXT")
+        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS orn TEXT")
         # Booking hygiene (Fresha-style): how much notice a booking needs, how
         # far ahead the calendar opens, and breathing room between appointments.
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS min_notice_hours INTEGER")
@@ -1092,13 +1101,15 @@ def upsert_business(b: dict) -> None:
             INSERT INTO businesses
                 (id, name, type, hours, services, tone, open_hour, close_hour, slot_minutes, faq, api_key, vertical,
                  staff, location, policies, min_notice_hours, max_advance_days, buffer_min,
-                 transfer_number, after_hours_mode, notify_email)
+                 transfer_number, after_hours_mode, notify_email,
+                 areas_covered, deal_focus, languages, orn)
             VALUES
                 (%(id)s, %(name)s, %(type)s, %(hours)s, %(services)s, %(tone)s,
                  %(open_hour)s, %(close_hour)s, %(slot_minutes)s, %(faq)s, %(api_key)s, %(vertical)s,
                  %(staff)s, %(location)s, %(policies)s,
                  %(min_notice_hours)s, %(max_advance_days)s, %(buffer_min)s,
-                 %(transfer_number)s, %(after_hours_mode)s, %(notify_email)s)
+                 %(transfer_number)s, %(after_hours_mode)s, %(notify_email)s,
+                 %(areas_covered)s, %(deal_focus)s, %(languages)s, %(orn)s)
             ON CONFLICT (id) DO UPDATE SET
                 name=EXCLUDED.name, type=EXCLUDED.type, hours=EXCLUDED.hours,
                 services=EXCLUDED.services, tone=EXCLUDED.tone,
@@ -1111,7 +1122,9 @@ def upsert_business(b: dict) -> None:
                 max_advance_days=EXCLUDED.max_advance_days, buffer_min=EXCLUDED.buffer_min,
                 transfer_number=EXCLUDED.transfer_number,
                 after_hours_mode=EXCLUDED.after_hours_mode,
-                notify_email=EXCLUDED.notify_email
+                notify_email=EXCLUDED.notify_email,
+                areas_covered=EXCLUDED.areas_covered, deal_focus=EXCLUDED.deal_focus,
+                languages=EXCLUDED.languages, orn=EXCLUDED.orn
             """,
             {
                 "id": b["id"],
@@ -1135,6 +1148,10 @@ def upsert_business(b: dict) -> None:
                 "transfer_number": b.get("transfer_number", ""),
                 "after_hours_mode": b.get("after_hours_mode", "take_message"),
                 "notify_email": b.get("notify_email", ""),
+                "areas_covered": b.get("areas_covered", ""),
+                "deal_focus": b.get("deal_focus", ""),
+                "languages": b.get("languages", ""),
+                "orn": b.get("orn", ""),
             },
         )
 
@@ -1143,6 +1160,7 @@ _EDITABLE_BUSINESS_FIELDS = {
     "name", "type", "hours", "services", "tone", "faq",
     "open_hour", "close_hour", "slot_minutes", "vertical",
     "staff", "location", "policies",
+    "areas_covered", "deal_focus", "languages", "orn",
     "min_notice_hours", "max_advance_days", "buffer_min",
     "notify_email", "transfer_number", "after_hours_mode", "whatsapp_phone_id",
     "google_review_url", "crm_webhook_url", "crm_type",

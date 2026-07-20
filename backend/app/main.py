@@ -294,6 +294,13 @@ class BusinessSettings(BaseModel):
     staff: str | None = Field(default=None, max_length=1000)
     location: str | None = Field(default=None, max_length=500)
     policies: str | None = Field(default=None, max_length=2000)
+    # Real-estate agency profile — the communities they cover, whether they do
+    # sale/rent/off-plan, the languages the team speaks, and the RERA ORN
+    # (broker registration number). What the AI needs to understand the agency.
+    areas_covered: str | None = Field(default=None, max_length=1000)
+    deal_focus: str | None = Field(default=None, max_length=500)
+    languages: str | None = Field(default=None, max_length=300)
+    orn: str | None = Field(default=None, max_length=60)
     # Booking hygiene: notice window, how far ahead the calendar opens, and
     # breathing room between appointments.
     min_notice_hours: int | None = Field(default=None, ge=0, le=72)
@@ -343,6 +350,11 @@ class NewBusiness(BaseModel):
     staff: str = Field(default="", max_length=1000)
     location: str = Field(default="", max_length=500)
     policies: str = Field(default="", max_length=2000)
+    # Real-estate agency profile (empty for other verticals).
+    areas_covered: str = Field(default="", max_length=1000)
+    deal_focus: str = Field(default="", max_length=500)
+    languages: str = Field(default="", max_length=300)
+    orn: str = Field(default="", max_length=60)
     min_notice_hours: int = Field(default=1, ge=0, le=72)
     max_advance_days: int = Field(default=60, ge=1, le=365)
     buffer_min: int = Field(default=0, ge=0, le=120)

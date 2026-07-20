@@ -233,6 +233,10 @@ Return STRICT JSON only (no markdown fences) with these keys — use "" for anyt
  "staff": "team members and specialties if named, e.g. 'Sara - color specialist'",
  "location": "address/area, landmarks, parking info",
  "policies": "booking/cancellation/payment policies if stated",
+ "areas_covered": "real estate ONLY: communities/areas the agency covers, comma-separated (e.g. 'JVC, Dubai Marina, Downtown')",
+ "deal_focus": "real estate ONLY: whether they do sale, rent, off-plan and/or commercial",
+ "languages": "languages the team speaks if stated (e.g. 'English, Arabic')",
+ "orn": "real estate ONLY: the RERA ORN / broker registration number if stated",
  "faq": "other useful facts: prices, insurance, offers, anything a caller might ask"
 }
 open_hour/close_hour are integers 0-24 (best guess from the stated hours; default 9 and 18 if unclear).
@@ -259,6 +263,10 @@ _SCHEMA = {
         "staff": {"type": "string"},
         "location": {"type": "string"},
         "policies": {"type": "string"},
+        "areas_covered": {"type": "string"},
+        "deal_focus": {"type": "string"},
+        "languages": {"type": "string"},
+        "orn": {"type": "string"},
         "faq": {"type": "string"},
     },
     "required": ["name", "type", "vertical"],

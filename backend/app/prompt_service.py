@@ -83,6 +83,27 @@ def build_system_prompt(business: dict) -> str:
     policies = (business.get("policies") or "").strip()
     if policies:
         facts.append(f"House policies you must follow and share when relevant: {policies}.")
+    # Real-estate agency profile — grounds the agent in who THIS agency is, so it
+    # answers "do you cover X?" honestly, routes to the right agent, and can state
+    # the agency's RERA registration for trust. Only what the owner filled in.
+    areas = (business.get("areas_covered") or "").strip()
+    if areas:
+        facts.append(
+            f"Areas and communities this agency covers: {areas}. If a caller asks about "
+            "an area you don't cover, say so honestly and offer the nearest area you do."
+        )
+    deal_focus = (business.get("deal_focus") or "").strip()
+    if deal_focus:
+        facts.append(f"What this agency handles (sale / rent / off-plan / commercial): {deal_focus}.")
+    languages = (business.get("languages") or "").strip()
+    if languages:
+        facts.append(f"Languages the team speaks: {languages}.")
+    orn = (business.get("orn") or "").strip()
+    if orn:
+        facts.append(
+            f"This is a RERA-registered brokerage; its ORN (Office Registration Number) "
+            f"is {orn}. You may share it if a caller asks whether the agency is licensed."
+        )
     # Structured SERVICE MENU — beats the freetext services blob because exact
     # durations drive real slot math and exact prices stop invented numbers.
     # (Businesses without menu rows simply skip this block: nothing changes.)

@@ -60,6 +60,16 @@ SEED_BUSINESSES = [
         ),
         "api_key": "bizkey_skyline_realty_demo",
         "vertical": "real_estate",
+        # Real-estate agency profile — what the AI knows about the agency.
+        "areas_covered": "Dubai Marina, JVC, Downtown Dubai, Business Bay, Dubai Hills, Arabian Ranches",
+        "deal_focus": "Secondary sales and rentals, plus select off-plan",
+        "languages": "English, Arabic, Hindi, Russian",
+        "orn": "28154",
+        "staff": (
+            "Omar Haddad — Marina & JBR (English/Arabic) · "
+            "Jessica Tan — Dubai Hills & Ranches (English) · "
+            "Ravi Menon — JVC & Business Bay (English/Hindi)"
+        ),
     },
     {
         "id": "handy-home",

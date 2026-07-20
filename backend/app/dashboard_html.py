@@ -60,6 +60,18 @@ DASHBOARD_HTML = """<!doctype html>
   input:focus,textarea:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--focus)}
   label{display:block;font-size:13px;font-weight:500;color:var(--body);margin:14px 0 6px}
   .card{background:var(--card);border:1px solid var(--hairline);border-radius:12px;box-shadow:var(--shadow-card)}
+  /* real-estate agency profile card (owner's view) — the AI's understanding, surfaced */
+  .profile-card{margin-bottom:18px;padding:16px 18px}
+  .prof-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-bottom:14px}
+  .prof-name{font-size:17px;font-weight:700;letter-spacing:-.01em}
+  .prof-orn{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--gold-deep);background:var(--accent-soft);border:1px solid #e7d3ad;border-radius:6px;padding:3px 8px}
+  .prof-focus{font-size:12.5px;color:var(--muted);margin-left:auto}
+  .prof-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px 20px}
+  .prof-lbl{display:block;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:6px}
+  .prof-val{font-size:14px;color:var(--ink);line-height:1.5}
+  .prof-tags{display:flex;flex-wrap:wrap;gap:6px}
+  .prof-tag{font-size:12.5px;color:var(--body);background:var(--surface);border:1px solid var(--hairline);border-radius:999px;padding:3px 10px}
   /* form groups (stepped-feel onboarding + settings) */
   .fgroup{margin-top:28px;padding-top:24px;border-top:1px solid var(--surface-2)}
   .fgroup.first{margin-top:12px;padding-top:0;border-top:0}
@@ -260,6 +272,7 @@ DASHBOARD_HTML = """<!doctype html>
         <div class="kpi"><span class="klabel">Leads · 30 days</span><span class="knum" id="mLeads">–</span></div>
         <div class="kpi"><span class="klabel">Staff hours saved <span class="soft">(est.)</span></span><span class="knum" id="mHours">–</span></div>
       </div>
+      <div id="profileCard" class="card panel profile-card hidden"></div>
       <div class="tabs" role="tablist" aria-label="Dashboard sections">
         <button class="tab active" role="tab" aria-selected="true" data-tab="bookings" onclick="setTab('bookings')">Bookings</button>
         <button class="tab" role="tab" aria-selected="false" data-tab="leads" onclick="setTab('leads')">Leads</button>
@@ -417,7 +430,7 @@ DASHBOARD_HTML = """<!doctype html>
         <div><label for="o_name">Business name</label><input id="o_name" placeholder="Velvet Hair Studio"></div></div>
         <div class="row2"><div><label for="o_type">What kind of business?</label><input id="o_type" placeholder="hair salon"></div>
         <div><label for="o_vertical">Vertical <span class="soft">(tunes how it books &amp; follows up)</span></label>
-        <select id="o_vertical"><option value="general">General</option><option value="clinic">Clinic</option><option value="salon">Salon &amp; spa</option><option value="real_estate">Real estate</option></select></div></div>
+        <select id="o_vertical" onchange="toggleOnboardRE()"><option value="real_estate">Real estate</option><option value="general">General</option><option value="clinic">Clinic</option><option value="salon">Salon &amp; spa</option></select></div></div>
         <label for="o_tone">How should it sound?</label><input id="o_tone" placeholder="warm and friendly">
       </div>
 
@@ -440,8 +453,21 @@ DASHBOARD_HTML = """<!doctype html>
       <div class="fgroup">
         <div class="fghead"><span class="fgnum">3</span><span class="fgtitle">Who's on the team?</span></div>
         <p class="fgwhy">So the AI can recommend the right person automatically when a customer asks.</p>
-        <label for="o_staff">Team &amp; specialties</label>
-        <input id="o_staff" placeholder="Marwan — fades specialist · Tony — classic cuts &amp; beards">
+        <label for="o_staff">Team &amp; specialties <span class="soft">(for real estate: agents + their areas &amp; languages)</span></label>
+        <input id="o_staff" placeholder="Omar — Marina, EN/AR · Jessica — Dubai Hills, EN">
+      </div>
+
+      <div class="fgroup" id="o_re_group">
+        <div class="fghead"><span class="fgnum">🏢</span><span class="fgtitle">Real-estate profile</span></div>
+        <p class="fgwhy">So the agent understands your agency — it answers area questions honestly, routes to the right agent, and can state your RERA registration for trust.</p>
+        <label for="o_areas">Areas / communities you cover</label>
+        <input id="o_areas" placeholder="JVC, Dubai Marina, Downtown, Business Bay">
+        <div class="row2"><div><label for="o_focus">Focus <span class="soft">(sale / rent / off-plan)</span></label>
+        <input id="o_focus" placeholder="Secondary sales + rentals; some off-plan"></div>
+        <div><label for="o_orn">RERA ORN <span class="soft">(broker reg. number)</span></label>
+        <input id="o_orn" placeholder="12345"></div></div>
+        <label for="o_languages">Languages your team speaks</label>
+        <input id="o_languages" placeholder="English, Arabic, Hindi">
       </div>
 
       <div class="fgroup">
@@ -468,6 +494,16 @@ DASHBOARD_HTML = """<!doctype html>
       <div style="margin-top:24px"><button class="btn" onclick="doOnboard()">Create business</button></div>
       <p class="note">Creating a business generates its API key. The key is shown once — copy it right away.</p>
       <div id="onboardResult"></div>`;
+    toggleOnboardRE();
+  }
+  // The Real-estate profile group only makes sense for a real-estate vertical.
+  function toggleOnboardRE(){
+    const g = $("o_re_group"); if(!g) return;
+    g.style.display = (val("o_vertical")==="real_estate") ? "" : "none";
+  }
+  function toggleSettingsRE(){
+    const g = $("s_re_group"); if(!g) return;
+    g.style.display = (val("s_vertical")==="real_estate") ? "" : "none";
   }
   async function doImport(){
     const url = val("o_url").trim(), desc = val("o_desc").trim();
@@ -479,11 +515,13 @@ DASHBOARD_HTML = """<!doctype html>
       if(!r.ok){ toast(apiErr(d, "Couldn't read that website.")); return; }
       // Prefill everything — the human reviews and edits before creating.
       const map = { name:"o_name", type:"o_type", tone:"o_tone", hours:"o_hours", services:"o_services",
-        staff:"o_staff", location:"o_location", policies:"o_policies", faq:"o_faq" };
+        staff:"o_staff", location:"o_location", policies:"o_policies", faq:"o_faq",
+        areas_covered:"o_areas", deal_focus:"o_focus", languages:"o_languages", orn:"o_orn" };
       for(const k in map){ if(d[k]) $(map[k]).value = d[k]; }
       if(d.open_hour != null) $("o_open").value = d.open_hour;
       if(d.close_hour != null) $("o_close").value = d.close_hour;
       if(d.vertical) $("o_vertical").value = d.vertical;
+      toggleOnboardRE();  // reveal the RE group if the import detected real estate
       if(d.name && !val("o_id")) $("o_id").value = d.name.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,40);
       toast("Imported — review every field, then create ✨");
     } catch(e){ toast("Couldn't read that website."); }
@@ -532,7 +570,9 @@ DASHBOARD_HTML = """<!doctype html>
       policies:val("o_policies").trim(), open_hour:+val("o_open"), close_hour:+val("o_close"), slot_minutes:+val("o_slot"),
       min_notice_hours:+val("o_notice"), max_advance_days:+val("o_advance"), buffer_min:+val("o_buffer"),
       notify_email:val("o_notify").trim(), vertical:val("o_vertical"),
-      transfer_number:val("o_transfer").trim(), after_hours_mode:val("o_afterhours") };
+      transfer_number:val("o_transfer").trim(), after_hours_mode:val("o_afterhours"),
+      areas_covered:val("o_areas").trim(), deal_focus:val("o_focus").trim(),
+      languages:val("o_languages").trim(), orn:val("o_orn").trim() };
     if(!body.id||!body.name||!body.type){ toast("ID, name and type are required."); return; }
     const svcRows = parseServiceRows(val("o_services_rows"));
     if(svcRows===null){ toast("Service menu: each line needs 'name | minutes' (price optional)."); return; }
@@ -568,7 +608,37 @@ DASHBOARD_HTML = """<!doctype html>
     document.querySelectorAll(".biz-item").forEach(e => e.classList.toggle("active", e.dataset.id===id));
     document.querySelectorAll(".tab").forEach(t => { const on=t.dataset.tab==="bookings"; t.classList.toggle("active", on); t.setAttribute("aria-selected", on?"true":"false"); });
     loadStats();
+    renderProfile();
     renderTab();
+  }
+
+  // The real-estate agency profile, surfaced at the top of the owner's view —
+  // the same facts the AI is grounded in (areas, focus, languages, ORN, agents).
+  // Real-estate tenants only; other verticals just don't show the card.
+  async function renderProfile(){
+    const card = $("profileCard"); card.classList.add("hidden"); card.innerHTML = "";
+    const forBiz = CURRENT;
+    try{
+      const r = await api("/manage/"+encodeURIComponent(forBiz));
+      if(!r.ok || forBiz !== CURRENT) return;
+      const b = await r.json();
+      if((b.vertical||"") !== "real_estate") return;
+      const has = [b.orn,b.areas_covered,b.languages,b.deal_focus,b.staff].some(x=>(x||"").trim());
+      if(!has) return;  // an RE tenant with nothing filled in yet — nothing to show
+      const tags = s => (s||"").split(/[,·]/).map(x=>x.trim()).filter(Boolean)
+        .map(x=>`<span class="prof-tag">${esc(x)}</span>`).join("");
+      const cells = [];
+      if((b.areas_covered||"").trim()) cells.push(`<div><span class="prof-lbl">Areas covered</span><div class="prof-tags">${tags(b.areas_covered)}</div></div>`);
+      if((b.languages||"").trim()) cells.push(`<div><span class="prof-lbl">Languages</span><div class="prof-tags">${tags(b.languages)}</div></div>`);
+      if((b.staff||"").trim()) cells.push(`<div><span class="prof-lbl">Agents</span><div class="prof-val">${esc(b.staff)}</div></div>`);
+      card.innerHTML =
+        `<div class="prof-head"><span class="prof-name">${esc(b.name)}</span>`
+        + ((b.orn||"").trim() ? `<span class="prof-orn">RERA ORN ${esc(b.orn)}</span>` : "")
+        + ((b.deal_focus||"").trim() ? `<span class="prof-focus">${esc(b.deal_focus)}</span>` : "")
+        + `</div>`
+        + (cells.length ? `<div class="prof-grid">${cells.join("")}</div>` : "");
+      card.classList.remove("hidden");
+    }catch(e){}
   }
   function setTab(t){
     TAB=t;
@@ -757,7 +827,7 @@ DASHBOARD_HTML = """<!doctype html>
           <div class="row2"><div><label for="s_name">Business name</label><input id="s_name" value="${esc(b.name)}"></div>
           <div><label for="s_type">Business type</label><input id="s_type" value="${esc(b.type)}"></div></div>
           <label for="s_vertical">Vertical <span class="soft">(tunes how the agent books &amp; follows up)</span></label>
-          <select id="s_vertical"><option value="clinic">Clinic</option><option value="salon">Salon &amp; spa</option><option value="real_estate">Real estate</option><option value="general">General</option></select>
+          <select id="s_vertical" onchange="toggleSettingsRE()"><option value="clinic">Clinic</option><option value="salon">Salon &amp; spa</option><option value="real_estate">Real estate</option><option value="general">General</option></select>
           <label for="s_tone">Tone</label><input id="s_tone" value="${esc(b.tone)}">
         </div>
 
@@ -802,11 +872,23 @@ DASHBOARD_HTML = """<!doctype html>
 
         <div class="fgroup">
           <div class="fghead"><span class="fgtitle">Team, location &amp; policies</span></div>
-          <label for="s_staff">Team &amp; specialties <span class="soft">(so it recommends the right person)</span></label><input id="s_staff" value="${esc(b.staff)}" placeholder="Marwan — fades · Tony — beards">
+          <label for="s_staff">Team &amp; specialties <span class="soft">(real estate: agents + their areas &amp; languages)</span></label><input id="s_staff" value="${esc(b.staff)}" placeholder="Omar — Marina, EN/AR · Jessica — Dubai Hills, EN">
           <label for="s_location">Location &amp; directions</label><input id="s_location" value="${esc(b.location)}" placeholder="Area, landmark, parking">
           <label for="s_policies">Policies</label><textarea id="s_policies" rows="2" placeholder="Cancellations, walk-ins, payments">${esc(b.policies)}</textarea>
           <label for="s_notify">Owner email for instant alerts <span class="soft">(every booking &amp; lead)</span></label>
           <input id="s_notify" type="email" value="${esc(b.notify_email)}" placeholder="owner@business.com">
+        </div>
+
+        <div class="fgroup" id="s_re_group">
+          <div class="fghead"><span class="fgtitle">Real-estate profile <span class="soft">(what the AI knows about your agency)</span></span></div>
+          <label for="s_areas">Areas / communities covered</label>
+          <input id="s_areas" value="${esc(b.areas_covered)}" placeholder="JVC, Dubai Marina, Downtown, Business Bay">
+          <div class="row2"><div><label for="s_focus">Focus <span class="soft">(sale / rent / off-plan)</span></label>
+          <input id="s_focus" value="${esc(b.deal_focus)}" placeholder="Secondary sales + rentals; some off-plan"></div>
+          <div><label for="s_orn">RERA ORN <span class="soft">(broker reg. number)</span></label>
+          <input id="s_orn" value="${esc(b.orn)}" placeholder="12345"></div></div>
+          <label for="s_languages">Languages the team speaks</label>
+          <input id="s_languages" value="${esc(b.languages)}" placeholder="English, Arabic, Hindi">
         </div>
 
         <div class="fgroup">
@@ -817,6 +899,7 @@ DASHBOARD_HTML = """<!doctype html>
         <div style="margin-top:22px"><button class="btn" onclick="saveSettings()">Save changes</button></div>`;
       $("s_vertical").value = b.vertical || "general";
       $("s_afterhours").value = b.after_hours_mode || "take_message";
+      toggleSettingsRE();
     } else {
       const url = location.origin + "/widget?business_id=" + encodeURIComponent(CURRENT);
       body.innerHTML = `<h3>Your chat widget</h3>
@@ -838,7 +921,9 @@ DASHBOARD_HTML = """<!doctype html>
       min_notice_hours:+val("s_notice"), max_advance_days:+val("s_advance"), buffer_min:+val("s_buffer"),
       notify_email:val("s_notify").trim(),
       transfer_number:val("s_transfer").trim(), after_hours_mode:val("s_afterhours"),
-      whatsapp_phone_id:val("s_whatsapp").trim(), google_review_url:val("s_review").trim() };
+      whatsapp_phone_id:val("s_whatsapp").trim(), google_review_url:val("s_review").trim(),
+      areas_covered:val("s_areas").trim(), deal_focus:val("s_focus").trim(),
+      languages:val("s_languages").trim(), orn:val("s_orn").trim() };
     // Validate the menu and listings BEFORE saving anything, so a typo'd line
     // can't leave settings saved but the sheet silently unchanged.
     const svcRows = parseServiceRows(val("s_services_rows"));
