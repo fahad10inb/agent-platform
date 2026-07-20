@@ -10,6 +10,7 @@ import re
 
 PAGES = [
     "/",
+    "/watch",
     "/demo?business_id=skyline-realty",
     "/widget?business_id=skyline-realty",
     "/dashboard",

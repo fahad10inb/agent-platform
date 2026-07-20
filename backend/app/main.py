@@ -27,6 +27,7 @@ import secrets
 from app.dashboard_html import DASHBOARD_HTML
 from app.demo_html import DEMO_HTML
 from app.landing_html import LANDING_HTML
+from app.story_html import STORY_HTML
 from app.voice import router as voice_router
 from app.whatsapp import router as whatsapp_router
 from app.widget_html import WIDGET_HTML
@@ -431,6 +432,17 @@ def dashboard():
     """The management dashboard page (clinic + admin). It's just the app shell;
     every data call from it requires an API key entered at login."""
     return DASHBOARD_HTML
+
+
+@app.get("/watch", response_class=HTMLResponse)
+def watch():
+    """The shareable STORY page — the sales trailer you drop into a cold DM.
+
+    A self-contained, auto-playing 60-second scene of the AI handling an
+    after-hours WhatsApp enquiry end-to-end. Deliberately API-free so it plays
+    instantly on a prospect's phone even while Render is cold-starting (a spinner
+    loses them); /demo is the live brain, /watch is the trailer that earns the tap."""
+    return STORY_HTML
 
 
 @app.get("/demo", response_class=HTMLResponse)
