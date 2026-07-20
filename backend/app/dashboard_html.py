@@ -149,8 +149,10 @@ DASHBOARD_HTML = """<!doctype html>
     padding:12px 16px;border-top:1px solid var(--surface-2)}
   .calslot:first-child{border-top:0}
   .ctime{font-size:14px;font-weight:650;color:var(--ink);font-variant-numeric:tabular-nums}
-  .cwho b{display:block;font-size:14px;font-weight:600;color:var(--ink)}
-  .cwho span{display:block;font-size:12.5px;color:var(--muted)}
+  /* direct-child only: these must NOT reach the avatar/name spans inside the
+     <b> (the .who flex + .wav circle), or the initial pops out of its circle */
+  .cwho > b{display:block;font-size:14px;font-weight:600;color:var(--ink)}
+  .cwho > span{display:block;font-size:12.5px;color:var(--muted);margin-top:2px}
   .cphone{font-size:13px;color:var(--muted);white-space:nowrap}
   .cadd{font-size:12.5px;font-weight:600;color:var(--gold-deep);text-decoration:none;white-space:nowrap;
     border:1px solid var(--hairline-2);padding:6px 11px;border-radius:8px;transition:background .15s}
