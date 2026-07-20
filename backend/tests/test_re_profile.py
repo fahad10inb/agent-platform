@@ -47,6 +47,21 @@ def test_onboarding_round_trips_the_profile(client):
     assert b["orn"] == "99001"
 
 
+def test_manage_get_hands_the_profile_back_to_the_form(client):
+    # The settings form AND the owner's-view profile card read from GET /manage.
+    # The AI can store the fields all day; if the API whitelist doesn't return
+    # them, the owner's view shows an empty card. (This exact gap shipped once.)
+    client.post("/manage/skyline-realty", headers=ADMIN, json={
+        "areas_covered": "Palm Jumeirah, Marina", "deal_focus": "Rentals",
+        "languages": "English", "orn": "55555",
+    })
+    out = client.get("/manage/skyline-realty", headers=ADMIN).json()
+    assert out["areas_covered"] == "Palm Jumeirah, Marina"
+    assert out["deal_focus"] == "Rentals"
+    assert out["languages"] == "English"
+    assert out["orn"] == "55555"
+
+
 def test_settings_update_edits_the_profile_and_reaches_the_prompt(client):
     r = client.post("/manage/skyline-realty", headers=ADMIN,
                     json={"areas_covered": "JVC only", "orn": "12345"})

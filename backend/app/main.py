@@ -534,6 +534,7 @@ def manage_get(business_id: str, request: Request, x_api_key: str | None = Heade
     fields = ["id", "name", "type", "hours", "services", "tone", "faq",
               "open_hour", "close_hour", "slot_minutes", "vertical",
               "staff", "location", "policies",
+              "areas_covered", "deal_focus", "languages", "orn",
               "min_notice_hours", "max_advance_days", "buffer_min", "notify_email",
               "transfer_number", "after_hours_mode", "whatsapp_phone_id",
               "google_review_url", "lead_ingest_token", "crm_webhook_url", "crm_type"]
