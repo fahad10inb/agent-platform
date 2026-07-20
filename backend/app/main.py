@@ -591,12 +591,14 @@ def manage_conversation_thread(
 def _ics_response(business: dict, bookings: list[dict], filename: str) -> Response:
     """An .ics body with the headers calendars actually need.
 
-    Leads with a UTF-8 BOM: the charset header covers a subscribed feed, but a
-    DOWNLOADED .ics opened in a codepage-guessing app (Outlook/Windows) otherwise
-    mis-reads non-ASCII — an Arabic customer name, a fancy dash — as mojibake.
-    The BOM makes every client read it as UTF-8. Calendar parsers tolerate it."""
+    NO leading BOM, on purpose: Google Calendar's URL-subscription parser expects
+    the body to start with BEGIN:VCALENDAR and SILENTLY drops the whole feed when
+    a UTF-8 BOM comes first (the calendar then shows empty on every day). The
+    charset header already declares UTF-8 for compliant clients; keeping the text
+    plain ASCII (hyphens not em-dashes, see ics.py) is what protects the
+    downloaded-file path from mojibake."""
     return Response(
-        content="\ufeff" + ics.build_ics(business, bookings),
+        content=ics.build_ics(business, bookings),
         media_type="text/calendar; charset=utf-8",
         headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )

@@ -87,16 +87,19 @@ def test_the_owner_mints_a_feed_url_and_it_serves_their_bookings(client):
     assert "BEGIN:VCALENDAR" in r.text and "SUMMARY:Ahmed - viewing" in r.text
 
 
-def test_the_served_ics_is_utf8_safe_bom_and_ascii_separator(client):
-    """A downloaded .ics opened in a codepage-guessing app mangled the em-dash to
-    "â". The body must lead with a UTF-8 BOM and use a plain ASCII separator so no
-    client mis-reads it — and so a future Arabic customer name survives too."""
+def test_the_served_ics_has_no_bom_and_an_ascii_separator(client):
+    """The feed must NOT lead with a UTF-8 BOM: Google Calendar's URL-subscription
+    parser silently drops the whole calendar when the body doesn't start with
+    BEGIN:VCALENDAR, so a leading BOM makes every day show empty. The em-dash
+    mojibake ("â") is fixed with a plain ASCII separator instead — no client can
+    misread that."""
     db.save_booking("bright-smile", "2026-07-16", "4:00 PM", "Ahmed", "0501234567", "viewing")
     path = _mint(client)[len("http://testserver"):]
-    raw = client.get(path).content                 # bytes, before any decode
-    assert raw.startswith(b"\xef\xbb\xbf")          # UTF-8 BOM leads the file
-    assert "—".encode() not in raw             # no em-dash bytes anywhere
-    assert b"SUMMARY:Ahmed - viewing" in raw        # ASCII hyphen separator
+    raw = client.get(path).content                     # bytes, before any decode
+    assert not raw.startswith(b"\xef\xbb\xbf")          # NO BOM
+    assert raw.lstrip().startswith(b"BEGIN:VCALENDAR")  # body opens as Google needs
+    assert "—".encode() not in raw                 # no em-dash bytes anywhere
+    assert b"SUMMARY:Ahmed - viewing" in raw            # ASCII hyphen separator
 
 
 def test_the_feed_needs_no_auth_header_because_calendars_cannot_send_one(client):
