@@ -254,6 +254,7 @@ DEMO_HTML = """<!doctype html>
       "Budget's around 95k a year, and I'd move next month",
       "What about the 3-bedroom in JVC?",
       "تمام، ممكن أحجز معاينة الخميس الساعة ٤ العصر؟",
+      "Great. Could a human agent call me about the paperwork?",
     ],
     general: [
       "Hi — what are your opening hours?",
@@ -381,26 +382,27 @@ DEMO_HTML = """<!doctype html>
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); f.requestSubmit(); }
   });
 
-  // One turn: post the buyer's line, render the reply, stream the work feed.
-  // Returns how many events fired, so the tour can wait for them to finish.
+  // One turn, choreographed so the two panels move TOGETHER: post the buyer's
+  // line, keep the typing dots up on the left while the right-hand work feed
+  // streams in FIRST (the agent visibly working), then drop the reply. The
+  // console is seen to drive the answer instead of trailing it.
   async function sendMessage(text) {
     row(text, "me"); send.disabled = true;
     const tr = typing();
-    let count = 0;
     try {
       const res = await fetch("/demo/chat", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text, conversation_id: convId, business_id: bizId })
       });
       const data = await res.json();
+      const evs = data.events || [];
+      for (const ev of evs) { addEvent(ev); await sleep(430); }  // work streams while it "thinks"
+      if (evs.length) await sleep(260);                          // a beat, then the reply lands
       tr.remove();
       row(data.reply || "Sorry — something went wrong. Please try again.", "ai");
-      const evs = data.events || []; count = evs.length;
-      evs.forEach((ev, i) => setTimeout(() => addEvent(ev), i * 260));
     } catch (err) {
       tr.remove(); row("Network error — please try again.", "ai");
     } finally { send.disabled = false; }
-    return count;
   }
 
   f.addEventListener("submit", async e => {
@@ -424,10 +426,9 @@ DEMO_HTML = """<!doctype html>
     try {
       for (const line of tourList) {
         if (tourStop) break;
-        await sleep(populated() ? 1400 : 650);  // read-time between turns
+        await sleep(populated() ? 1700 : 600);  // read the previous reply first
         if (tourStop) break;
-        const evs = await sendMessage(line);
-        await sleep(1000 + evs * 280);           // let the work feed catch up
+        await sendMessage(line);                 // streams its own work + reply
       }
     } finally {
       touring = false; tourStop = false;
