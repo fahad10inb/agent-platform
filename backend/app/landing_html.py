@@ -6,8 +6,10 @@ string served by the backend, no separate frontend deploy, vanilla CSS/JS.
 Positioning: REAL-ESTATE FIRST. The buyer is a Dubai brokerage owner (10-50
 agents), so the page opens on his leak — he already paid a portal for the lead,
 then nobody answered it at 11pm — and states the money in dirhams (45-60k/yr
-portal spend, ~40k commission on one 2M sale, 18k/yr for this). Salon and clinic
-remain reachable via the industry tab, but they are not who this page argues with.
+portal spend, ~40k commission on one 2M sale, 18k/yr for this). REAL ESTATE ONLY on
+this page: the salon/clinic personas still exist in the backend, but they are NOT
+surfaced here — clinics can't be served compliantly without UAE-hosted patient data,
+and a single-vertical page converts a broker far better than a generic multi-vertical one.
 
 Rules kept: no fake logos, no invented metrics, no testimonials we don't have,
 and integrations are listed honestly — WhatsApp / website / portal lead emails /
@@ -21,7 +23,7 @@ LANDING_HTML = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ReceptionAI — the AI receptionist that remembers every customer</title>
-<meta name="description" content="A bilingual AI receptionist for salons, clinics and agencies in the UAE. It answers in seconds 24/7, books real appointments, captures every lead, and greets returning customers by name — in English and Arabic.">
+<meta name="description" content="A bilingual AI receptionist for Dubai real-estate agencies. It answers WhatsApp in seconds 24/7, qualifies and scores every buyer, books viewings, and stays permit-compliant — so you never lose a lead you already paid for. English and Arabic.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -87,13 +89,9 @@ LANDING_HTML = """<!doctype html>
   .hero .sub{font-size:18px;color:var(--body);margin-top:20px;max-width:480px}
   .cta-row{display:flex;gap:12px;flex-wrap:wrap;margin-top:28px}
   .micro{font-size:13px;color:var(--muted);margin-top:14px}
-  /* industry selector + demo */
-  .ind-tabs{display:inline-flex;gap:2px;background:var(--surface);border:1px solid var(--hairline);border-radius:999px;padding:4px}
-  .ind-tab{font:inherit;font-size:13.5px;font-weight:500;padding:7px 16px;border:0;border-radius:999px;cursor:pointer;
-    background:transparent;color:var(--muted);transition:color .15s,background .15s,box-shadow .15s}
-  .ind-tab:hover{color:var(--ink)}
-  .ind-tab[aria-selected="true"]{background:var(--card);color:var(--ink);font-weight:600;box-shadow:var(--shadow-card)}
-  .ind-line{font-size:13.5px;color:var(--muted);margin:10px 2px 12px;min-height:21px}
+  /* live-demo label + demo */
+  .demo-eyebrow{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--gold-deep);margin:0 2px 2px}
+  .ind-line{font-size:13.5px;color:var(--muted);margin:6px 2px 12px;min-height:21px}
   .demo-frame{background:var(--card);border:1px solid var(--hairline);border-radius:16px;box-shadow:var(--shadow-float);overflow:hidden}
   .titlebar{display:flex;gap:6px;padding:11px 14px;border-bottom:1px solid var(--hairline);background:var(--surface)}
   .titlebar span{width:10px;height:10px;border-radius:50%;border:1px solid var(--hairline);background:var(--card)}
@@ -275,7 +273,7 @@ LANDING_HTML = """<!doctype html>
   @media (prefers-reduced-motion: reduce){
     html{scroll-behavior:auto}
     .reveal{opacity:1;transform:none;transition:none}
-    .btn,#nav,.ind-tab{transition:none}
+    .btn,#nav{transition:none}
   }
   /* responsive */
   @media(max-width:960px){
@@ -314,7 +312,7 @@ LANDING_HTML = """<!doctype html>
     </nav>
     <span class="nav-spacer"></span>
     <a class="nav-ghost" href="/dashboard">Sign in</a>
-    <a class="btn btn-primary" id="navDemo" href="/demo?business_id=velvet-hair">See it work</a>
+    <a class="btn btn-primary" id="navDemo" href="/demo?business_id=skyline-realty">See it work</a>
   </div>
 </header>
 
@@ -335,14 +333,7 @@ LANDING_HTML = """<!doctype html>
         <b>One saved deal pays for two years.</b></p>
     </div>
     <div>
-      <div class="ind-tabs" role="tablist" aria-label="Choose an industry demo">
-        <button class="ind-tab" role="tab" aria-selected="true" data-biz="skyline-realty"
-          data-line="Never lets a buyer go cold — budget, area and phone captured, scored, and a viewing booked while you sleep.">Real estate</button>
-        <button class="ind-tab" role="tab" aria-selected="false" data-biz="velvet-hair"
-          data-line="Remembers every regular — their usual service, their favourite stylist, their last visit.">Salon</button>
-        <button class="ind-tab" role="tab" aria-selected="false" data-biz="bright-smile"
-          data-line="Fills your calendar with real appointments and answers insurance questions at 2am.">Clinic</button>
-      </div>
+      <p class="demo-eyebrow">Live demo · Dubai real estate</p>
       <p class="ind-line" id="indLine">Never lets a buyer go cold — budget, area and phone captured, scored, and a viewing booked while you sleep.</p>
       <div class="demo-frame">
         <div class="titlebar"><span></span><span></span><span></span></div>
@@ -561,14 +552,14 @@ LANDING_HTML = """<!doctype html>
         <p>It offers only genuinely free slots from your own working hours — and a database
           guarantee means one slot is never sold twice.</p>
         <div class="vtable" aria-hidden="true">
-          <div class="vrow"><span class="t">10:00</span><span class="g">Sara M. — cleaning</span><span class="chip confirmed">confirmed</span></div>
-          <div class="vrow"><span class="t">16:00</span><span class="g">Layla A. — blow-dry</span><span class="chip new">new</span></div>
+          <div class="vrow"><span class="t">11:00</span><span class="g">Omar F. — 2BR Marina viewing</span><span class="chip confirmed">confirmed</span></div>
+          <div class="vrow"><span class="t">16:00</span><span class="g">Jessica T. — Dubai Hills villa</span><span class="chip new">new</span></div>
         </div>
       </div>
       <div class="bcard reveal">
-        <h3>Recommends the right person</h3>
-        <p>Tell it who's on your team and what they're great at. When a customer asks for "someone
-          good with balayage", it suggests the right stylist by name.</p>
+        <h3>Routes to the right agent</h3>
+        <p>Tell it who's on your team and the areas they own. When a buyer asks for "someone who
+          knows JVC", it hands them to the right agent by name.</p>
       </div>
       <div class="bcard reveal">
         <h3>Applies your house rules</h3>
@@ -832,9 +823,8 @@ LANDING_HTML = """<!doctype html>
   <div class="container foot-grid">
     <a class="logo" href="/">Reception<span>AI</span></a>
     <nav class="foot-links" aria-label="Footer">
-      <a href="/demo?business_id=skyline-realty">Real estate demo</a>
-      <a href="/demo?business_id=bright-smile">Clinic demo</a>
-      <a href="/demo?business_id=velvet-hair">Salon demo</a>
+      <a href="/demo?business_id=skyline-realty">Live demo</a>
+      <a href="/watch">Watch it work</a>
       <a href="/dashboard">Dashboard</a>
       <a href="/privacy">Privacy</a>
     </nav>
@@ -849,22 +839,6 @@ LANDING_HTML = """<!doctype html>
   const onScroll = () => nav.classList.toggle("scrolled", window.scrollY > 24);
   addEventListener("scroll", onScroll, { passive: true });
   onScroll();
-
-  // Industry selector — swaps the embedded widget, the benefit line, AND the two
-  // "watch it work" links, so a visitor who picks Real estate lands in the
-  // real-estate operator demo rather than a salon's.
-  const frame = document.getElementById("demoFrame");
-  const line = document.getElementById("indLine");
-  const demoLinks = [document.getElementById("heroDemo"), document.getElementById("navDemo")];
-  document.querySelectorAll(".ind-tab").forEach(tab => {
-    tab.addEventListener("click", () => {
-      document.querySelectorAll(".ind-tab").forEach(t => t.setAttribute("aria-selected", t === tab ? "true" : "false"));
-      line.textContent = tab.dataset.line;
-      const biz = encodeURIComponent(tab.dataset.biz);
-      frame.src = "/widget?business_id=" + biz;
-      demoLinks.forEach(a => { if (a) a.href = "/demo?business_id=" + biz; });
-    });
-  });
 
   // scroll reveal — one observer, unobserve after entry, reduced-motion handled in CSS
   const io = new IntersectionObserver((entries) => {
