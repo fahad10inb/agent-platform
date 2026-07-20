@@ -99,6 +99,18 @@ DEMO_HTML = """<!doctype html>
     border:1px solid var(--hairline-2);background:var(--card);color:var(--body);
     transition:border-color .15s,color .15s,background .15s}
   .chip:hover{border-color:var(--brass);color:var(--brass);background:var(--brass-soft)}
+  .chip:disabled{opacity:.45;pointer-events:none}
+  /* auto-tour bar — plays the winning sequence itself, so on a call it runs
+     hands-free instead of the seller typing. Frames the whole thing as after-hours. */
+  .tourbar{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:10px 13px;padding:10px 22px 2px}
+  .tourbtn{flex:none;display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;
+    padding:8px 15px;border-radius:999px;white-space:nowrap;
+    background:linear-gradient(150deg,var(--brass-bright),var(--brass));color:#1a1206;
+    box-shadow:0 6px 16px -9px rgba(184,134,59,.75);transition:filter .15s,transform .1s}
+  .tourbtn:hover{filter:brightness(1.06)} .tourbtn:active{transform:scale(.96)}
+  .tourbtn.running{background:#fff;color:var(--body);border:1px solid var(--hairline-2);box-shadow:none}
+  .tframe{font-size:12.5px;color:var(--muted);line-height:1.4;flex:1;min-width:160px}
+  .tframe b{color:var(--body);font-weight:600}
   form{flex:none;display:flex;align-items:flex-end;gap:10px;padding:12px 22px 18px;
     border-top:1px solid var(--hairline);background:var(--card)}
   #m{flex:1;border:1px solid var(--hairline-2);border-radius:11px;outline:none;resize:none;
@@ -186,6 +198,10 @@ DEMO_HTML = """<!doctype html>
         <p>Ask about a property, give your budget, book a viewing.</p>
       </div>
       <div id="chat" role="log" aria-live="polite"></div>
+      <div class="tourbar">
+        <button class="tourbtn" id="tour" type="button">▶ Watch it run</button>
+        <span class="tframe"><b>It's 11 PM — your team's offline.</b> Play it hands-free, or type as the buyer.</span>
+      </div>
       <div class="chips" id="chips"></div>
       <form id="f" autocomplete="off">
         <textarea id="m" rows="1" placeholder="Type as the buyer…" aria-label="Message"></textarea>
@@ -226,6 +242,28 @@ DEMO_HTML = """<!doctype html>
   const f = document.getElementById("f"), m = document.getElementById("m"), send = document.getElementById("send");
   let convId = newConv();
   let n = { leads: 0, qual: 0, book: 0, acts: 0 };
+
+  // ── auto-tour: the demo plays the winning story itself ─────────────────
+  // A coherent after-hours enquiry that walks through every selling moment:
+  // real price → qualify + A-grade → the 3BR hits the UNPERMITTED unit (price
+  // withheld) → an Arabic message it books on. Distinct from the free-explore
+  // chips; this one tells the whole story on its own.
+  const TOURS = {
+    real_estate: [
+      "Hi, I saw a 2-bedroom in JVC — is it still available?",
+      "Budget's around 95k a year, and I'd move next month",
+      "What about the 3-bedroom in JVC?",
+      "تمام، ممكن أحجز معاينة الخميس الساعة ٤ العصر؟",
+    ],
+    general: [
+      "Hi — what are your opening hours?",
+      "I'd like to book an appointment",
+      "Does Thursday at 4pm work?",
+      "شكراً، تمام 🙏",
+    ],
+  };
+  let tourList = TOURS.general, touring = false, tourStop = false;
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
 
   function newConv() {
     return "demo-" + (self.crypto && crypto.randomUUID ? crypto.randomUUID()
@@ -275,6 +313,7 @@ DEMO_HTML = """<!doctype html>
       "أتحدث العربية",
     ];
     const list = (vertical === "real_estate") ? re : general;
+    tourList = TOURS[vertical] || TOURS.general;
     const box = document.getElementById("chips");
     box.innerHTML = "";
     list.forEach(t => {
@@ -342,11 +381,12 @@ DEMO_HTML = """<!doctype html>
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); f.requestSubmit(); }
   });
 
-  f.addEventListener("submit", async e => {
-    e.preventDefault();
-    const text = m.value.trim(); if (!text) return;
-    row(text, "me"); m.value = ""; grow(); sync(); send.disabled = true;
+  // One turn: post the buyer's line, render the reply, stream the work feed.
+  // Returns how many events fired, so the tour can wait for them to finish.
+  async function sendMessage(text) {
+    row(text, "me"); send.disabled = true;
     const tr = typing();
+    let count = 0;
     try {
       const res = await fetch("/demo/chat", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -355,19 +395,60 @@ DEMO_HTML = """<!doctype html>
       const data = await res.json();
       tr.remove();
       row(data.reply || "Sorry — something went wrong. Please try again.", "ai");
-      (data.events || []).forEach((ev, i) => setTimeout(() => addEvent(ev), i * 260));
+      const evs = data.events || []; count = evs.length;
+      evs.forEach((ev, i) => setTimeout(() => addEvent(ev), i * 260));
     } catch (err) {
       tr.remove(); row("Network error — please try again.", "ai");
-    } finally { send.disabled = false; sync(); m.focus(); }
+    } finally { send.disabled = false; }
+    return count;
+  }
+
+  f.addEventListener("submit", async e => {
+    e.preventDefault();
+    if (touring) return;  // the tour drives the chat; ignore manual sends mid-tour
+    const text = m.value.trim(); if (!text) return;
+    m.value = ""; grow(); sync();
+    await sendMessage(text);
+    sync(); m.focus();
   });
 
-  document.getElementById("reset").addEventListener("click", () => {
+  // ── the tour: fire the sequence itself, pausing for each turn's feed ────
+  async function runTour() {
+    if (touring) { tourStop = true; return; }  // second click = stop
+    doReset(false);                            // clean slate + greeting
+    touring = true; tourStop = false;
+    const btn = document.getElementById("tour");
+    btn.classList.add("running"); btn.textContent = "■ Stop";
+    m.disabled = true;
+    document.querySelectorAll(".chip").forEach(c => c.disabled = true);
+    try {
+      for (const line of tourList) {
+        if (tourStop) break;
+        await sleep(populated() ? 1400 : 650);  // read-time between turns
+        if (tourStop) break;
+        const evs = await sendMessage(line);
+        await sleep(1000 + evs * 280);           // let the work feed catch up
+      }
+    } finally {
+      touring = false; tourStop = false;
+      btn.classList.remove("running"); btn.textContent = "▶ Watch it run";
+      m.disabled = false;
+      document.querySelectorAll(".chip").forEach(c => c.disabled = false);
+      sync(); m.focus();
+    }
+  }
+  function populated() { return chat.querySelectorAll(".row.me").length > 0; }
+  document.getElementById("tour").addEventListener("click", runTour);
+
+  function doReset(focus = true) {
+    tourStop = true;  // stop any running tour
     convId = newConv();
     chat.innerHTML = ""; feed.innerHTML = '<div class="empty" id="empty"><div class="big">◇</div>Send a message on the left.<br>Every real action the agent takes appears here.</div>';
     n = { leads: 0, qual: 0, book: 0, acts: 0 };
     ["tLeads","tQual","tBook","tActs"].forEach(id => document.getElementById(id).textContent = "0");
-    greet(); m.focus();
-  });
+    greet(); if (focus) m.focus();
+  }
+  document.getElementById("reset").addEventListener("click", () => doReset(true));
 
   greet(); grow(); sync(); m.focus();
 </script>
