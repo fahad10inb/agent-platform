@@ -66,6 +66,11 @@ DEMO_HTML = """<!doctype html>
   .reset:hover{background:rgba(255,255,255,.07);color:#fff}
   .reset.gold{border-color:var(--brass);color:var(--brass-bright)}
   .reset.gold:hover{background:rgba(213,162,76,.12);color:#fff}
+  /* language toggle — the whole customer side switches EN / العربية (RTL) */
+  .langtog{display:inline-flex;gap:2px;background:rgba(255,255,255,.06);border:1px solid var(--ink-line);border-radius:8px;padding:2px}
+  .langtog button{font:inherit;font-size:12.5px;font-weight:600;color:#c8dbe4;padding:5px 11px;border-radius:6px;line-height:1;transition:background .15s,color .15s}
+  .langtog button.on{background:var(--brass);color:#1a1206}
+  #left.ar{direction:rtl}
   @media (max-width:640px){ .live,.reset.gold{display:none} }
 
   /* ── split ─────────────────────────────────────────────────────────── */
@@ -182,25 +187,29 @@ DEMO_HTML = """<!doctype html>
       </div>
     </a>
     <div class="grow"></div>
-    <div class="live"><span class="pulse"></span>Live — not a recording</div>
+    <div class="live"><span class="pulse"></span><span data-i18n="live">Live — not a recording</span></div>
+    <div class="langtog" role="group" aria-label="Language">
+      <button type="button" data-lang="en" class="on">EN</button>
+      <button type="button" data-lang="ar" lang="ar">ع</button>
+    </div>
     <!-- The last beat of the pitch: the lead you just watched it capture is
          waiting in the owner's dashboard. Without this the demo dead-ends. -->
-    <a class="reset gold" href="/dashboard" target="_blank" rel="noopener">Owner's view ↗</a>
-    <button class="reset" id="reset">Reset</button>
+    <a class="reset gold" href="/dashboard" target="_blank" rel="noopener" data-i18n="ownerView">Owner's view ↗</a>
+    <button class="reset" id="reset" data-i18n="reset">Reset</button>
   </div>
 
   <div id="split">
     <!-- LEFT: the buyer -->
     <div id="left">
       <div class="lhead">
-        <div class="eyebrow">You are the buyer</div>
-        <h2>Talk to it like a customer would</h2>
-        <p>Ask about a property, give your budget, book a viewing.</p>
+        <div class="eyebrow" data-i18n="lheadEye">You are the buyer</div>
+        <h2 data-i18n="lheadH2">Talk to it like a customer would</h2>
+        <p data-i18n="lheadP">Ask about a property, give your budget, book a viewing.</p>
       </div>
       <div id="chat" role="log" aria-live="polite"></div>
       <div class="tourbar">
         <button class="tourbtn" id="tour" type="button">▶ Watch it run</button>
-        <span class="tframe"><b>It's 11 PM — your team's offline.</b> Play it hands-free, or type as the buyer.</span>
+        <span class="tframe" data-i18n-html="tframe"><b>It's 11 PM — your team's offline.</b> Play it hands-free, or type as the buyer.</span>
       </div>
       <div class="chips" id="chips"></div>
       <form id="f" autocomplete="off">
@@ -214,9 +223,9 @@ DEMO_HTML = """<!doctype html>
     <!-- RIGHT: the machine -->
     <div id="right">
       <div class="rhead">
-        <div class="eyebrow">What the agent is doing</div>
-        <h2>Every action, as it happens</h2>
-        <p>Not a chatbot — an operator working your business.</p>
+        <div class="eyebrow" data-i18n="rheadEye">What the agent is doing</div>
+        <h2 data-i18n="rheadH2">Every action, as it happens</h2>
+        <p data-i18n="rheadP">Not a chatbot — an operator working your business.</p>
         <div class="ground" id="ground"></div>
       </div>
       <div id="feed">
@@ -226,10 +235,10 @@ DEMO_HTML = """<!doctype html>
         </div>
       </div>
       <div class="tally">
-        <div class="tcell"><b id="tLeads">0</b><span>Leads</span></div>
-        <div class="tcell"><b id="tQual">0</b><span>Qualified</span></div>
-        <div class="tcell"><b id="tBook">0</b><span>Booked</span></div>
-        <div class="tcell"><b id="tActs">0</b><span>Actions</span></div>
+        <div class="tcell"><b id="tLeads">0</b><span data-i18n="tallyLeads">Leads</span></div>
+        <div class="tcell"><b id="tQual">0</b><span data-i18n="tallyQual">Qualified</span></div>
+        <div class="tcell"><b id="tBook">0</b><span data-i18n="tallyBook">Booked</span></div>
+        <div class="tcell"><b id="tActs">0</b><span data-i18n="tallyActs">Actions</span></div>
       </div>
     </div>
   </div>
@@ -243,27 +252,117 @@ DEMO_HTML = """<!doctype html>
   let convId = newConv();
   let n = { leads: 0, qual: 0, book: 0, acts: 0 };
 
-  // ── auto-tour: the demo plays the winning story itself ─────────────────
-  // A coherent after-hours enquiry that walks through every selling moment:
-  // real price → qualify + A-grade → the 3BR hits the UNPERMITTED unit (price
-  // withheld) → an Arabic message it books on. Distinct from the free-explore
-  // chips; this one tells the whole story on its own.
-  const TOURS = {
-    real_estate: [
-      "Hi, I saw a 2-bedroom in JVC — is it still available?",
-      "Budget's around 95k a year, and I'd move next month",
-      "What about the 3-bedroom in JVC?",
-      "تمام، ممكن أحجز معاينة الخميس الساعة ٤ العصر؟",
-      "Great. Could a human agent call me about the paperwork?",
-    ],
-    general: [
-      "Hi — what are your opening hours?",
-      "I'd like to book an appointment",
-      "Does Thursday at 4pm work?",
-      "شكراً، تمام 🙏",
-    ],
+  // ── i18n: the demo runs FULLY in English or Arabic (RTL) ───────────────
+  // The buyer-side chat, the prompt chips, the greeting, the 8-turn tour, the
+  // console labels and the event titles all switch language; picking العربية
+  // flips the customer side to right-to-left. The AI mirrors the caller's
+  // language on its own, so an Arabic tour gets Arabic replies for free.
+  const L = {
+    en: {
+      live: "Live — not a recording", ownerView: "Owner's view ↗", reset: "Reset",
+      lheadEye: "You are the buyer", lheadH2: "Talk to it like a customer would",
+      lheadP: "Ask about a property, give your budget, book a viewing.",
+      tourRun: "▶ Watch it run", tourStopLbl: "■ Stop",
+      tframe: "<b>It's 11 PM — your team's offline.</b> Play it hands-free, or type as the buyer.",
+      placeholder: "Type as the buyer…",
+      rheadEye: "What the agent is doing", rheadH2: "Every action, as it happens",
+      rheadP: "Not a chatbot — an operator working your business.",
+      empty: "Send a message on the left.<br>Every real action the agent takes appears here.",
+      greet: "Hi! I'm the AI assistant here — I can answer questions, match you to a property, book a viewing, or get you a human. How can I help?",
+      tallyLeads: "Leads", tallyQual: "Qualified", tallyBook: "Booked", tallyActs: "Actions",
+      ground: { listings: "Listings", permitted: "Permitted", noPermit: "No permit", services: "Services" },
+      events: {},  // English titles pass through unchanged
+      tour: {
+        real_estate: [
+          "Hi, I saw a 2-bedroom in JVC — is it still available?",
+          "What's the rent, and does it have parking?",
+          "My budget's around 95k a year, moving next month",
+          "It's just me and my wife — we'd pay cash",
+          "What about the 3-bedroom in JVC?",
+          "Let's view the 2-bed. Can I do Thursday at 4pm?",
+          "Actually, could we make it 5pm instead?",
+          "Perfect. Could a human agent call me about the paperwork?",
+        ],
+        general: [
+          "Hi — what are your opening hours?",
+          "I'd like to book an appointment",
+          "Does Thursday at 4pm work?",
+          "Could a human call me to confirm?",
+        ],
+      },
+      chips: {
+        real_estate: [
+          "Hi, I saw a 2-bedroom in JVC — what's the price?",
+          "Budget is 1.5M, cash, moving next month",
+          "What about the 3-bedroom in JVC?",
+          "Can I view it Thursday at 4pm?",
+          "Can a human call me?",
+        ],
+        general: ["What are your hours?", "I'd like to book an appointment", "How much does it cost?", "Can a human call me?"],
+      },
+    },
+    ar: {
+      live: "مباشر — ليس تسجيلاً", ownerView: "شاشة المالك ↗", reset: "إعادة",
+      lheadEye: "أنت المشتري", lheadH2: "تحدّث معه كأنك عميل",
+      lheadP: "اسأل عن عقار، اذكر ميزانيتك، احجز معاينة.",
+      tourRun: "▶ شغّله تلقائياً", tourStopLbl: "■ إيقاف",
+      tframe: "<b>الساعة ١١ مساءً — فريقك غير متاح.</b> شغّله تلقائياً، أو اكتب كأنك المشتري.",
+      placeholder: "اكتب كأنك المشتري…",
+      rheadEye: "ماذا يفعل الوكيل", rheadH2: "كل إجراء، لحظة حدوثه",
+      rheadP: "ليس مجرد بوت — بل موظف يدير عملك.",
+      empty: "أرسل رسالة على اليمين.<br>كل إجراء حقيقي يقوم به الوكيل يظهر هنا.",
+      greet: "مرحباً! أنا المساعد الذكي هنا — أقدر أجاوب على أسئلتك، أرشّح لك عقاراً، أحجز معاينة، أو أوصلك بموظف. كيف أقدر أساعدك؟",
+      tallyLeads: "عملاء", tallyQual: "مؤهّلون", tallyBook: "محجوز", tallyActs: "إجراءات",
+      ground: { listings: "العقارات", permitted: "بترخيص", noPermit: "بدون ترخيص", services: "الخدمات" },
+      events: {
+        "Lead captured": "تم تسجيل العميل",
+        "Qualified & scored": "تم التأهيل والتقييم",
+        "Checked the calendar": "تم فحص المواعيد",
+        "Viewing booked": "تم حجز المعاينة",
+        "Slot unavailable — no double-booking": "الموعد محجوز — لا ازدواج في الحجز",
+        "Appointment moved": "تم تعديل الموعد",
+        "Appointment cancelled": "تم إلغاء الموعد",
+        "Appointment confirmed": "تم تأكيد الموعد",
+        "Recognised the caller": "تم التعرّف على العميل",
+        "Checked caller history": "تم فحص سجل العميل",
+        "Remembered for next time": "تم الحفظ للمرة القادمة",
+        "Looked up their appointments": "تم البحث عن مواعيده",
+        "Handed to a human": "تم التحويل لموظف",
+        "Do-not-contact recorded": "تم تسجيل عدم التواصل",
+      },
+      tour: {
+        real_estate: [
+          "مرحبا، شفت شقة غرفتين في JVC — لسه متاحة؟",
+          "كم الإيجار؟ وفيه موقف سيارة؟",
+          "ميزانيتي حوالي ٩٥ ألف بالسنة، وناوي أنتقل الشهر الجاي",
+          "أنا وزوجتي بس، والدفع كاش",
+          "وش عندكم بـ ٣ غرف في JVC؟",
+          "تمام، أبي أعاين شقة الغرفتين. ممكن الخميس الساعة ٤؟",
+          "بصراحة، ممكن نخليها ٥ بدل ٤؟",
+          "ممتاز. ممكن موظف بشري يتصل فيني بخصوص الأوراق؟",
+        ],
+        general: [
+          "مرحبا، متى مواعيد العمل عندكم؟",
+          "أبي أحجز موعد",
+          "يناسبني الخميس الساعة ٤؟",
+          "ممكن موظف بشري يتصل فيني؟",
+        ],
+      },
+      chips: {
+        real_estate: [
+          "مرحبا، شفت شقة غرفتين في JVC — كم السعر؟",
+          "ميزانيتي ٩٥ ألف بالسنة، كاش، وناوي أنتقل الشهر الجاي",
+          "وش عندكم ٣ غرف في JVC؟",
+          "ممكن أعاين الخميس الساعة ٤؟",
+          "أبي أكلّم موظف بشري",
+        ],
+        general: ["متى مواعيد العمل؟", "أبي أحجز موعد", "كم التكلفة؟", "ممكن موظف بشري يتصل فيني؟"],
+      },
+    },
   };
-  let tourList = TOURS.general, touring = false, tourStop = false;
+
+  let lang = "en", vertical = "general", ctx = null;
+  let tourList = L.en.tour.general, touring = false, tourStop = false;
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
   function newConv() {
@@ -276,54 +375,63 @@ DEMO_HTML = """<!doctype html>
   fetch("/demo/context?business_id=" + encodeURIComponent(bizId))
     .then(r => r.ok ? r.json() : null).then(c => {
       if (!c) return;
+      ctx = c; vertical = c.vertical || "general";
       document.getElementById("bizname").textContent = c.name;
       document.getElementById("bizsub").textContent = (c.type || c.vertical || "").toString();
-      const initial = (c.name || "R").trim().charAt(0).toUpperCase();
-      document.getElementById("mark").textContent = initial;
+      document.getElementById("mark").textContent = (c.name || "R").trim().charAt(0).toUpperCase();
       document.title = c.name + " · Live demo";
-      const g = document.getElementById("ground");
-      const cells = [];
-      if (c.listings) {
-        cells.push(["Listings", c.listings, false]);
-        cells.push(["Permitted", c.listings_permitted, false]);
-        if (c.listings_unpermitted) cells.push(["No permit", c.listings_unpermitted, true]);
-      }
-      if (c.services) cells.push(["Services", c.services, false]);
-      g.innerHTML = cells.map(([label, val, warn]) =>
-        `<div class="gcell ${warn?"warn":""}"><b>${esc(val)}</b><span>${esc(label)}</span></div>`
-      ).join("");
-      setChips(c.vertical);
-    }).catch(() => setChips("general"));
+      refreshLangDependent();
+    }).catch(() => { vertical = "general"; refreshLangDependent(); });
 
-  // Prompts curated to walk a prospect straight into the moments that sell —
-  // in order: a real price from real inventory, qualification + an A score, the
-  // PERMIT REFUSAL (chip 3 hits the unpermitted listing on purpose), a booked
-  // viewing. These MUST match the seeded inventory or the demo opens on a miss.
-  function setChips(vertical) {
-    const re = [
-      "Hi, I saw a 2-bedroom in JVC — what's the price?",
-      "Budget is 1.5M, cash, I want to move next month",
-      "What about the 3-bedroom in JVC?",
-      "Can I view it Thursday at 4pm?",
-      "أبحث عن شقة في دبي مارينا",
-    ];
-    const general = [
-      "What are your hours?",
-      "I'd like to book an appointment",
-      "How much does it cost?",
-      "أتحدث العربية",
-    ];
-    const list = (vertical === "real_estate") ? re : general;
-    tourList = TOURS[vertical] || TOURS.general;
+  function renderGround() {
+    if (!ctx) return;
+    const t = L[lang], cells = [];
+    if (ctx.listings) {
+      cells.push([t.ground.listings, ctx.listings, false]);
+      cells.push([t.ground.permitted, ctx.listings_permitted, false]);
+      if (ctx.listings_unpermitted) cells.push([t.ground.noPermit, ctx.listings_unpermitted, true]);
+    }
+    if (ctx.services) cells.push([t.ground.services, ctx.services, false]);
+    document.getElementById("ground").innerHTML = cells.map(([label, val, warn]) =>
+      `<div class="gcell ${warn?"warn":""}"><b>${esc(val)}</b><span>${esc(label)}</span></div>`
+    ).join("");
+  }
+
+  // Prompt chips walk a prospect into the selling moments (real price →
+  // qualify → the 3BR trips the permit refusal → a booked viewing), in the
+  // chosen language. These MUST match the seeded inventory or the demo misses.
+  function setChips() {
+    const list = L[lang].chips[vertical] || L[lang].chips.general;
     const box = document.getElementById("chips");
     box.innerHTML = "";
-    list.forEach(t => {
+    list.forEach(txt => {
       const b = document.createElement("button");
-      b.type = "button"; b.className = "chip"; b.textContent = t;
-      b.addEventListener("click", () => { m.value = t; f.requestSubmit(); });
+      b.type = "button"; b.className = "chip"; b.textContent = txt;
+      b.addEventListener("click", () => { m.value = txt; f.requestSubmit(); });
       box.appendChild(b);
     });
   }
+
+  function refreshLangDependent() {
+    renderGround(); setChips();
+    tourList = L[lang].tour[vertical] || L[lang].tour.general;
+  }
+
+  // Flip the whole customer side to a language (Arabic = RTL) and restart clean.
+  function applyLang(next) {
+    lang = next;
+    const t = L[lang];
+    document.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = t[el.dataset.i18n]; });
+    document.querySelectorAll("[data-i18n-html]").forEach(el => { el.innerHTML = t[el.dataset.i18nHtml]; });
+    m.placeholder = t.placeholder;
+    document.getElementById("left").classList.toggle("ar", lang === "ar");
+    document.querySelectorAll(".langtog button").forEach(b => b.classList.toggle("on", b.dataset.lang === lang));
+    if (!touring) document.getElementById("tour").textContent = t.tourRun;
+    refreshLangDependent();
+    doReset(false);
+  }
+  document.querySelectorAll(".langtog button").forEach(b =>
+    b.addEventListener("click", () => { if (b.dataset.lang !== lang) applyLang(b.dataset.lang); }));
 
   // ── chat ───────────────────────────────────────────────────────────────
   function row(text, who) {
@@ -337,9 +445,7 @@ DEMO_HTML = """<!doctype html>
     t.innerHTML = "<i></i><i></i><i></i>";
     r.appendChild(t); chat.appendChild(r); chat.scrollTop = chat.scrollHeight; return r;
   }
-  function greet() {
-    row("Hi! I'm the AI assistant here — I can answer questions, match you to a property, book a viewing, or get you a human. How can I help?", "ai");
-  }
+  function greet() { row(L[lang].greet, "ai"); }
 
   // ── the feed: real executed work, never a scripted animation ───────────
   function stamp() {
@@ -355,7 +461,8 @@ DEMO_HTML = """<!doctype html>
     const rail = document.createElement("div"); rail.className = "rail";
     const body = document.createElement("div"); body.className = "body";
     const t = document.createElement("div"); t.className = "t";
-    const b = document.createElement("b"); b.textContent = ev.title || ev.kind;
+    const rawTitle = ev.title || ev.kind || "";
+    const b = document.createElement("b"); b.textContent = L[lang].events[rawTitle] || rawTitle;
     t.appendChild(b);
     if (ev.badge) { const g = document.createElement("span"); g.className = "badge"; g.textContent = ev.badge; t.appendChild(g); }
     const grow = document.createElement("div"); grow.style.flex = "1"; t.appendChild(grow);
@@ -420,7 +527,7 @@ DEMO_HTML = """<!doctype html>
     doReset(false);                            // clean slate + greeting
     touring = true; tourStop = false;
     const btn = document.getElementById("tour");
-    btn.classList.add("running"); btn.textContent = "■ Stop";
+    btn.classList.add("running"); btn.textContent = L[lang].tourStopLbl;
     m.disabled = true;
     document.querySelectorAll(".chip").forEach(c => c.disabled = true);
     try {
@@ -432,7 +539,7 @@ DEMO_HTML = """<!doctype html>
       }
     } finally {
       touring = false; tourStop = false;
-      btn.classList.remove("running"); btn.textContent = "▶ Watch it run";
+      btn.classList.remove("running"); btn.textContent = L[lang].tourRun;
       m.disabled = false;
       document.querySelectorAll(".chip").forEach(c => c.disabled = false);
       sync(); m.focus();
@@ -444,14 +551,15 @@ DEMO_HTML = """<!doctype html>
   function doReset(focus = true) {
     tourStop = true;  // stop any running tour
     convId = newConv();
-    chat.innerHTML = ""; feed.innerHTML = '<div class="empty" id="empty"><div class="big">◇</div>Send a message on the left.<br>Every real action the agent takes appears here.</div>';
+    chat.innerHTML = "";
+    feed.innerHTML = '<div class="empty" id="empty"><div class="big">◇</div>' + L[lang].empty + '</div>';
     n = { leads: 0, qual: 0, book: 0, acts: 0 };
     ["tLeads","tQual","tBook","tActs"].forEach(id => document.getElementById(id).textContent = "0");
     greet(); if (focus) m.focus();
   }
   document.getElementById("reset").addEventListener("click", () => doReset(true));
 
-  greet(); grow(); sync(); m.focus();
+  applyLang("en"); grow(); sync(); m.focus();
 </script>
 </body>
 </html>"""
