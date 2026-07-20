@@ -99,7 +99,9 @@ def _event(business: dict, booking: dict, now: datetime.datetime) -> list[str]:
     phone = (booking.get("phone") or "").strip()
     cancelled = (booking.get("status") or "booked") == "cancelled"
 
-    title = f"{who} — {reason}" if reason else who
+    # Plain ASCII hyphen, not an em-dash: a fancy dash renders as mojibake ("â")
+    # in any calendar app that opens the downloaded file as Latin-1 instead of UTF-8.
+    title = f"{who} - {reason}" if reason else who
     desc_bits = [f"Booked by your AI receptionist ({business.get('name') or business.get('id')})."]
     if phone:
         desc_bits.append(f"Phone: {phone}")
@@ -136,7 +138,7 @@ def build_ics(business: dict, bookings: list[dict], now: datetime.datetime | Non
         "PRODID:-//ReceptionAI//Bookings//EN",
         "CALSCALE:GREGORIAN",
         "METHOD:PUBLISH",
-        _fold(f"X-WR-CALNAME:{_escape(name)} — bookings"),
+        _fold(f"X-WR-CALNAME:{_escape(name)} - bookings"),
         "X-WR-TIMEZONE:Asia/Dubai",
         # Ask subscribers to re-poll hourly. Google treats this as a hint only.
         "REFRESH-INTERVAL;VALUE=DURATION:PT1H",

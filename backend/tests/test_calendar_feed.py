@@ -31,7 +31,7 @@ def test_a_dubai_booking_becomes_a_correct_utc_event():
     assert "BEGIN:VCALENDAR" in ics and "END:VCALENDAR" in ics
     assert "DTSTART:20260716T120000Z" in ics          # 4pm Dubai = 12:00 UTC
     assert "DTEND:20260716T123000Z" in ics            # + the 30-min slot
-    assert "SUMMARY:Ahmed — viewing" in ics
+    assert "SUMMARY:Ahmed - viewing" in ics
     assert "STATUS:CONFIRMED" in ics
     assert "LOCATION:Jumeirah\\, Dubai" in ics        # comma escaped per RFC 5545
     assert "0501234567" in ics                        # the phone rides in the body
@@ -84,7 +84,19 @@ def test_the_owner_mints_a_feed_url_and_it_serves_their_bookings(client):
     r = client.get(path)
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/calendar")
-    assert "BEGIN:VCALENDAR" in r.text and "SUMMARY:Ahmed — viewing" in r.text
+    assert "BEGIN:VCALENDAR" in r.text and "SUMMARY:Ahmed - viewing" in r.text
+
+
+def test_the_served_ics_is_utf8_safe_bom_and_ascii_separator(client):
+    """A downloaded .ics opened in a codepage-guessing app mangled the em-dash to
+    "â". The body must lead with a UTF-8 BOM and use a plain ASCII separator so no
+    client mis-reads it — and so a future Arabic customer name survives too."""
+    db.save_booking("bright-smile", "2026-07-16", "4:00 PM", "Ahmed", "0501234567", "viewing")
+    path = _mint(client)[len("http://testserver"):]
+    raw = client.get(path).content                 # bytes, before any decode
+    assert raw.startswith(b"\xef\xbb\xbf")          # UTF-8 BOM leads the file
+    assert "—".encode() not in raw             # no em-dash bytes anywhere
+    assert b"SUMMARY:Ahmed - viewing" in raw        # ASCII hyphen separator
 
 
 def test_the_feed_needs_no_auth_header_because_calendars_cannot_send_one(client):
@@ -113,7 +125,7 @@ def test_add_to_calendar_returns_one_booking_and_is_authed(client):
     bid = db.save_booking("bright-smile", "2026-07-16", "4:00 PM", "Ahmed", "0501234567", "viewing")
     r = client.get(f"/manage/bright-smile/bookings/{bid}.ics", headers=BRIGHT)
     assert r.status_code == 200
-    assert r.text.count("BEGIN:VEVENT") == 1 and "SUMMARY:Ahmed — viewing" in r.text
+    assert r.text.count("BEGIN:VEVENT") == 1 and "SUMMARY:Ahmed - viewing" in r.text
 
     # Another tenant cannot pull it, and an unknown booking 404s.
     assert client.get(f"/manage/bright-smile/bookings/{bid}.ics", headers=VELVET).status_code == 403
