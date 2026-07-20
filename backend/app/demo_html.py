@@ -169,9 +169,25 @@ DEMO_HTML = """<!doctype html>
   .tcell b{display:block;font-size:18px;font-weight:650;color:#fff;font-variant-numeric:tabular-nums}
   .tcell span{font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:#7e97a5}
 
+  /* mobile: ONE panel at a time via a tab switcher — a fixed 50/50 split crams
+     the chat and the ops feed into unusable slivers on a phone */
+  .mtabs{display:none;flex:none;gap:6px;padding:8px 14px;background:var(--ink);border-bottom:1px solid var(--ink-line)}
+  .mtab{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:7px;font:inherit;
+    font-size:13.5px;font-weight:600;color:#c8dbe4;padding:9px 10px;border-radius:9px;cursor:pointer;
+    border:1px solid var(--ink-line);background:rgba(255,255,255,.04);transition:background .15s,color .15s}
+  .mtab.active{background:var(--brass);color:#1a1206;border-color:var(--brass)}
+  .mtab-badge{font-family:var(--mono);font-size:11px;min-width:18px;text-align:center;padding:1px 5px;
+    border-radius:999px;background:rgba(255,255,255,.18);color:inherit}
+  .mtab.active .mtab-badge{background:rgba(0,0,0,.16)}
+  @keyframes mtabpulse{0%{box-shadow:0 0 0 0 rgba(213,162,76,.55)}100%{box-shadow:0 0 0 11px rgba(213,162,76,0)}}
+  .mtab.pulse{animation:mtabpulse .9s ease-out}
   @media (max-width:900px){
-    #split{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) minmax(0,1fr)}
-    #left{border-right:0;border-bottom:1px solid var(--hairline)}
+    .mtabs{display:flex}
+    #split{display:block}
+    #left,#right{height:100%;min-height:0}
+    #left{border-right:0}
+    #split[data-m="left"] #right{display:none}
+    #split[data-m="right"] #left{display:none}
   }
   @media (prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important}}
 </style>
@@ -198,7 +214,12 @@ DEMO_HTML = """<!doctype html>
     <button class="reset" id="reset" data-i18n="reset">Reset</button>
   </div>
 
-  <div id="split">
+  <div class="mtabs" role="tablist" aria-label="View">
+    <button class="mtab active" type="button" data-m="left">💬 <span data-i18n="mtabChat">Chat</span></button>
+    <button class="mtab" type="button" data-m="right">📊 <span data-i18n="mtabWork">Activity</span> <b class="mtab-badge" id="mtabCount">0</b></button>
+  </div>
+
+  <div id="split" data-m="left">
     <!-- LEFT: the buyer -->
     <div id="left">
       <div class="lhead">
@@ -249,6 +270,7 @@ DEMO_HTML = """<!doctype html>
   const bizId = params.get("business_id") || "skyline-realty";
   const chat = document.getElementById("chat"), feed = document.getElementById("feed");
   const f = document.getElementById("f"), m = document.getElementById("m"), send = document.getElementById("send");
+  const mSplit = document.getElementById("split");
   let convId = newConv();
   let n = { leads: 0, qual: 0, book: 0, acts: 0 };
 
@@ -270,6 +292,7 @@ DEMO_HTML = """<!doctype html>
       empty: "Send a message on the left.<br>Every real action the agent takes appears here.",
       greet: "Hi! I'm the AI assistant here — I can answer questions, match you to a property, book a viewing, or get you a human. How can I help?",
       tallyLeads: "Leads", tallyQual: "Qualified", tallyBook: "Booked", tallyActs: "Actions",
+      mtabChat: "Chat", mtabWork: "Activity",
       ground: { listings: "Listings", permitted: "Permitted", noPermit: "No permit", services: "Services" },
       events: {},  // English titles pass through unchanged
       tour: {
@@ -313,6 +336,7 @@ DEMO_HTML = """<!doctype html>
       empty: "أرسل رسالة على اليمين.<br>كل إجراء حقيقي يقوم به الوكيل يظهر هنا.",
       greet: "مرحباً! أنا المساعد الذكي هنا — أقدر أجاوب على أسئلتك، أرشّح لك عقاراً، أحجز معاينة، أو أوصلك بموظف. كيف أقدر أساعدك؟",
       tallyLeads: "عملاء", tallyQual: "مؤهّلون", tallyBook: "محجوز", tallyActs: "إجراءات",
+      mtabChat: "المحادثة", mtabWork: "النشاط",
       ground: { listings: "العقارات", permitted: "بترخيص", noPermit: "بدون ترخيص", services: "الخدمات" },
       events: {
         "Lead captured": "تم تسجيل العميل",
@@ -433,6 +457,15 @@ DEMO_HTML = """<!doctype html>
   document.querySelectorAll(".langtog button").forEach(b =>
     b.addEventListener("click", () => { if (b.dataset.lang !== lang) applyLang(b.dataset.lang); }));
 
+  // mobile: the tab switcher chooses which panel fills the screen (a 50/50 split
+  // is unusable on a phone). Desktop shows both side by side and ignores this.
+  document.querySelectorAll(".mtab").forEach(b =>
+    b.addEventListener("click", () => {
+      document.querySelectorAll(".mtab").forEach(x => x.classList.toggle("active", x === b));
+      mSplit.setAttribute("data-m", b.dataset.m);
+      b.classList.remove("pulse");
+    }));
+
   // ── chat ───────────────────────────────────────────────────────────────
   function row(text, who) {
     const r = document.createElement("div"); r.className = "row " + who;
@@ -480,6 +513,13 @@ DEMO_HTML = """<!doctype html>
     document.getElementById("tQual").textContent = n.qual;
     document.getElementById("tBook").textContent = n.book;
     document.getElementById("tActs").textContent = n.acts;
+    // mobile: count the Activity tab's badge and nudge it if the viewer is on Chat
+    const mc = document.getElementById("mtabCount");
+    if (mc) mc.textContent = n.acts;
+    if (mSplit.getAttribute("data-m") === "left") {
+      const rt = document.querySelector('.mtab[data-m="right"]');
+      if (rt) { rt.classList.remove("pulse"); void rt.offsetWidth; rt.classList.add("pulse"); }
+    }
   }
 
   function grow() { m.style.height = "auto"; m.style.height = Math.min(m.scrollHeight, 110) + "px"; }
@@ -554,7 +594,7 @@ DEMO_HTML = """<!doctype html>
     chat.innerHTML = "";
     feed.innerHTML = '<div class="empty" id="empty"><div class="big">◇</div>' + L[lang].empty + '</div>';
     n = { leads: 0, qual: 0, book: 0, acts: 0 };
-    ["tLeads","tQual","tBook","tActs"].forEach(id => document.getElementById(id).textContent = "0");
+    ["tLeads","tQual","tBook","tActs","mtabCount"].forEach(id => document.getElementById(id).textContent = "0");
     greet(); if (focus) m.focus();
   }
   document.getElementById("reset").addEventListener("click", () => doReset(true));
