@@ -171,10 +171,16 @@ DASHBOARD_HTML = """<!doctype html>
   th{position:sticky;top:0;z-index:1;background:var(--card);text-align:left;padding:12px 14px;
     font-size:12.5px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);
     border-bottom:1px solid var(--hairline)}
-  td{text-align:left;padding:0 14px;height:52px;border-bottom:1px solid var(--hairline);color:var(--body)}
+  td{text-align:left;padding:0 14px;height:52px;vertical-align:middle;white-space:nowrap;
+    border-bottom:1px solid var(--hairline);color:var(--body)}
   tbody tr:last-child td{border-bottom:0}
   tbody tr:hover{background:var(--surface)}
   td.num{font-variant-numeric:tabular-nums}
+  /* one flexible column absorbs the slack and truncates with an ellipsis, so
+     every row stays 52px tall and all the columns line up */
+  th.tcol-grow,td.tcol-grow{width:100%;max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* a count column: right-aligned under a right-aligned header, shrink-to-fit */
+  th.numcol,td.numcol{text-align:right;width:1%;white-space:nowrap;font-variant-numeric:tabular-nums;padding-right:18px}
   .who{display:flex;align-items:center;gap:10px;color:var(--ink);font-weight:500}
   .wav{width:32px;height:32px;border-radius:50%;flex:none;display:inline-flex;align-items:center;justify-content:center;
     font-size:13px;font-weight:600}
@@ -803,15 +809,15 @@ DASHBOARD_HTML = """<!doctype html>
       if(!r.ok){ body.innerHTML = estate("⚠️","Couldn't load leads","Check your connection and switch tabs to retry."); return; }
       const rows = await r.json();
       loadStats();
-      body.innerHTML = rows.length ? `<div class="tablewrap"><table><thead><tr><th>Name</th><th>Phone</th><th>Interest</th><th>Notes</th></tr></thead>
-        <tbody>${rows.map(l=>`<tr><td>${who(l.name)}</td><td class="num">${esc(l.phone)}</td><td>${l.interest?`<span class="chip new">${esc(l.interest)}</span>`:""}</td><td>${esc(l.notes)}</td></tr>`).join("")}</tbody></table></div>`
+      body.innerHTML = rows.length ? `<div class="tablewrap"><table><thead><tr><th>Name</th><th>Phone</th><th>Interest</th><th class="tcol-grow">Notes</th></tr></thead>
+        <tbody>${rows.map(l=>`<tr><td>${who(l.name)}</td><td class="num">${esc(l.phone)}</td><td>${l.interest?`<span class="chip new">${esc(l.interest)}</span>`:""}</td><td class="tcol-grow" title="${esc(l.notes)}">${esc(l.notes)}</td></tr>`).join("")}</tbody></table></div>`
         : estate("📥","No leads yet","When someone isn't ready to book, the receptionist captures their name and number — you'll see them here.");
     } else if(TAB==="chats"){
       const r = await api("/manage/"+encodeURIComponent(CURRENT)+"/conversations");
       if(!r.ok){ body.innerHTML = estate("⚠️","Couldn't load conversations","Check your connection and switch tabs to retry."); return; }
       const rows = await r.json();
-      body.innerHTML = rows.length ? `<div class="tablewrap"><table><thead><tr><th>Who</th><th>Channel</th><th>Last message</th><th>Msgs</th></tr></thead>
-        <tbody>${rows.map(c=>`<tr style="cursor:pointer" onclick="openThread('${esc(c.conversation_id)}')"><td>${esc(convWho(c.conversation_id))}</td><td>${esc(convChannel(c.conversation_id))}</td><td>${esc((c.last_text||"").slice(0,70))}</td><td class="num">${esc(c.messages)}</td></tr>`).join("")}</tbody></table></div>`
+      body.innerHTML = rows.length ? `<div class="tablewrap"><table><thead><tr><th>Who</th><th>Channel</th><th class="tcol-grow">Last message</th><th class="numcol">Msgs</th></tr></thead>
+        <tbody>${rows.map(c=>`<tr style="cursor:pointer" onclick="openThread('${esc(c.conversation_id)}')"><td>${esc(convWho(c.conversation_id))}</td><td>${esc(convChannel(c.conversation_id))}</td><td class="tcol-grow" title="${esc(c.last_text||"")}">${esc(c.last_text||"")}</td><td class="numcol">${esc(c.messages)}</td></tr>`).join("")}</tbody></table></div>`
         : estate("💬","No conversations yet","When customers chat on your widget or WhatsApp, every thread lands here — tap one to read the whole conversation.");
     } else if(TAB==="settings"){
       const r = await api("/manage/"+encodeURIComponent(CURRENT));
