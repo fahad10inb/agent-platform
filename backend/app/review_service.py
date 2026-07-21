@@ -118,7 +118,8 @@ def _deliver(business: dict, booking: dict, review_url: str) -> bool:
         import asyncio
 
         try:
-            asyncio.run(whatsapp._send_text(phone_id, to, text))
+            asyncio.run(whatsapp.send_business_message(
+                phone_id, to, kind="review", params=[text], fallback_text=text))
             # Seed it into the thread so a reply ("done!"/"how do I?") has context
             # when it flows back through run_turn — same as reminders/nurture.
             db.save_message(business["id"], f"wa-{to}", "model", text)

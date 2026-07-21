@@ -113,7 +113,8 @@ def _deliver(business: dict, lead: dict, stage: str) -> bool:
         import asyncio
 
         try:
-            asyncio.run(whatsapp._send_text(phone_id, to, text))
+            asyncio.run(whatsapp.send_business_message(
+                phone_id, to, kind="nurture", params=[text], fallback_text=text))
             if conversation_id:
                 db.save_message(business["id"], conversation_id, "model", text)
             logger.info("[nurture] whatsapp %s -> business=%s", stage, business["id"])

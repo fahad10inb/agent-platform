@@ -121,3 +121,63 @@ def test_handle_message_never_raises(client, monkeypatch):
 
     monkeypatch.setattr(chat_core, "run_turn", _boom)
     asyncio.run(whatsapp._handle_message("skyline-realty", "111", "9715", "hi"))  # no raise
+
+
+# ── business-initiated messages: templates (Meta requires them outside 24h) ───
+def test_template_payload_has_the_right_shape():
+    p = whatsapp._template_payload("971501234567", "reminder_v1", "en_US", ["your viewing tomorrow"])
+    assert p["type"] == "template"
+    assert p["to"] == "971501234567"
+    assert p["template"]["name"] == "reminder_v1"
+    assert p["template"]["language"]["code"] == "en_US"
+    body = p["template"]["components"][0]["parameters"]
+    assert body[0] == {"type": "text", "text": "your viewing tomorrow"}
+
+
+def test_template_payload_without_params_omits_components():
+    p = whatsapp._template_payload("x", "t", "en", [])
+    assert "components" not in p["template"]  # a body-less template must not send an empty body block
+
+
+def test_business_message_falls_back_to_free_text_when_no_template(monkeypatch):
+    """Default: no template configured → free-form text (correct within 24h /
+    on the test number). This is the current behaviour — nothing changes."""
+    calls = {}
+
+    async def fake_text(pid, to, text):
+        calls["text"] = (pid, to, text)
+
+    async def fake_tpl(*a, **k):
+        calls["tpl"] = True
+        return True
+
+    monkeypatch.setattr(whatsapp, "_send_text", fake_text)
+    monkeypatch.setattr(whatsapp, "_send_template", fake_tpl)
+    monkeypatch.setattr(get_settings(), "whatsapp_template_reminder", "")
+    ok = asyncio.run(whatsapp.send_business_message(
+        "pid", "to", kind="reminder", params=["hi"], fallback_text="hi there"))
+    assert ok is True
+    assert calls == {"text": ("pid", "to", "hi there")}  # text path, not template
+
+
+def test_business_message_uses_the_template_once_configured(monkeypatch):
+    """Set the approved template name → that message kind switches to a template."""
+    calls = {}
+
+    async def fake_text(*a, **k):
+        calls["text"] = True
+
+    async def fake_tpl(pid, to, name, lang, params):
+        calls["tpl"] = (pid, to, name, lang, params)
+        return True
+
+    monkeypatch.setattr(whatsapp, "_send_text", fake_text)
+    monkeypatch.setattr(whatsapp, "_send_template", fake_tpl)
+    s = get_settings()
+    monkeypatch.setattr(s, "whatsapp_template_reminder", "reminder_v1")
+    monkeypatch.setattr(s, "whatsapp_template_lang", "en_US")
+    ok = asyncio.run(whatsapp.send_business_message(
+        "pid", "to", kind="reminder", params=["hi"], fallback_text="hi there"))
+    assert ok is True
+    assert "text" not in calls
+    assert calls["tpl"] == ("pid", "to", "reminder_v1", "en_US", ["hi"])

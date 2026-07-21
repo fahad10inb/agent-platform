@@ -186,3 +186,63 @@ async def _send_text(phone_id: str, to: str, text: str) -> None:
         )
     if r.status_code >= 400:
         logger.error("whatsapp send failed (%s): %s", r.status_code, r.text[:300])
+
+
+# ── business-initiated messages (templates) ──────────────────────────────────
+# A REPLY (inside 24h of the customer's message) can be free-form text — that's
+# _send_text above. A message the business STARTS (reminder / nurture / review /
+# outreach) can only be delivered outside that window as an APPROVED TEMPLATE;
+# free-form is rejected (131047). send_business_message routes to a template when
+# one is configured for that message kind, else falls back to free-form text.
+
+_TEMPLATE_SETTING = {
+    "reminder": "whatsapp_template_reminder",
+    "nurture": "whatsapp_template_nurture",
+    "review": "whatsapp_template_review",
+    "outreach": "whatsapp_template_outreach",
+}
+
+
+def _template_payload(to: str, name: str, lang: str, params: list) -> dict:
+    """The Graph API body for a template send. Pure (no I/O) so it's unit-testable.
+    `params` fill the body variables {{1}}, {{2}}, … in order."""
+    body = [{"type": "text", "text": str(p)[:1000]} for p in (params or [])]
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "template",
+        "template": {"name": name, "language": {"code": lang or "en_US"}},
+    }
+    if body:
+        payload["template"]["components"] = [{"type": "body", "parameters": body}]
+    return payload
+
+
+async def _send_template(phone_id: str, to: str, name: str, lang: str, params: list) -> bool:
+    """Deliver a pre-approved template — the only message type allowed outside the
+    24h window. Returns True on success (a 2xx from Graph)."""
+    settings = get_settings()
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.post(
+            f"{_GRAPH_URL}/{phone_id}/messages",
+            headers={"Authorization": f"Bearer {settings.whatsapp_access_token}"},
+            json=_template_payload(to, name, lang, params),
+        )
+    if r.status_code >= 400:
+        logger.error("whatsapp template send failed (%s): %s", r.status_code, r.text[:300])
+    return r.status_code < 400
+
+
+async def send_business_message(
+    phone_id: str, to: str, *, kind: str, params: list, fallback_text: str
+) -> bool:
+    """Send a message the business INITIATED. If an approved template is configured
+    for this `kind` (reminder/nurture/review/outreach), send the template (required
+    outside 24h); otherwise send free-form text — correct within 24h / on the test
+    number, and the current behaviour, so nothing changes until a template is set."""
+    settings = get_settings()
+    name = getattr(settings, _TEMPLATE_SETTING.get(kind, ""), "") if kind in _TEMPLATE_SETTING else ""
+    if name:
+        return await _send_template(phone_id, to, name, settings.whatsapp_template_lang, params)
+    await _send_text(phone_id, to, fallback_text)
+    return True

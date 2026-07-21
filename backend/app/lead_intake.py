@@ -170,7 +170,8 @@ def _reach_out(business: dict, parsed: dict) -> bool:
         import asyncio
 
         try:
-            asyncio.run(whatsapp._send_text(phone_id, to, text))
+            asyncio.run(whatsapp.send_business_message(
+                phone_id, to, kind="outreach", params=[text], fallback_text=text))
             delivered = True
         except Exception:  # noqa: BLE001 — fall through to the seeded/logged path
             logger.exception("[leadintake] whatsapp outreach failed for business=%s", business["id"])

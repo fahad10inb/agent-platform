@@ -80,6 +80,22 @@ class Settings(BaseSettings):
     # DEBUG escape hatch (default off): skip inbound webhook signature checks.
     # Use only to isolate a mis-pasted app secret during setup; turn back off.
     whatsapp_skip_signature: bool = False
+    # --- Business-INITIATED message templates (Meta requirement) ---
+    # Outside WhatsApp's 24h customer-service window, Meta ONLY delivers an
+    # APPROVED template — a free-form message is rejected (error 131047). These
+    # are the message types the AI STARTS (not replies to): appointment
+    # reminders, lead nurture, post-visit review asks, first lead outreach.
+    # Empty (default) = keep sending free-form text (correct within 24h and on
+    # the test number, logs otherwise) — NOTHING changes until you fill one in.
+    # Set the approved template's exact name to switch that type to a template.
+    # The code fills a single body variable {{1}} = the full message text, so
+    # create a Utility template whose body is a short fixed lead-in + {{1}}
+    # (adjust the params at the call site if your approved template differs).
+    whatsapp_template_lang: str = "en_US"
+    whatsapp_template_reminder: str = ""
+    whatsapp_template_nurture: str = ""
+    whatsapp_template_review: str = ""
+    whatsapp_template_outreach: str = ""
 
     # --- Inbound voice channel (Twilio ConversationRelay — Arabic-first) ---
     # DEFAULT OFF: this is the phone-call channel (an after-hours e&/du line
