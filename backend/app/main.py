@@ -18,8 +18,8 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from app import (chat_core, db, demo_events, digest_service, ics, import_service,
-                 lead_intake, listing_import, nurture_service, reminder_service,
-                 review_service, security)
+                 lead_intake, listing_import, matcher_service, nurture_service,
+                 reminder_service, review_service, security)
 from app.businesses import SEED_BUSINESSES
 from app.config import get_settings
 import secrets
@@ -116,6 +116,11 @@ async def _sweep_scheduler() -> None:
                 await asyncio.to_thread(review_service.send_due_review_requests)
             except Exception:  # noqa: BLE001
                 logger.exception("review-request pass failed")
+        if settings.match_alerts_enabled:
+            try:
+                await asyncio.to_thread(matcher_service.send_due_matches)
+            except Exception:  # noqa: BLE001
+                logger.exception("match-alert pass failed")
 
 
 @contextlib.asynccontextmanager
@@ -125,7 +130,8 @@ async def _lifespan(_app: FastAPI):
     tasks = []
     if settings.digest_enabled:
         tasks.append(asyncio.create_task(_digest_scheduler()))
-    if settings.reminders_enabled or settings.nurture_enabled or settings.review_requests_enabled:
+    if (settings.reminders_enabled or settings.nurture_enabled
+            or settings.review_requests_enabled or settings.match_alerts_enabled):
         tasks.append(asyncio.create_task(_sweep_scheduler()))
     yield
     for task in tasks:
@@ -1014,6 +1020,15 @@ def admin_send_review_requests(x_api_key: str | None = Header(default=None)):
     businesses that set a Google review link are touched."""
     security.check_admin(x_api_key)
     return {"sent": review_service.send_due_review_requests()}
+
+
+@app.post("/admin/send-match-alerts")
+def admin_send_match_alerts(x_api_key: str | None = Header(default=None)):
+    """Run the requirement-match alert sweep RIGHT NOW (ADMIN ONLY) — the manual
+    test lever. Once-per-property + the ~20h per-lead throttle mean a second run
+    re-alerts no one; only real-estate tenants with permitted listings are touched."""
+    security.check_admin(x_api_key)
+    return {"sent": matcher_service.send_due_matches()}
 
 
 @app.get("/admin/whatsapp-status")

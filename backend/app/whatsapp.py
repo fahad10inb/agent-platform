@@ -200,6 +200,7 @@ _TEMPLATE_SETTING = {
     "nurture": "whatsapp_template_nurture",
     "review": "whatsapp_template_review",
     "outreach": "whatsapp_template_outreach",
+    "match": "whatsapp_template_match",
 }
 
 

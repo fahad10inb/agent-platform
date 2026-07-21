@@ -23,7 +23,7 @@ from app import db  # noqa: E402
 _S = {"businesses": {}, "bookings": [], "memory": [], "leads": [], "messages": [],
       "services": [], "listings": [], "reminders": set(), "nurtures": set(),
       "opt_outs": set(), "quals": {}, "usage": {}, "ai_pauses": set(),
-      "review_requests": set(), "next_id": 1}
+      "review_requests": set(), "match_alerts": [], "next_id": 1}
 
 
 def _nid() -> int:
@@ -217,6 +217,14 @@ def _fake_list_businesses_full():
         {"id": b["id"], "name": b["name"], "notify_email": b.get("notify_email"),
          "last_digest_at": b.get("last_digest_at")}
         for b in _S["businesses"].values()
+    ]
+
+
+def _fake_real_estate_businesses():
+    return [
+        {"id": b["id"], "name": b["name"], "vertical": b.get("vertical"),
+         "whatsapp_phone_id": b.get("whatsapp_phone_id")}
+        for b in _S["businesses"].values() if b.get("vertical") == "real_estate"
     ]
 
 
@@ -438,6 +446,26 @@ def _fake_get_qualification(business_id, phone):
     return dict(q) if q else None
 
 
+def _last9(phone):
+    return "".join(c for c in str(phone or "") if c.isdigit())[-9:]
+
+
+def _fake_list_qualifications(business_id, within_days=60):
+    return [{"phone": phone, **dict(q)} for (bid, phone), q in _S["quals"].items() if bid == business_id]
+
+
+def _fake_claim_match_alert(business_id, phone, listing_key):
+    key = (business_id, _last9(phone), listing_key)
+    if key in _S["match_alerts"]:
+        return False
+    _S["match_alerts"].append(key)
+    return True
+
+
+def _fake_recent_match_alert(business_id, phone, within_hours=20):
+    return any(b == business_id and p == _last9(phone) for (b, p, _k) in _S["match_alerts"])
+
+
 def _fake_get_business_by_ingest_token(token):
     if not token:
         return None
@@ -525,6 +553,9 @@ db.get_business_by_calendar_token = _fake_get_business_by_calendar_token
 db.set_calendar_token = _fake_set_calendar_token
 db.upsert_qualification = _fake_upsert_qualification
 db.get_qualification = _fake_get_qualification
+db.list_qualifications = _fake_list_qualifications
+db.claim_match_alert = _fake_claim_match_alert
+db.recent_match_alert = _fake_recent_match_alert
 db.leads_for_nurture = _fake_leads_for_nurture
 db.phone_has_booking = _fake_phone_has_booking
 db.claim_nurture = _fake_claim_nurture
@@ -547,6 +578,7 @@ db.get_metrics = _fake_get_metrics
 db.get_week_stats = _fake_get_week_stats
 db.set_last_digest = _fake_set_last_digest
 db.list_businesses_full = _fake_list_businesses_full
+db.real_estate_businesses = _fake_real_estate_businesses
 
 from app import main as main_module  # noqa: E402  (imports AFTER the swap)
 from fastapi.testclient import TestClient  # noqa: E402
@@ -571,6 +603,7 @@ def _clean_state():
     _S["usage"].clear()
     _S["ai_pauses"].clear()
     _S["review_requests"].clear()
+    _S["match_alerts"].clear()
     # Reset each SEEDED business to its pristine seed values, so no per-test
     # mutation leaks into the next test — a changed name, a set notify_email, a
     # rotated api_key, a quota cap, a digest stamp all vanish. (Businesses a test

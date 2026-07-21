@@ -65,6 +65,11 @@ class Settings(BaseSettings):
     # Post-visit Google review requests (one message after an appointment, if the
     # business set a review link). Kill switch like the other outbound sweeps.
     review_requests_enabled: bool = True
+    # Requirement-match alerts (real estate): when a listing matches a lead's
+    # captured criteria, message them once about it. DEFAULT OFF — it's the most
+    # proactive outbound, so it's opt-in per deployment, and (like all outbound
+    # outside 24h) needs whatsapp_template_match set to actually deliver.
+    match_alerts_enabled: bool = False
 
     # --- WhatsApp channel (Meta Cloud API) ---
     # All empty = the webhook plays dead (404), so the channel is off by
@@ -96,6 +101,7 @@ class Settings(BaseSettings):
     whatsapp_template_nurture: str = ""
     whatsapp_template_review: str = ""
     whatsapp_template_outreach: str = ""
+    whatsapp_template_match: str = ""
 
     # --- Inbound voice channel (Twilio ConversationRelay — Arabic-first) ---
     # DEFAULT OFF: this is the phone-call channel (an after-hours e&/du line

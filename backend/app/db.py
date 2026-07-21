@@ -313,6 +313,23 @@ def init_db() -> None:
             )
             """
         )
+        # Requirement-match alert log — one row per (lead, listing) we've told a
+        # lead about. `listing_key` is the property's stable identity (its permit
+        # number), so UNIQUE(business_id, phone, listing_key) means a lead is
+        # alerted about a given property AT MOST ONCE — even across listing
+        # re-imports (which wipe & reinsert rows and change their ids).
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS match_alerts (
+                id           SERIAL PRIMARY KEY,
+                business_id  TEXT NOT NULL,
+                phone        TEXT NOT NULL,
+                listing_key  TEXT NOT NULL,
+                sent_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+                UNIQUE (business_id, phone, listing_key)
+            )
+            """
+        )
         # Review-request log — one row per booking we've asked for a Google
         # review on. UNIQUE(booking_id) is the send-once guarantee (same claim
         # pattern as reminders): a client is asked for a review at most once.
@@ -1045,6 +1062,51 @@ def get_qualification(business_id: str, phone: str) -> dict | None:
     return row
 
 
+def list_qualifications(business_id: str, within_days: int = 60) -> list[dict]:
+    """Every recent qualified lead for a business — the requirement-match sweep's
+    input. Bounded to the last `within_days` (a launch shouldn't ping ancient
+    leads), fields decoded to a dict so matching stays in Python."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT phone, name, fields, score, updated_at FROM qualifications "
+            "WHERE business_id = %s AND phone <> '' "
+            "AND updated_at > now() - make_interval(days => %s) "
+            "ORDER BY updated_at DESC",
+            (business_id, within_days),
+        ).fetchall()
+    for row in rows:
+        row["fields"] = json.loads(row.get("fields") or "{}")
+    return rows
+
+
+def claim_match_alert(business_id: str, phone: str, listing_key: str) -> bool:
+    """Atomically claim the right to alert this lead about this property — the
+    UNIQUE(business_id, phone, listing_key) row makes it once-per-property."""
+    with _connect() as conn:
+        row = conn.execute(
+            "INSERT INTO match_alerts (business_id, phone, listing_key) VALUES (%s, %s, %s) "
+            "ON CONFLICT (business_id, phone, listing_key) DO NOTHING RETURNING id",
+            (business_id, phone, listing_key),
+        ).fetchone()
+    return row is not None
+
+
+def recent_match_alert(business_id: str, phone: str, within_hours: int = 20) -> bool:
+    """True if this lead was sent ANY match alert within the window — the throttle
+    that keeps a lead matching lots of inventory to ~one ping a day, not a burst."""
+    digits = _phone_digits(phone)
+    if not digits:
+        return False
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM match_alerts WHERE business_id = %s "
+            "AND " + _PHONE_MATCH_SQL.format(col="phone") + " "
+            "AND sent_at > now() - make_interval(hours => %s) LIMIT 1",
+            (business_id, digits, within_hours),
+        ).fetchone()
+    return row is not None
+
+
 def get_business_by_ingest_token(token: str) -> dict | None:
     """Which tenant owns this lead-ingest token? Routes forwarded portal emails."""
     if not token:
@@ -1261,3 +1323,13 @@ def list_businesses_full() -> list[dict]:
             "SELECT id, name, notify_email, last_digest_at FROM businesses ORDER BY id"
         ).fetchall()
     return rows
+
+
+def real_estate_businesses() -> list[dict]:
+    """Real-estate tenants with just the columns the match-alert sweep needs.
+    (list_businesses_full is deliberately digest-only, so it can't serve this.)"""
+    with _connect() as conn:
+        return conn.execute(
+            "SELECT id, name, vertical, whatsapp_phone_id FROM businesses "
+            "WHERE vertical = 'real_estate' ORDER BY id"
+        ).fetchall()
