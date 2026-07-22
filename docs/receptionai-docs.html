@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ReceptionAI — Product &amp; Technical Documentation</title>
+<style>
+:root{--ink:#0d1b26;--body:#33454f;--muted:#6c7f8a;--brass:#b8863b;--brass-deep:#8a6224;
+  --line:#e4e0d8;--soft:#faf9f6;--code:#f3f1ec}
+*{box-sizing:border-box}
+body{margin:0;font-family:'Segoe UI',system-ui,-apple-system,Roboto,Arial,sans-serif;
+  color:var(--body);background:#fff;font-size:11.2pt;line-height:1.55}
+.page{max-width:820px;margin:0 auto;padding:34px 40px 60px}
+h1,h2,h3,h4{color:var(--ink);line-height:1.2;margin:1.5em 0 .5em}
+h1{font-size:22pt;letter-spacing:-.02em;border-bottom:2px solid var(--brass);padding-bottom:.3em}
+h2{font-size:15pt;letter-spacing:-.01em;margin-top:1.7em}
+h3{font-size:12.5pt}
+h4{font-size:11.5pt;color:var(--brass-deep)}
+p{margin:.7em 0}
+a{color:var(--brass-deep)}
+strong{color:var(--ink)}
+code{background:var(--code);border:1px solid var(--line);border-radius:4px;padding:1px 5px;
+  font-family:Consolas,'Cascadia Mono',monospace;font-size:.88em;color:var(--ink)}
+pre{background:var(--soft);border:1px solid var(--line);border-left:3px solid var(--brass);
+  border-radius:6px;padding:12px 14px;overflow-x:auto;font-family:Consolas,monospace;
+  font-size:8.6pt;line-height:1.45;color:var(--ink);white-space:pre}
+pre code{background:none;border:0;padding:0;font-size:inherit}
+blockquote{margin:1em 0;padding:10px 16px;background:var(--soft);border-left:3px solid var(--brass);
+  border-radius:0 6px 6px 0;color:var(--body)}
+blockquote p{margin:0}
+table{width:100%;border-collapse:collapse;margin:1em 0;font-size:9.8pt}
+th{background:var(--ink);color:#fff;text-align:left;padding:8px 10px;font-weight:600}
+td{border-bottom:1px solid var(--line);padding:7px 10px;vertical-align:top}
+tbody tr:nth-child(even){background:var(--soft)}
+ul,ol{margin:.6em 0;padding-left:1.4em}
+li{margin:.3em 0}
+hr{border:0;border-top:1px solid var(--line);margin:1.6em 0}
+/* cover */
+.cover{min-height:88vh;display:flex;flex-direction:column;justify-content:center}
+.cover .mark{display:inline-flex;align-items:center;gap:10px;margin-bottom:26px}
+.cover .m{width:36px;height:36px;border-radius:9px;display:grid;place-items:center;
+  background:linear-gradient(150deg,#d5a24c,var(--brass));color:#1a1206;font-weight:800}
+.cover h1{font-size:34pt;border:0;padding:0;margin:0 0 10px}
+.cover .sub{font-size:13pt;color:var(--muted);max-width:34em}
+.cover .meta{margin-top:34px;font-size:10pt;color:var(--muted);border-top:1px solid var(--line);padding-top:16px}
+.cover .meta b{color:var(--ink)}
+.toc{background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:18px 22px;margin-top:26px}
+.toc h3{margin-top:0}
+.toc ol{margin:0;padding-left:1.3em}
+.toc li{margin:.45em 0}
+.toc .d{color:var(--muted);font-size:.9em}
+.doc{page-break-before:always}
+.doc-head{border-left:4px solid var(--brass);padding-left:14px;margin-bottom:6px}
+.doc-head .n{font-size:9pt;letter-spacing:.16em;text-transform:uppercase;color:var(--brass-deep);font-weight:700}
+@media print{
+  @page{margin:16mm 14mm}
+  body{font-size:10pt}
+  .page{max-width:none;padding:0}
+  .cover{min-height:0;padding-top:40mm}
+  h1,h2,h3{page-break-after:avoid}
+  table,pre,blockquote{page-break-inside:avoid}
+  a{color:var(--brass-deep);text-decoration:none}
+}
+</style></head><body><div class="page">
+<div class="cover">
+  <div class="mark"><div class="m">R</div><b style="font-size:13pt;color:var(--ink)">ReceptionAI</b></div>
+  <h1>Product &amp; Technical Documentation</h1>
+  <p class="sub">An AI receptionist for Dubai real-estate agencies — answering WhatsApp
+  and web chat 24/7, qualifying buyers, matching permit-checked listings, and booking viewings.</p>
+  <div class="toc"><h3>Contents</h3><ol><li><b>Product Requirements</b><br><span class="d">Why this exists: the problem, the user, the scope</span></li><li><b>Technical Requirements</b><br><span class="d">Architecture, stack, contracts, security</span></li><li><b>UI / UX Design</b><br><span class="d">Surfaces, design system, interaction rules</span></li><li><b>App Flow</b><br><span class="d">End-to-end journeys, step by step</span></li><li><b>Backend Schema</b><br><span class="d">The data model and its guarantees</span></li><li><b>Implementation Plan</b><br><span class="d">What&#x27;s built, what&#x27;s left, the path</span></li></ol></div>
+  <div class="meta">
+    <b>Version</b> 1.0 &nbsp;·&nbsp; <b>Status</b> Product complete, pre-first-customer<br>
+    <b>Live</b> https://agent-platform-mivq.onrender.com
+  </div>
+</div>
+<div class="doc"><div class="doc-head"><div class="n">Document 1 of 6</div></div><h1>Product Requirements Document (PRD)</h1>
+<h3>ReceptionAI — AI Receptionist for Dubai Real-Estate Agencies</h3>
+<table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td><strong>Version</strong></td><td>1.0</td></tr><tr><td><strong>Status</strong></td><td>Built — pre-first-customer</td></tr><tr><td><strong>Owner</strong></td><td>Fahad</td></tr><tr><td><strong>Live</strong></td><td>https://agent-platform-mivq.onrender.com</td></tr></tbody></table>
+<hr>
+<h2>1. Summary</h2>
+<p>An AI receptionist that answers a real-estate agency's WhatsApp and website chat <strong>instantly, 24/7</strong> — qualifying buyers, matching them to real listings, booking viewings, and escalating to a human when the law requires it.</p>
+<p><strong>One-line pitch:</strong> <em>You pay the portals AED 45–60k a year for leads, then lose half of them because nobody answered fast enough. This makes sure you never lose a lead you already paid for.</em></p>
+<hr>
+<h2>2. The problem</h2>
+<p>A Dubai brokerage buys leads from Bayut / Property Finder / Dubizzle at <strong>AED 45–60k per year</strong>. Those leads arrive at all hours. But:</p>
+<ul><li>An enquiry at 11pm sits until morning. By then the buyer has messaged four other</li></ul>
+<p>  agencies — <strong>the first to reply usually wins the deal</strong>.</p>
+<ul><li>Agents are on viewings, driving, or handling three chats at once.</li><li>Junior staff answer inconsistently, quote prices on unpermitted listings</li></ul>
+<p>  (a <strong>DLD compliance breach</strong>), or forget to follow up.</p>
+<ul><li>A single lost deal is <strong>~AED 40,000</strong> in commission on a 2M sale at 2%.</li></ul>
+<p>The loss isn't "we didn't get leads." It's <strong>"we didn't answer the leads we bought."</strong></p>
+<hr>
+<h2>3. Target user</h2>
+<h3>Primary persona — "The Principal Broker"</h3>
+<ul><li>Owner / MD of a <strong>10–50 agent</strong> independent Dubai brokerage.</li><li>Buys portal leads, feels the waste, but can't justify a night receptionist.</li><li>Decides alone. No procurement, no IT department.</li><li>Cares about: <strong>commission saved</strong>, not "AI".</li></ul>
+<h3>Secondary</h3>
+<ul><li><strong>Larger brokerages (50–500 agents)</strong> — longer sales cycle, more stakeholders.</li><li><strong>Off-plan / developer master-agencies</strong> — highest value (launch days generate</li></ul>
+<p>  thousands of leads in hours), but a longer, more bespoke sale.</p>
+<h3>Not the user (deliberately)</h3>
+<ul><li>Walk-in retail businesses, restaurants, anyone without a lead-response problem.</li><li><strong>Clinics/dental</strong> — held back: UAE health-data localization would require</li></ul>
+<p>  in-country hosting we don't have. (See §7.)</p>
+<hr>
+<h2>4. Goals &amp; success metrics</h2>
+<table><thead><tr><th>Goal</th><th>Metric</th><th>Target</th></tr></thead><tbody><tr><td>Never lose a paid lead</td><td>% of enquiries answered</td><td><strong>100%</strong>, any hour</td></tr><tr><td>Answer before competitors</td><td>Median first-response time</td><td><strong>&lt; 30 seconds</strong></td></tr><tr><td>Turn enquiries into pipeline</td><td>% of enquiries captured as a lead</td><td>&gt; 80%</td></tr><tr><td>Save agent time</td><td>Hours/month not spent on first-touch</td><td>measurable in dashboard</td></tr><tr><td>Stay legal</td><td>Unpermitted listings quoted</td><td><strong>0</strong> (hard-enforced)</td></tr><tr><td>Commercial</td><td>Paying agencies</td><td><strong>1</strong> (first pilot) → 10</td></tr></tbody></table>
+<hr>
+<h2>5. Scope</h2>
+<h3>P0 — Built and shipped</h3>
+<table><thead><tr><th>Feature</th><th>What it does</th></tr></thead><tbody><tr><td><strong>Instant answering</strong></td><td>WhatsApp + website widget, same brain, 24/7</td></tr><tr><td><strong>Lead capture</strong></td><td>Name + number saved the moment intent appears; deduped</td></tr><tr><td><strong>Qualification &amp; scoring</strong></td><td>Budget, area, bedrooms, purpose, timeline, payment → <strong>A/B/C grade</strong></td></tr><tr><td><strong>Real-inventory matching</strong></td><td>Shortlists from the agency's <em>actual</em> listings — never invents a property</td></tr><tr><td><strong>Permit gate (DLD)</strong></td><td>An unpermitted listing's price is <strong>withheld from the AI entirely</strong></td></tr><tr><td><strong>Viewing booking</strong></td><td>Real free slots from the agency's hours; <strong>double-booking impossible</strong> (DB constraint)</td></tr><tr><td><strong>Bilingual</strong></td><td>English + Arabic, switches mid-conversation</td></tr><tr><td><strong>Human handoff</strong></td><td>Price negotiation, paperwork, legal → routed to a licensed agent</td></tr><tr><td><strong>Human takeover</strong></td><td>Owner replies in a thread → AI pauses for that conversation</td></tr><tr><td><strong>Owner dashboard</strong></td><td>Bookings (calendar view), leads, conversations, settings, KPIs</td></tr><tr><td><strong>Calendar feed</strong></td><td><code>.ics</code> subscription + per-booking invite → bookings land in their real calendar</td></tr><tr><td><strong>Follow-up loop</strong></td><td>Reminders (24h/2h), nurture (day 2/7/30), <strong>requirement-match alerts</strong></td></tr><tr><td><strong>Review requests</strong></td><td>Post-viewing Google review ask</td></tr><tr><td><strong>CRM write-back</strong></td><td>Qualified leads pushed to Bitrix24 / Zoho / any webhook</td></tr><tr><td><strong>Portal lead intake</strong></td><td>Forwarded Bayut/PF emails → parsed → instant outreach</td></tr><tr><td><strong>Agency profile</strong></td><td>Areas covered, sale/rent/off-plan focus, languages, <strong>RERA ORN</strong></td></tr></tbody></table>
+<h3>P1 — Next</h3>
+<ul><li>WhatsApp <strong>approved message templates</strong> wired to exact variables (delivery outside 24h).</li><li>Arabic <strong>voice</strong> channel (scaffolded, off).</li><li>Billing / subscription.</li></ul>
+<h3>P2 — Later</h3>
+<ul><li>Developer / off-plan launch mode (high-value).</li><li>Multi-agent routing + SLA dashboards.</li><li>Deeper portal/CRM integrations.</li></ul>
+<h3>Non-goals</h3>
+<ul><li>Replacing licensed agents (legally impossible, and not the pitch).</li><li>Being a CRM. We're the <strong>front door</strong>; we push out to their CRM.</li><li>Cold outbound marketing blasts (TDRA/PDPL risk).</li></ul>
+<hr>
+<h2>6. Key user stories</h2>
+<ol><li><em>As a buyer,</em> I message at 11pm and get a real answer in seconds, so I don't</li></ol>
+<p>   message a competitor.</p>
+<ol><li><em>As a buyer,</em> I'm asked a few natural questions and offered a viewing time that</li></ol>
+<p>   actually exists.</p>
+<ol><li><em>As an owner,</em> every enquiry becomes a named, scored lead I can see the next morning.</li><li><em>As an owner,</em> I get an email the instant a lead or booking arrives.</li><li><em>As an owner,</em> I can take over a conversation myself and the AI steps aside.</li><li><em>As an owner,</em> bookings appear in my normal calendar without me copying anything.</li><li><em>As an owner,</em> a lead who went quiet gets nudged, and gets told when a matching</li></ol>
+<p>   property appears — without me remembering.</p>
+<ol><li><em>As a compliance-conscious owner,</em> the AI never quotes a price on a listing</li></ol>
+<p>   without a valid permit.</p>
+<hr>
+<h2>7. Constraints &amp; compliance</h2>
+<table><thead><tr><th>Constraint</th><th>Implication</th></tr></thead><tbody><tr><td><strong>DLD / Trakheesi permits</strong></td><td>Advertising a property without a permit is illegal → hard permit gate in the prompt layer</td></tr><tr><td><strong>Licensed-activity boundary</strong></td><td>No negotiation, no legal/tax advice, no mortgage qualification → escalate to human</td></tr><tr><td><strong>UAE PDPL</strong></td><td>Opt-out honoured (<code>stop_contact</code>); data-erasure endpoint</td></tr><tr><td><strong>WhatsApp 24-hour rule</strong></td><td>Business-initiated messages outside 24h require an <strong>approved template</strong></td></tr><tr><td><strong>Health-data localization</strong></td><td>Blocks the clinic vertical until in-country hosting</td></tr><tr><td><strong>TDRA</strong></td><td>No cold marketing blasts; follow-ups are service follow-ups to inbound leads</td></tr></tbody></table>
+<p><strong>Claims we must never make:</strong> RERA/DLD endorsement, "data stays in the UAE", "native Emirati Arabic", partnership with Bayut/Meta, or outcome statistics as our own.</p>
+<hr>
+<h2>8. Commercial</h2>
+<ul><li><strong>Pricing:</strong> AED 1,499/month. Free 2-week pilot on their real leads, no card.</li><li><strong>Anchor:</strong> vs AED 45–60k/yr portal spend, and ~AED 40k commission on one saved deal.</li><li><strong>Motive:</strong> one saved deal pays for the year twice over.</li></ul>
+<hr>
+<h2>9. Open questions</h2>
+<ol><li>Which template wording will Meta approve (dictates the follow-up copy)?</li><li>Does the requirement-match alert convert, or annoy? (Measure on pilot #1.)</li><li>Is AED 1,499 under-priced for agencies where one deal = AED 40k?</li></ol></div><div class="doc"><div class="doc-head"><div class="n">Document 2 of 6</div></div><h1>Technical Requirements Document (TRD)</h1>
+<h3>ReceptionAI — architecture, stack, and engineering contracts</h3>
+<table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td><strong>Version</strong></td><td>1.0</td></tr><tr><td><strong>Runtime</strong></td><td>Python 3.11+ · FastAPI (async)</td></tr><tr><td><strong>Deploy</strong></td><td>Render (push-to-<code>main</code> auto-deploy)</td></tr><tr><td><strong>Repo</strong></td><td><code>fahad10inb/agent-platform</code></td></tr></tbody></table>
+<hr>
+<h2>1. Architecture at a glance</h2>
+<pre>   WhatsApp (Meta Cloud API)  ─┐
+   Website widget  ────────────┼──►  FastAPI app  ──►  chat_core.run_turn  ──►  Gemini
+   Voice (Twilio, scaffolded) ─┘         │                     │
+                                         │                     ├─► function-calling TOOLS
+                                         │                     │   (calendar · leads · qualify
+                                         │                     │    · memory · handoff · compliance)
+                                         ▼                     ▼
+                                   Supabase Postgres  ◄── all state (single seam: db.py)
+                                         │
+        background sweeps (in-process) ──┴──► reminders · nurture · reviews · match alerts
+                                         └──► Resend (owner email) · CRM webhook</pre>
+<p><strong>Design principle:</strong> one brain, many channels. WhatsApp, web widget, demo and voice all funnel into the <strong>same</strong> <code>chat_core.run_turn()</code>, so behaviour can never drift between channels.</p>
+<hr>
+<h2>2. Stack</h2>
+<table><thead><tr><th>Layer</th><th>Choice</th><th>Why</th></tr></thead><tbody><tr><td>API</td><td><strong>FastAPI</strong> (async)</td><td>Async I/O for LLM + Graph API calls</td></tr><tr><td>LLM</td><td><strong>google-genai</strong>, <code>gemini-2.5-flash</code></td><td>Quality/cost balance; strong Arabic</td></tr><tr><td>LLM (background)</td><td><code>gemini-2.5-flash-lite</code></td><td>Cheap distillation/consolidation</td></tr><tr><td>DB</td><td><strong>Supabase Postgres</strong> via <code>psycopg</code> + <code>ConnectionPool</code></td><td>Managed, SQL, RLS-capable</td></tr><tr><td>Hosting</td><td><strong>Render</strong></td><td>Zero-ops; push-to-main deploy</td></tr><tr><td>Email</td><td><strong>Resend</strong> (HTTP API)</td><td>Owner alerts</td></tr><tr><td>Frontend</td><td><strong>Server-rendered HTML strings</strong> (no build step)</td><td>One deploy, no separate frontend</td></tr></tbody></table>
+<p>⚠️ <code>prepare_threshold=None</code> on the pool — the Supabase <strong>pooler does not support prepared statements</strong> (caused <code>DuplicatePreparedStatement</code> in production).</p>
+<hr>
+<h2>3. Module map</h2>
+<table><thead><tr><th>Module</th><th>Responsibility</th></tr></thead><tbody><tr><td><code>main.py</code></td><td>Routes, middleware, schedulers, admin endpoints</td></tr><tr><td><code>chat_core.py</code></td><td><strong>Channel-agnostic turn</strong> — pause gate → quota → lock → LLM → persist</td></tr><tr><td><code>llm_service.py</code></td><td>Gemini calls, tool loop, retries, empty/leaked-reply recovery</td></tr><tr><td><code>prompt_service.py</code></td><td>System-prompt assembly (persona, facts, listings, compliance)</td></tr><tr><td><code>db.py</code></td><td><strong>The only storage seam.</strong> All SQL lives here</td></tr><tr><td><code>whatsapp.py</code></td><td>Webhook (verify + HMAC), inbound parse, send text/template</td></tr><tr><td><code>tools/</code></td><td>Function-calling tools: calendar, leads, qualify, memory, handoff</td></tr><tr><td><code>reminder_service</code> <code>nurture_service</code> <code>review_service</code> <code>matcher_service</code></td><td>Outbound sweeps</td></tr><tr><td><code>lead_intake.py</code></td><td>Portal-email parsing → lead → instant outreach</td></tr><tr><td><code>listing_import.py</code></td><td>CSV / XML / Reelly listing import + normalisation</td></tr><tr><td><code>ics.py</code></td><td>iCalendar feed + per-booking invite</td></tr><tr><td><code>*_html.py</code></td><td>Landing, widget, dashboard, demo, story pages</td></tr></tbody></table>
+<hr>
+<h2>4. Core contracts</h2>
+<h3>4.1 <code>chat_core.run_turn(business_id, conversation_id, message, schedule, activity=None)</code></h3>
+<p>The single turn. Order is deliberate:</p>
+<ol><li><strong>Human-takeover gate</strong> — if the owner took the thread, save the customer's message and return <code>""</code> (silent).</li><li><strong>Monthly quota fuse</strong> — over cap → graceful decline, <strong>no LLM call</strong>.</li><li><strong>Per-(business, conversation) <code>asyncio.Lock</code></strong> — serialises rapid messages in one thread.</li><li>Load history (capped) → build prompt → LLM with tools → <strong>persist only on success</strong>.</li></ol>
+<h3>4.2 Multi-tenancy</h3>
+<ul><li>Every row is keyed by <code>business_id</code>. Every query filters on it.</li><li>Auth: per-business API key (<strong>SHA-256 hashed</strong>, legacy plaintext still verifiable).</li><li>Cross-tenant access → <strong>403</strong>. Admin key is separate and constant-time compared.</li></ul>
+<h3>4.3 Idempotency (all outbound)</h3>
+<p>Every sweep <strong>claims before sending</strong> via a <code>UNIQUE</code> row:</p>
+<table><thead><tr><th>Sweep</th><th>Claim key</th></tr></thead><tbody><tr><td>Reminders</td><td><code>UNIQUE(booking_id, stage)</code></td></tr><tr><td>Nurture</td><td><code>UNIQUE(business_id, phone, stage)</code></td></tr><tr><td>Reviews</td><td><code>UNIQUE(booking_id)</code></td></tr><tr><td>Match alerts</td><td><code>UNIQUE(business_id, phone, listing_key)</code></td></tr></tbody></table>
+<p>Overlapping sweeps and restarts can therefore never double-send.</p>
+<h3>4.4 No double-booking</h3>
+<p>A <code>UNIQUE</code> index on <code>(business_id, date, time)</code> — enforced <strong>at the database</strong>, not by prompt discipline. A race resolves to <code>unavailable</code>.</p>
+<p>⚠️ A tool turn <strong>never blind-retries</strong> on timeout: the booking may have committed in the thread, and a retry could book a <em>different</em> slot.</p>
+<hr>
+<h2>5. Integrations</h2>
+<table><thead><tr><th>Integration</th><th>Notes</th></tr></thead><tbody><tr><td><strong>WhatsApp Cloud API</strong></td><td>Webhook <code>GET</code> verify + <code>POST</code> with <strong>HMAC signature</strong> (fails closed when <code>APP_SECRET</code> set). <code>wamid</code> dedup against Meta redelivery. Per-tenant routing via <code>whatsapp_phone_id</code>. Outside the <strong>24h window</strong>, only an <strong>approved template</strong> delivers.</td></tr><tr><td><strong>Gemini</strong></td><td>Hard timeout; tool loop; recovery for empty or leaked-tool-call replies.</td></tr><tr><td><strong>Resend</strong></td><td>Owner alerts; logs-only without a key (graceful).</td></tr><tr><td><strong>CRM webhook</strong></td><td>Bitrix24-shaped or generic JSON POST, daemon thread.</td></tr><tr><td><strong>Reelly / CSV / XML</strong></td><td>Listing import, SSRF-guarded fetch.</td></tr><tr><td><strong>Twilio ConversationRelay</strong></td><td>Voice scaffold, default <strong>off</strong>.</td></tr></tbody></table>
+<hr>
+<h2>6. Non-functional requirements</h2>
+<h3>Security</h3>
+<ul><li>API keys hashed (SHA-256), never logged. Admin key constant-time compared.</li><li>WhatsApp webhook <strong>fails closed</strong> without an app secret.</li><li>SSRF guard on all URL fetches (blocks private/loopback/metadata, re-validates redirects).</li><li>PII kept out of logs. Dashboard <code>frame-ancestors 'none'</code>; HSTS; <code>nosniff</code>.</li><li><code>/docs</code> disabled outside development.</li></ul>
+<h3>Reliability</h3>
+<ul><li>Persist-only-on-success (a failed turn rolls back, never half-writes).</li><li>Every sweep survives a bad pass (<code>try/except</code> per business).</li><li>Durable conversations in Postgres (a deploy must not wipe live chats).</li><li>⚠️ <strong>Render free tier sleeps</strong> → a cold start makes Meta's webhook time out and</li></ul>
+<p>  <strong>drop the message</strong>. Always-on plan is required for a real customer.</p>
+<h3>Cost control</h3>
+<ul><li>Per-business <strong>monthly message quota</strong> with an owner warning at 80% and a graceful</li></ul>
+<p>  decline over cap. Cacheable prompt prefix ordering; cheap model for background work.</p>
+<h3>Performance</h3>
+<ul><li>Target first response <strong>&lt; 30s</strong> end-to-end (LLM-bound).</li><li>All business context is loaded <strong>once per turn</strong>; no mid-turn lookups.</li></ul>
+<hr>
+<h2>7. Environment</h2>
+<table><thead><tr><th>Variable</th><th>Purpose</th></tr></thead><tbody><tr><td><code>DATABASE_URL</code></td><td>Supabase Postgres</td></tr><tr><td><code>GEMINI_API_KEY</code></td><td>LLM</td></tr><tr><td><code>ADMIN_API_KEY</code></td><td>Admin endpoints</td></tr><tr><td><code>WHATSAPP_ACCESS_TOKEN</code> / <code>_VERIFY_TOKEN</code> / <code>_APP_SECRET</code></td><td>WhatsApp channel</td></tr><tr><td><code>WHATSAPP_TEMPLATE_*</code></td><td>Approved template names per message kind</td></tr><tr><td><code>RESEND_API_KEY</code></td><td>Owner email</td></tr><tr><td><code>ENVIRONMENT</code></td><td><code>production</code> disables <code>/docs</code></td></tr><tr><td><code>SENTRY_DSN</code></td><td>Optional error monitoring</td></tr><tr><td><code>*_ENABLED</code></td><td>Kill switches: digest, reminders, nurture, reviews, match alerts</td></tr></tbody></table>
+<hr>
+<h2>8. Testing</h2>
+<ul><li><strong>285 tests</strong>, <code>pytest</code>. CI gates deploy.</li><li><code>tests/conftest.py</code> swaps <code>db.*</code> for an <strong>in-memory fake before <code>app.main</code> import</strong> —</li></ul>
+<p>  the whole suite runs with no database.</p>
+<ul><li>⚠️ Never <code>import tests.conftest</code> from a test (re-runs the seam swap → mass failures).</li></ul></div><div class="doc"><div class="doc-head"><div class="n">Document 3 of 6</div></div><h1>UI / UX Design</h1>
+<h3>ReceptionAI — surfaces, design system, and interaction rules</h3>
+<table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td><strong>Version</strong></td><td>1.0</td></tr><tr><td><strong>Approach</strong></td><td>Server-rendered HTML modules, no build step, no framework</td></tr></tbody></table>
+<hr>
+<h2>1. Surfaces</h2>
+<table><thead><tr><th>Surface</th><th>Route</th><th>Audience</th><th>Job</th></tr></thead><tbody><tr><td><strong>Landing</strong></td><td><code>/</code></td><td>Brokerage owner (cold)</td><td>Sell the leak → the fix → the price</td></tr><tr><td><strong>Story / trailer</strong></td><td><code>/watch</code></td><td>Cold prospect in a DM</td><td>60-second auto-playing proof, phone-first</td></tr><tr><td><strong>Live demo</strong></td><td><code>/demo</code></td><td>Prospect on a call</td><td>Let them <em>talk to it</em> and watch the work</td></tr><tr><td><strong>Widget</strong></td><td><code>/widget</code></td><td>The agency's customers</td><td>The actual chat</td></tr><tr><td><strong>Dashboard</strong></td><td><code>/dashboard</code></td><td>The agency owner</td><td>Bookings, leads, conversations, settings</td></tr><tr><td><strong>Privacy</strong></td><td><code>/privacy</code></td><td>Anyone</td><td>Compliance</td></tr></tbody></table>
+<p><strong>Rule: no dead ends.</strong> Every page links onward; a nav test enforces this (<code>test_site_navigation.py</code>) — each page serves, every internal link resolves.</p>
+<hr>
+<h2>2. Design system</h2>
+<h3>Palette — "ink &amp; brass"</h3>
+<p>Deliberately <strong>not</strong> the default AI purple/gradient. It reads premium, Gulf, and serious about money — because it's sold to property people.</p>
+<table><thead><tr><th>Token</th><th>Value</th><th>Use</th></tr></thead><tbody><tr><td><code>--ink</code></td><td><code>#0d1b26</code></td><td>Primary dark, headers, buttons</td></tr><tr><td><code>--ink-3</code></td><td><code>#12252f</code></td><td>Raised dark surfaces</td></tr><tr><td><code>--brass</code> / <code>--brass-hi</code></td><td><code>#b8863b</code> / <code>#d5a24c</code></td><td>Accent, CTAs, highlights</td></tr><tr><td><code>--canvas</code> / <code>--card</code></td><td><code>#faf9f6</code> / <code>#ffffff</code></td><td>Light grounds</td></tr><tr><td><code>--hairline</code></td><td><code>#e6e1d8</code></td><td>Borders</td></tr><tr><td><code>--muted</code> / <code>--body</code></td><td><code>#7a8892</code> / <code>#46565f</code></td><td>Secondary text</td></tr><tr><td><code>--ok</code> / <code>--hot</code> / <code>--warn</code></td><td><code>#3fcf7f</code> / <code>#ff9a52</code> / <code>#d5a24c</code></td><td>Semantic state</td></tr></tbody></table>
+<p>Semantic colour is kept <strong>separate from the accent</strong> — a green "confirmed" chip never competes with a brass CTA.</p>
+<h3>Type</h3>
+<ul><li><strong>Inter</strong> (web) for UI; <strong>JetBrains Mono / system mono</strong> for data, timestamps, IDs.</li><li>Numeric columns use <code>font-variant-numeric: tabular-nums</code> so digits align.</li><li>Headings get <code>text-wrap: balance</code>; body copy <code>text-wrap: pretty</code>.</li></ul>
+<h3>Motion</h3>
+<p>Restrained. Message bubbles ease in; the ops feed slides in; nothing bounces. <code>prefers-reduced-motion</code> disables all animation globally.</p>
+<hr>
+<h2>3. Key screens</h2>
+<h3>3.1 Landing (<code>/</code>)</h3>
+<p><strong>Real-estate only</strong> — the salon/clinic switcher was removed. A multi-vertical page diluted the pitch, and advertising "Clinic" promised something we can't legally serve.</p>
+<p>Narrative order: <strong>the leak</strong> (you paid for the lead, nobody answered) → <strong>the money</strong> (AED 45–60k portal spend · ~40k commission · 18k/yr for this) → proof → price. No fake logos, no invented metrics, no testimonials we don't have.</p>
+<h3>3.2 Live demo (<code>/demo</code>) — the sales weapon</h3>
+<p>A <strong>split screen</strong>:</p>
+<ul><li><strong>Left — the buyer's chat.</strong> The real <code>/chat</code> brain.</li><li><strong>Right — the operations console.</strong> A live feed of what the agent <em>actually did</em></li></ul>
+<p>  that turn: lead captured, qualified + graded, calendar checked, viewing booked.</p>
+<blockquote>The widget shows a conversation and <em>hides the work</em>. An owner watching it sees "a chatbot." This page makes the invisible work visible — that work <strong>is</strong> the product.</blockquote>
+<p><strong>Interaction rules:</strong></p>
+<ul><li><strong>▶ Watch it run</strong> — an auto-tour plays an 8-turn enquiry hands-free, so it demos</li></ul>
+<p>  itself on a call instead of the seller typing.</p>
+<ul><li><strong>Synchronised panels</strong> — the work streams on the right *while the typing dots are</li></ul>
+<p>  still showing*, then the reply lands. The console is seen to <strong>drive</strong> the answer.</p>
+<ul><li><strong>EN / العربية toggle</strong> — flips the <em>entire</em> customer side, including RTL layout.</li><li><strong>Mobile</strong> — a <strong>Chat / Activity tab switcher</strong> (a 50/50 split makes both panels</li></ul>
+<p>  unusable slivers on a phone). The Activity tab carries a live action count and   pulses when work arrives while you're on Chat.</p>
+<h3>3.3 Story (<code>/watch</code>) — the shareable trailer</h3>
+<p>Phone-first, <strong>auto-playing</strong>, and <strong>API-free on purpose</strong>: a cold prospect taps a DM link, and a spinner on a cold-starting server loses them in 3 seconds. Committed dark "11 PM" scene. Ends by handing off to <code>/demo</code>.</p>
+<h3>3.4 Dashboard (<code>/dashboard</code>)</h3>
+<ul><li><strong>KPI row</strong> — chats, questions answered, bookings, leads, hours saved.</li><li><strong>Business Profile card</strong> (real estate) — ORN badge, areas as chips, focus,</li></ul>
+<p>  languages, agents. This is <em>the AI's understanding of the agency, surfaced</em>.</p>
+<ul><li><strong>Bookings</strong> — a <strong>day-grouped diary</strong>, not a spreadsheet. Answers "can I see my</li></ul>
+<p>  calendar?" and demos far better. Each slot: time · avatar + name · reason · phone ·   "+ Calendar".</p>
+<ul><li><strong>Leads / Conversations</strong> — tables. Vertical-centred cells; one flexible column</li></ul>
+<p>  truncates with an ellipsis so <strong>every row stays 52px</strong> and columns align; counts are   right-aligned, shrink-to-fit.</p>
+<ul><li><strong>Conversations → thread</strong> — read the whole chat; <strong>replying takes the thread over</strong></li></ul>
+<p>  and pauses the AI, with a banner + "Hand back to AI".</p>
+<ul><li><strong>Settings</strong> — everything the receptionist knows; changes apply to the <em>next</em> message.</li></ul>
+<hr>
+<h2>4. Bilingual &amp; RTL</h2>
+<ul><li>The AI mirrors the customer's language automatically (English ⇄ Arabic, mid-chat).</li><li>In the demo, choosing <strong>العربية</strong> switches chat, chips, greeting, framing, console</li></ul>
+<p>  labels and event titles, and sets the customer panel to <strong>RTL</strong>.</p>
+<ul><li>The operator console stays LTR (mixed technical strings/numbers) but its labels</li></ul>
+<p>  are translated — a deliberate split.</p>
+<hr>
+<h2>5. Accessibility</h2>
+<ul><li>Visible <code>:focus-visible</code> on every interactive element.</li><li>Chat logs use <code>role="log"</code> + <code>aria-live="polite"</code>; toasts use <code>role="status"</code>.</li><li>Tabs carry <code>role="tab"</code> + <code>aria-selected</code>.</li><li>All animation respects <code>prefers-reduced-motion</code>.</li><li>⚠️ Icon contrast is state-driven — a white arrow on an inactive tan button reads as</li></ul>
+<p>  <em>broken</em>, not <em>waiting</em>; the send icon changes fill with state.</p>
+<hr>
+<h2>6. Responsive</h2>
+<p>Every surface is <code>width=device-width</code> with real breakpoints.</p>
+<table><thead><tr><th>Surface</th><th>Mobile behaviour</th></tr></thead><tbody><tr><td><code>/watch</code></td><td><strong>Mobile-first</strong> (it's opened in DMs on phones)</td></tr><tr><td><code>/demo</code></td><td>≤900px → Chat / Activity <strong>tabs</strong>, each full-screen</td></tr><tr><td>Landing</td><td>Stacks at 860 / 640 / 560px</td></tr><tr><td>Dashboard</td><td>KPIs wrap, tables scroll; usable on phone, best on tablet+</td></tr></tbody></table>
+<hr>
+<h2>7. Copy principles</h2>
+<ul><li>Speak the owner's language: <strong>commission, viewings, leads</strong> — never "LLM", "agent</li></ul>
+<p>  framework", "tokens".</p>
+<ul><li>Name the money in dirhams.</li><li>Never claim what we can't do (no RERA endorsement, no "data stays in the UAE").</li><li>Errors say what happened and what to do — no apologies, no vagueness.</li></ul></div><div class="doc"><div class="doc-head"><div class="n">Document 4 of 6</div></div><h1>App Flow</h1>
+<h3>ReceptionAI — end-to-end journeys, step by step</h3>
+<table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td><strong>Version</strong></td><td>1.0</td></tr><tr><td><strong>Note</strong></td><td>Every channel funnels into the same <code>chat_core.run_turn()</code></td></tr></tbody></table>
+<hr>
+<h2>1. The master flow</h2>
+<pre>Customer message (WhatsApp / widget)
+        │
+        ▼
+  Webhook / API  ──►  signature + dedup  ──►  chat_core.run_turn
+        │                                          │
+        │                            ┌─────────────┼─────────────┐
+        │                            ▼             ▼             ▼
+        │                     human-paused?    over quota?   conversation lock
+        │                       (silent)        (decline)     (serialise)
+        │                                          │
+        │                                          ▼
+        │                            build prompt (persona + profile + listings
+        │                              + permit gate + compliance rules)
+        │                                          │
+        │                                          ▼
+        │                                  Gemini + TOOLS
+        │                     (capture_lead · qualify_lead · check_availability
+        │                      · book_appointment · request_human · stop_contact)
+        │                                          │
+        ▼                                          ▼
+   reply delivered  ◄──────────────────  persist (only on success)
+                                                   │
+                                                   ▼
+                                   owner email · CRM push · thread saved</pre>
+<hr>
+<h2>2. Inbound message → reply (the hot path)</h2>
+<ol><li><strong>Meta delivers</strong> the message to <code>POST /whatsapp/webhook</code>.</li><li><strong>Verify HMAC signature</strong> — fails closed if the app secret is set. Reject if invalid.</li><li><strong>Dedup on <code>wamid</code></strong> — Meta redelivers; a repeat is ACKed and dropped.</li><li><strong>Route to tenant</strong> by <code>phone_number_id</code> → <code>business_id</code>. <code>conversation_id = wa-&lt;E.164&gt;</code>.</li><li><strong>ACK Meta fast</strong> (they retry on slow responses); do the work in the background.</li><li><code>run_turn</code>:</li></ol>
+<p>   a. <strong>Paused?</strong> (owner took over) → save the customer's message, reply nothing.    b. <strong>Quota?</strong> over cap → graceful decline, no LLM call.    c. <strong>Lock</strong> on <code>(business, conversation)</code> — two fast messages can't interleave.    d. Load history → assemble prompt → call Gemini with tools.    e. <strong>Persist only on success.</strong></p>
+<ol><li><strong>Send the reply</strong> via Graph API (free-form — we're inside the 24h window).</li></ol>
+<hr>
+<h2>3. Lead → qualified → booked (the value flow)</h2>
+<table><thead><tr><th>Step</th><th>The AI does</th><th>System effect</th></tr></thead><tbody><tr><td>1</td><td>Buyer asks about a property</td><td>—</td></tr><tr><td>2</td><td>Answers <strong>only from real listings</strong>; withholds price if no DLD permit</td><td>Permit gate applied at prompt build</td></tr><tr><td>3</td><td>Gets name + mobile</td><td><code>capture_lead</code> → <code>leads</code> row (deduped within 48h) → <strong>owner emailed</strong></td></tr><tr><td>4</td><td>Gathers budget, area, bedrooms, purpose, timeline, payment</td><td><code>qualify_lead</code> → <code>qualifications</code> upsert + <strong>A/B/C score</strong> → <strong>CRM push</strong></td></tr><tr><td>5</td><td>Offers a genuinely free slot</td><td><code>check_availability</code> (hours − booked − buffer − notice)</td></tr><tr><td>6</td><td>Books it</td><td><code>book_appointment</code> → <code>bookings</code> (UNIQUE slot) → <strong>owner emailed</strong></td></tr><tr><td>7</td><td>Buyer asks to negotiate / for paperwork</td><td><code>request_human</code> → owner notified, handoff message</td></tr></tbody></table>
+<p><strong>Scoring:</strong> budget +1 · area +1 · urgent timeline +2 · ready payment +2 → <strong>A ≥ 4 · B ≥ 2 · C &lt; 2.</strong></p>
+<hr>
+<h2>4. Human takeover</h2>
+<ol><li>Owner opens <strong>Conversations</strong> → a thread → types a reply.</li><li><code>POST /manage/{id}/conversations/{cid}/reply</code>:</li></ol>
+<ul><li>saves the message as the business's turn,</li><li><strong>pauses the AI</strong> for that conversation (<code>ai_pauses</code>),</li><li>delivers it to the customer via WhatsApp.</li></ul>
+<ol><li>While paused, <code>run_turn</code> returns <code>""</code> — the AI stays silent but still records</li></ol>
+<p>   whatever the customer says.</p>
+<ol><li>Owner clicks <strong>Hand back to AI</strong> → <code>resume</code> → the AI answers again.</li></ol>
+<blockquote>Known residual: a ~1–3s window where the owner replies <em>while</em> a turn is already generating — both may answer once. Accepted.</blockquote>
+<hr>
+<h2>5. The follow-up loop (background sweeps)</h2>
+<p>A single in-process scheduler wakes <strong>every 15 minutes</strong>. No cron, no queue. Each sweep is independently flag-gated and <strong>claims before sending</strong>.</p>
+<table><thead><tr><th>Sweep</th><th>Trigger</th><th>Message</th></tr></thead><tbody><tr><td><strong>Reminders</strong></td><td>24h and 2h before a booking</td><td>"Reminder about your viewing tomorrow at 4 PM — reply to confirm or reschedule"</td></tr><tr><td><strong>Nurture</strong></td><td>Lead silent at day <strong>2 / 7 / 30</strong></td><td>"Still on the hunt for a 2BR in JVC?"</td></tr><tr><td><strong>Review</strong></td><td>After a viewing settles (vertical-timed)</td><td>"How did it go? A quick Google review would mean a lot"</td></tr><tr><td><strong>Match alerts</strong></td><td>A <strong>permitted listing matches</strong> the lead's stored requirements</td><td>"A new 2BR in JVC matching what you were after just came up — want a viewing?"</td></tr></tbody></table>
+<p><strong>Every sweep skips</strong> a lead who already booked or opted out. All are delivered by <strong>approved template</strong> outside the 24-hour window.</p>
+<h3>Match-alert logic (the "we found you something" flow)</h3>
+<ol><li>For each real-estate tenant, load <strong>permitted</strong> listings only.</li><li>For each recent qualified lead: skip if booked, opted out, or alerted in the last ~20h.</li><li>Match on <strong>area</strong> (required, substring both ways) + bedrooms + purpose + budget</li></ol>
+<p>   (within ~10%), when the lead specified them.</p>
+<ol><li><strong>Claim</strong> <code>(business, phone, permit_number)</code> → send <strong>one</strong> best new match.</li><li>Seed the message into the <code>wa-</code> thread so their reply re-qualifies normally.</li></ol>
+<hr>
+<h2>6. Portal lead intake (speed-to-lead)</h2>
+<ol><li>Agency forwards Bayut / Property Finder / Dubizzle lead emails to</li></ol>
+<p>   <code>leads+&lt;token&gt;@&lt;domain&gt;</code>.</p>
+<ol><li>Their email provider POSTs it to <code>POST /leads/ingest</code> (token-gated).</li><li><code>parse_portal_lead</code> detects the source and pulls name / mobile / message.</li><li>Dedup on phone → save or enrich the lead → <strong>owner alerted instantly</strong>.</li><li><strong>Instant outreach</strong> to the buyer, and the opener is seeded as the model's turn so</li></ol>
+<p>   their reply flows through normal qualification.</p>
+<hr>
+<h2>7. Bookings → the owner's real calendar</h2>
+<ul><li><strong>Per booking:</strong> "+ Calendar" downloads a one-off <code>.ics</code> → opens in any calendar. <em>Instant.</em></li><li><strong>Whole calendar:</strong> a token-gated <code>.ics</code> <strong>feed URL</strong> pasted into Google Calendar</li></ul>
+<p>  ("From URL") stays updated.</p>
+<p>⚠️ Google polls subscribed feeds <strong>slowly (hours)</strong> with no manual refresh — the per-booking invite is what makes a fresh viewing appear immediately. ⚠️ The feed must <strong>not</strong> carry a UTF-8 BOM: Google's parser silently drops the whole calendar if the body doesn't start with <code>BEGIN:VCALENDAR</code>.</p>
+<hr>
+<h2>8. Onboarding a new agency (~15 min)</h2>
+<ol><li><strong>Dashboard → Add a business</strong> — or paste their <strong>website URL</strong> and the importer</li></ol>
+<p>   auto-fills the form (name, type, hours, services, team, areas, focus, languages, ORN).</p>
+<ol><li>Review → <strong>Create</strong> → their API key is shown <strong>once</strong>.</li><li>Fill: listings (paste or CSV/XML/Reelly import), hours &amp; booking rules, transfer</li></ol>
+<p>   number, after-hours mode, owner alert email.</p>
+<ol><li>Connect <strong>WhatsApp</strong>: set their <code>whatsapp_phone_id</code>, subscribe their WABA to the app.</li><li>Optional: CRM webhook, Google review link, calendar feed.</li><li><strong>Test end-to-end</strong>: message the number → AI replies, captures, books; owner alerted.</li></ol></div><div class="doc"><div class="doc-head"><div class="n">Document 5 of 6</div></div><h1>Backend Schema</h1>
+<h3>ReceptionAI — data model (Supabase Postgres)</h3>
+<table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td><strong>Version</strong></td><td>1.0</td></tr><tr><td><strong>Engine</strong></td><td>Postgres (Supabase)</td></tr><tr><td><strong>Migrations</strong></td><td><code>db.init_db()</code> runs idempotent DDL on <strong>every boot</strong> — <code>CREATE TABLE IF NOT EXISTS</code> + <code>ALTER TABLE ... ADD COLUMN IF NOT EXISTS</code>. No migration tool needed.</td></tr><tr><td><strong>Access</strong></td><td><code>app/db.py</code> is the <strong>only</strong> module that touches SQL.</td></tr></tbody></table>
+<p><strong>Tenancy rule:</strong> every table carries <code>business_id</code> and every query filters on it.</p>
+<hr>
+<h2>1. <code>businesses</code> — the tenant</h2>
+<p>The agency's whole configuration. One row per client.</p>
+<table><thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead><tbody><tr><td><code>id</code></td><td>TEXT <strong>PK</strong></td><td>URL-safe slug (<code>skyline-realty</code>) — appears in widget links</td></tr><tr><td><code>name</code>, <code>type</code></td><td>TEXT</td><td>"Skyline Realty", "real estate agency"</td></tr><tr><td><code>vertical</code></td><td>TEXT</td><td><code>real_estate</code> \</td><td><code>clinic</code> \</td><td><code>salon</code> \</td><td><code>general</code> — drives behaviour</td></tr><tr><td><code>tone</code></td><td>TEXT</td><td>Persona voice</td></tr><tr><td><code>hours</code></td><td>TEXT</td><td>Human-readable, as customers should hear it</td></tr><tr><td><code>open_hour</code>, <code>close_hour</code>, <code>slot_minutes</code></td><td>INTEGER</td><td>Drive the <strong>real</strong> slot grid</td></tr><tr><td><code>min_notice_hours</code>, <code>max_advance_days</code>, <code>buffer_min</code></td><td>INTEGER</td><td>Booking hygiene</td></tr><tr><td><code>services</code>, <code>faq</code></td><td>TEXT</td><td>Descriptive copy + extra knowledge</td></tr><tr><td><code>staff</code>, <code>location</code>, <code>policies</code></td><td>TEXT</td><td>First-class personalisation (not buried in FAQ)</td></tr><tr><td><strong><code>areas_covered</code></strong></td><td>TEXT</td><td>Communities served — grounds "do you cover X?"</td></tr><tr><td><strong><code>deal_focus</code></strong></td><td>TEXT</td><td>Sale / rent / off-plan / commercial</td></tr><tr><td><strong><code>languages</code></strong></td><td>TEXT</td><td>What the team speaks</td></tr><tr><td><strong><code>orn</code></strong></td><td>TEXT</td><td><strong>RERA Office Registration Number</strong> — the trust signal</td></tr><tr><td><code>api_key</code></td><td>TEXT</td><td><strong>SHA-256 hash</strong> (<code>sha256:…</code>); legacy plaintext still verifiable</td></tr><tr><td><code>notify_email</code></td><td>TEXT</td><td>Owner alerts (empty = off)</td></tr><tr><td><code>transfer_number</code>, <code>after_hours_mode</code></td><td>TEXT</td><td>Escalation + closed-hours behaviour</td></tr><tr><td><code>whatsapp_phone_id</code></td><td>TEXT</td><td>Meta Cloud API phone id → tenant routing</td></tr><tr><td><code>google_review_url</code></td><td>TEXT</td><td>Post-visit review ask (empty = off)</td></tr><tr><td><code>crm_webhook_url</code>, <code>crm_type</code></td><td>TEXT</td><td>Qualified-lead write-back</td></tr><tr><td><code>lead_ingest_token</code>, <code>calendar_token</code></td><td>TEXT</td><td>Token-gated public endpoints (rotatable)</td></tr><tr><td><code>plan</code>, <code>monthly_msg_quota</code>, <code>quota_notice_month</code></td><td>TEXT/INT</td><td>Billing fuse — <strong>admin-set only</strong></td></tr><tr><td><code>last_digest_at</code></td><td>TIMESTAMPTZ</td><td>Weekly digest marker</td></tr></tbody></table>
+<blockquote><code>monthly_msg_quota</code> is deliberately <strong>not</strong> tenant-editable — a client must not be able to raise its own cap.</blockquote>
+<hr>
+<h2>2. Conversation &amp; booking core</h2>
+<h3><code>messages</code> — durable conversation history</h3>
+<table><thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead><tbody><tr><td><code>id</code></td><td>SERIAL PK</td><td></td></tr><tr><td><code>business_id</code>, <code>conversation_id</code></td><td>TEXT</td><td><code>wa-&lt;E.164&gt;</code> \</td><td><code>web-…</code> \</td><td><code>call-&lt;E.164&gt;</code></td></tr><tr><td><code>role</code></td><td>TEXT</td><td><code>user</code> \</td><td><code>model</code></td></tr><tr><td><code>text</code></td><td>TEXT</td><td></td></tr><tr><td><code>created_at</code></td><td>TIMESTAMPTZ</td><td></td></tr></tbody></table>
+<blockquote>Was in RAM once — a deploy wiped live chats. Now durable, and <strong>persist-only-on-success</strong> means a failed turn never half-writes.</blockquote>
+<h3><code>bookings</code> — viewings / appointments</h3>
+<table><thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead><tbody><tr><td><code>id</code></td><td>SERIAL PK</td><td></td></tr><tr><td><code>business_id</code></td><td>TEXT</td><td></td></tr><tr><td><code>date</code>, <code>time</code></td><td>TEXT</td><td>Dubai date + slot label ("4:00 PM"), normalised</td></tr><tr><td><code>patient_name</code>, <code>phone</code>, <code>reason</code></td><td>TEXT</td><td></td></tr><tr><td><code>status</code></td><td>TEXT</td><td><code>booked</code> \</td><td><code>confirmed</code> \</td><td><code>cancelled</code></td></tr><tr><td><code>created_at</code></td><td>TIMESTAMPTZ</td><td></td></tr></tbody></table>
+<p>🔒 <strong><code>UNIQUE (business_id, date, time)</code></strong> — double-booking is impossible <strong>at the database</strong>, not by prompt discipline.</p>
+<h3><code>leads</code> — captured enquiries</h3>
+<p><code>id · business_id · name · phone · interest · notes · created_at</code> Deduped on phone within 48h (same caller = one lead, enriched).</p>
+<h3><code>caller_memory</code> — what we remember about a person</h3>
+<p><code>id · business_id · caller · note · created_at</code> — powers "welcome back" recognition.</p>
+<hr>
+<h2>3. Real-estate tables</h2>
+<h3><code>listings</code> — the agency's live inventory</h3>
+<table><thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead><tbody><tr><td><code>id</code></td><td>SERIAL PK</td><td></td></tr><tr><td><code>business_id</code></td><td>TEXT</td><td></td></tr><tr><td><code>title</code>, <code>area</code>, <code>bedrooms</code>, <code>price</code>, <code>purpose</code>, <code>notes</code></td><td>TEXT</td><td><strong>All TEXT on purpose</strong> — owners write "1.2M", "60k/yr", "studio"</td></tr><tr><td><strong><code>permit_number</code></strong></td><td>TEXT</td><td><strong>Trakheesi/DLD permit — the compliance key</strong></td></tr><tr><td><code>reference</code></td><td>TEXT</td><td>Agency's own ref; dedup key across import sources</td></tr></tbody></table>
+<blockquote>The prompt quotes <strong>only</strong> these rows, so the AI can shortlist without ever inventing a property. If <code>permit_number</code> is empty, the <strong>price and purpose are withheld from the model entirely</strong> — it cannot advertise a number it never saw.</blockquote>
+<h3><code>qualifications</code> — the lead's stated requirements</h3>
+<table><thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead><tbody><tr><td><code>business_id</code>, <code>phone</code></td><td>TEXT</td><td><strong>UNIQUE together</strong> — re-qualifying updates, never dupes</td></tr><tr><td><code>name</code></td><td>TEXT</td><td></td></tr><tr><td><code>fields</code></td><td>TEXT (JSON)</td><td>budget, area, bedrooms, purpose, timeline, pay_method…</td></tr><tr><td><code>score</code></td><td>TEXT</td><td><code>A</code> \</td><td><code>B</code> \</td><td><code>C</code></td></tr><tr><td><code>updated_at</code></td><td>TIMESTAMPTZ</td><td></td></tr></tbody></table>
+<p>This is what the <strong>requirement-match</strong> sweep reads to find "the right property."</p>
+<h3><code>services</code> — bookable service menu (non-RE verticals)</h3>
+<p><code>id · business_id · name · duration_min · price · category · bookable</code> Duration drives the real slot grid per service.</p>
+<hr>
+<h2>4. Outbound &amp; compliance tables</h2>
+<p>Each outbound sweep <strong>claims a UNIQUE row before sending</strong> — that's the send-once guarantee that makes overlapping sweeps and restarts safe.</p>
+<table><thead><tr><th>Table</th><th>Key</th><th>Guarantee</th></tr></thead><tbody><tr><td><code>reminders</code></td><td><code>UNIQUE (booking_id, stage)</code></td><td>One reminder per booking per stage (24h / 2h)</td></tr><tr><td><code>nurture_log</code></td><td><code>UNIQUE (business_id, phone, stage)</code></td><td>One nurture touch per stage (day2/7/30)</td></tr><tr><td><code>review_requests</code></td><td><code>UNIQUE (booking_id)</code></td><td>A client is asked for a review at most once</td></tr><tr><td><strong><code>match_alerts</code></strong></td><td><code>UNIQUE (business_id, phone, listing_key)</code></td><td>A lead hears about a given <strong>property</strong> at most once. <code>listing_key</code> = the permit number, so it survives listing re-imports (which change row ids)</td></tr></tbody></table>
+<h3><code>opt_outs</code> — PDPL</h3>
+<p><code>PK (business_id, phone)</code>, keyed on <strong>E.164</strong> so <code>05x</code>, <code>+971…</code> and <code>971…</code> all agree. Every sweep checks it.</p>
+<h3><code>ai_pauses</code> — human takeover</h3>
+<p><code>(business_id, conversation_id, paused_at)</code> — the AI stays silent on that thread.</p>
+<h3><code>usage_daily</code> — the billing fuse</h3>
+<p>Per-business message counts by <strong>Dubai</strong> day (not UTC), feeding the monthly quota.</p>
+<hr>
+<h2>5. Cross-cutting conventions</h2>
+<h3>Phone matching</h3>
+<p>UAE numbers are compared on their <strong>significant last 9 digits</strong>:</p>
+<pre>RIGHT(regexp_replace(COALESCE(phone,&#x27;&#x27;), &#x27;\D&#x27;, &#x27;&#x27;, &#x27;g&#x27;), 9) = RIGHT(%s, 9)</pre>
+<p>So <code>0501234567</code>, <code>+971 50 123 4567</code> and <code>971501234567</code> are one person. Thread ids and opt-out keys use <code>to_wa_number()</code> E.164 — these two had drifted once and caused nurture to message already-booked clients.</p>
+<h3>Time</h3>
+<p>Dates and slot labels are stored as <strong>TEXT in Dubai local time</strong>. Dubai is UTC+4 with no DST, so the <code>.ics</code> feed emits plain UTC (<code>…Z</code>) — the most portable form.</p>
+<h3>Settings writes</h3>
+<p><code>update_business_settings()</code> filters against a fixed <code>_EDITABLE_BUSINESS_FIELDS</code> whitelist — column names are never user input, values are always parameters.</p>
+<h3>Reads</h3>
+<p><code>get_business()</code> is <code>SELECT *</code>, but <strong><code>/manage</code> returns a fixed field whitelist</strong> and <code>list_businesses_full()</code> is deliberately digest-only (4 columns) — so a new column is not automatically exposed. ⚠️ Adding a tenant field means adding it to the whitelist too, or the UI reads it back empty.</p></div><div class="doc"><div class="doc-head"><div class="n">Document 6 of 6</div></div><h1>Implementation Plan</h1>
+<h3>ReceptionAI — what's built, what's left, and the path to the first paying client</h3>
+<table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td><strong>Version</strong></td><td>1.0</td></tr><tr><td><strong>Status</strong></td><td>Product complete · <strong>0 paying customers</strong></td></tr><tr><td><strong>Tests</strong></td><td>285 passing</td></tr></tbody></table>
+<blockquote><strong>The honest headline:</strong> the engineering is essentially done. The remaining work is <strong>not code</strong> — it's a first customer, and the ~1 hour of setup that unlocks them.</blockquote>
+<hr>
+<h2>1. Where we are</h2>
+<h3>✅ Phase 1–5 — complete (shipped &amp; live)</h3>
+<table><thead><tr><th>Phase</th><th>Delivered</th></tr></thead><tbody><tr><td><strong>1. Core engine</strong></td><td>Multi-tenant FastAPI + Gemini brain, per-business persona, function-calling tools, durable conversations</td></tr><tr><td><strong>2. Booking</strong></td><td>Real availability from the agency's hours, buffers, notice windows; <strong>double-booking impossible</strong>; reschedule/cancel/confirm</td></tr><tr><td><strong>3. Channels</strong></td><td>Website widget + <strong>WhatsApp Cloud API</strong> (verified working end-to-end), voice scaffold (off)</td></tr><tr><td><strong>4. Real-estate depth</strong></td><td>Portal lead intake · qualification + A/B/C scoring + CRM write-back · permit-gated listing matching · nurture cadence · compliance guardrails</td></tr><tr><td><strong>5. Retention &amp; ops</strong></td><td>Reminders · review requests · <strong>requirement-match alerts</strong> · human takeover · calendar feed · owner dashboard · agency profile</td></tr></tbody></table>
+<h3>🔒 Hardening — complete</h3>
+<p>API keys hashed · webhook HMAC (fails closed) · SSRF guards · tenant isolation (403) · per-conversation locking · monthly quota fuse · PDPL opt-out + erasure · persist-only-on-success · CI-gated deploys · 285 tests.</p>
+<hr>
+<h2>2. What's actually left</h2>
+<h3>🔴 Blocking a real customer — <strong>ops, not code</strong></h3>
+<table><thead><tr><th>#</th><th>Item</th><th>Owner</th><th>Why it blocks</th></tr></thead><tbody><tr><td>1</td><td><strong>Render always-on plan</strong> ($7/mo)</td><td>You</td><td>Free tier sleeps → cold start → <strong>Meta's webhook times out and drops the customer's message</strong>. Unacceptable for a paying client.</td></tr><tr><td>2</td><td><strong>Real WhatsApp number + Meta Business Verification</strong></td><td>You + client</td><td>The test number only messages <strong>5 pre-approved</strong> phones. Use the <strong>client's trade licence</strong> — you don't need your own.</td></tr><tr><td>3</td><td><strong>Approved message templates</strong></td><td>You (Meta)</td><td>Outside the 24h window, only an approved template delivers. Without it, reminders/nurture/match alerts don't reach a cold lead.</td></tr><tr><td>4</td><td><code>ENVIRONMENT=production</code> · <code>WHATSAPP_APP_SECRET</code> · remove <code>WHATSAPP_SKIP_SIGNATURE</code></td><td>You</td><td>Prod hygiene + the webhook is currently forgeable</td></tr><tr><td>5</td><td><code>RESEND_API_KEY</code></td><td>You</td><td>Owner email alerts only <em>log</em> without it</td></tr><tr><td>6</td><td><strong>Supabase backups</strong> (Pro or pg_dump)</td><td>You</td><td>Real customer data must be recoverable</td></tr></tbody></table>
+<h3>🟠 Remaining code — small and sequenced</h3>
+<table><thead><tr><th>Item</th><th>Effort</th><th>When</th></tr></thead><tbody><tr><td><strong>Wire template variables</strong> to the approved template's exact shape</td><td>~10 min</td><td>The day template #1 is approved — <em>deliberately deferred</em>, since Meta dictates the variables and guessing means building twice</td></tr><tr><td>Turn on <code>match_alerts_enabled</code> + tune matching on real inventory</td><td>small</td><td>Pilot week 1</td></tr><tr><td>Sentry DSN</td><td>2 min</td><td>Anytime</td></tr></tbody></table>
+<h3>🟢 Post-first-customer</h3>
+<p>Billing/subscription · Arabic voice channel · developer/off-plan mode · multi-agent routing + SLA dashboards · deeper portal/CRM integrations.</p>
+<hr>
+<h2>3. Path to the first customer</h2>
+<pre>   Outreach  ──►  reply  ──►  /watch link  ──►  live /demo call  ──►  free 2-week pilot
+                                                                            │
+                                                     ┌──────────────────────┘
+                                                     ▼
+                                 setup day (~1hr): Render always-on · their number
+                                 + verification · onboard tenant · listings · test
+                                                     │
+                                                     ▼
+                                          pilot runs on real leads
+                                                     │
+                                                     ▼
+                                        convert → AED 1,499/month</pre>
+<p><strong>Rule: spend nothing until someone says yes.</strong> No permit, no number, no paid plan bought speculatively. Every 🔴 item above is triggered <em>by</em> a signed pilot.</p>
+<h3>Setup-day checklist (~1 hour)</h3>
+<ol><li>Flip Render to always-on.</li><li>Client's WhatsApp number → Meta Business Verification (their trade licence).</li><li>Onboard the tenant (paste their website → auto-fill → review).</li><li>Import listings (CSV / sheet / XML / Reelly) — <strong>check permit numbers are present</strong>.</li><li>Set <code>whatsapp_phone_id</code>, subscribe their WABA, point the webhook.</li><li>Fill the agency profile (areas, focus, languages, ORN), hours, transfer number.</li><li>Owner alert email, CRM webhook, review link, calendar feed.</li><li><strong>End-to-end test</strong> from an outside phone.</li></ol>
+<hr>
+<h2>4. Pilot success criteria (2 weeks)</h2>
+<table><thead><tr><th>Metric</th><th>Target</th></tr></thead><tbody><tr><td>Enquiries answered</td><td><strong>100%</strong></td></tr><tr><td>Median first response</td><td>&lt; 30s</td></tr><tr><td>Leads captured vs enquiries</td><td>&gt; 80%</td></tr><tr><td>Viewings booked by the AI</td><td>≥ 1 (proves the loop)</td></tr><tr><td>Unpermitted prices quoted</td><td><strong>0</strong></td></tr><tr><td>Owner intervention needed</td><td>Rare (takeover used, not required)</td></tr></tbody></table>
+<p><strong>Convert when:</strong> the owner can point to one deal they'd otherwise have missed.</p>
+<hr>
+<h2>5. Risks</h2>
+<table><thead><tr><th>Risk</th><th>Mitigation</th></tr></thead><tbody><tr><td><strong>Cold-start drops WhatsApp messages</strong></td><td>Always-on plan (🔴 #1) — non-negotiable before a pilot</td></tr><tr><td><strong>Template rejected by Meta</strong></td><td>Templates are configurable per message kind; free-form still works inside 24h</td></tr><tr><td><strong>Match alerts feel spammy</strong></td><td>Permit-gated, real-match-only, once-per-property, ~1/day throttle, opt-in flag — and measurable on pilot #1</td></tr><tr><td><strong>Portals ship their own AI</strong></td><td>Go where they won't: the agency's <em>own</em> number, their inventory, their CRM</td></tr><tr><td><strong>Compliance breach</strong></td><td>Permit gate enforced in the prompt layer (price withheld, not "asked nicely"); escalation rules for negotiation/legal</td></tr><tr><td><strong>Single-founder bus factor</strong></td><td>Docs (this set), 285 tests, one storage seam</td></tr></tbody></table>
+<hr>
+<h2>6. Engineering conventions (for anyone picking this up)</h2>
+<ul><li><code>db.py</code> is the <strong>only</strong> place SQL lives. Keep it that way.</li><li>Adding a tenant field? Add it to **<code>_EDITABLE_BUSINESS_FIELDS</code> <em>and</em> the <code>/manage</code></li></ul>
+<p>  response whitelist** — otherwise it saves but reads back empty.</p>
+<ul><li>All outbound sends must <strong>claim a UNIQUE row first</strong>. No exceptions.</li><li>Never blind-retry a tool turn (a booking may already have committed).</li><li>Tests swap the DB seam <strong>before</strong> importing <code>app.main</code>; never import <code>conftest</code></li></ul>
+<p>  from a test.</p>
+<ul><li>Push to <code>main</code> deploys. CI gates it.</li></ul></div>
+</div></body></html>
