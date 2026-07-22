@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How your AI receptionist works</title>
+<style>
+  :root{
+    --ink:#08131c; --ink-2:#0d1b26; --ink-3:#12252f; --line:#22404e;
+    --text:#eef3f6; --body:#b6c6d0; --muted:#7f97a4;
+    --brass:#b8863b; --brass-hi:#d5a24c; --brass-soft:#e9c987;
+    --ok:#3fcf7f; --ok-soft:#123626; --hot:#ff9a52;
+    --card:rgba(255,255,255,.035);
+    --sans:'Segoe UI',system-ui,-apple-system,Roboto,Arial,sans-serif;
+    --mono:ui-monospace,'Cascadia Mono','SF Mono',Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0}
+  html,body{height:100%}
+  body{font-family:var(--sans);color:var(--text);overflow:hidden;
+    background:
+      radial-gradient(120% 80% at 82% -10%,#123449 0%,transparent 46%),
+      radial-gradient(90% 70% at -10% 110%,#10202c 0%,transparent 50%),
+      linear-gradient(180deg,#08131c,#050d14 90%);}
+
+  #deck{position:relative;height:100dvh;width:100%}
+  .slide{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;
+    padding:clamp(28px,6vw,90px);opacity:0;visibility:hidden;transform:translateY(14px);
+    transition:opacity .45s ease,transform .45s ease;pointer-events:none}
+  .slide.on{opacity:1;visibility:visible;transform:none;pointer-events:auto}
+  .wrap{max-width:1000px;margin:0 auto;width:100%}
+
+  .eyebrow{font-family:var(--mono);font-size:clamp(11px,1.5vw,13px);letter-spacing:.22em;
+    text-transform:uppercase;color:var(--brass-hi);font-weight:600;margin-bottom:18px}
+  h1{font-size:clamp(34px,7vw,68px);line-height:1.03;letter-spacing:-.03em;font-weight:800;text-wrap:balance}
+  h2{font-size:clamp(26px,4.6vw,44px);line-height:1.08;letter-spacing:-.02em;font-weight:800;text-wrap:balance}
+  .big{font-size:clamp(24px,4vw,40px);line-height:1.18;font-weight:700;letter-spacing:-.015em;text-wrap:balance}
+  .lead{font-size:clamp(16px,2.4vw,21px);color:var(--body);margin-top:20px;max-width:40ch;line-height:1.5;text-wrap:pretty}
+  .glow{color:var(--brass-hi)}
+  .k{color:var(--text);font-weight:700}
+
+  /* flow diagram (horizontal) */
+  .flow{display:flex;align-items:stretch;gap:14px;flex-wrap:wrap;margin-top:40px}
+  .node{flex:1;min-width:150px;background:var(--card);border:1px solid var(--line);border-radius:16px;
+    padding:20px 18px;display:flex;flex-direction:column;gap:8px}
+  .node .ic{font-size:30px}
+  .node b{font-size:17px;font-weight:700}
+  .node span{font-size:13.5px;color:var(--muted);line-height:1.45}
+  .node.brass{border-color:rgba(213,162,76,.5);background:linear-gradient(160deg,rgba(213,162,76,.12),rgba(213,162,76,.02))}
+  .arrow{align-self:center;color:var(--brass-hi);font-size:26px;flex:none}
+  @media (max-width:720px){ .flow{flex-direction:column} .arrow{transform:rotate(90deg)} }
+
+  /* feature grid */
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin-top:36px}
+  .cell{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
+  .cell .ic{font-size:26px;margin-bottom:8px}
+  .cell b{display:block;font-size:16px;font-weight:700;margin-bottom:4px}
+  .cell p{font-size:13.5px;color:var(--muted);line-height:1.45}
+
+  /* stacked rows (the pieces) */
+  .rows{display:flex;flex-direction:column;gap:11px;margin-top:34px}
+  .r{display:flex;align-items:center;gap:16px;background:var(--card);border:1px solid var(--line);
+    border-radius:13px;padding:14px 18px}
+  .r .ic{font-size:26px;flex:none;width:34px;text-align:center}
+  .r b{font-size:16.5px;font-weight:700;flex:none;min-width:190px}
+  .r span{font-size:14.5px;color:var(--body)}
+  @media (max-width:640px){ .r{flex-wrap:wrap} .r b{min-width:0} }
+
+  /* numbered steps */
+  .steps{display:flex;flex-direction:column;gap:10px;margin-top:30px;counter-reset:s}
+  .step{display:flex;align-items:flex-start;gap:15px}
+  .step .n{flex:none;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;
+    background:linear-gradient(150deg,var(--brass-hi),var(--brass));color:#1a1206;font-weight:800;font-size:15px}
+  .step p{font-size:clamp(15px,2vw,18px);line-height:1.5;padding-top:5px}
+  .step p b{color:var(--brass-hi)}
+
+  /* two-up cards */
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:34px}
+  @media (max-width:680px){ .two{grid-template-columns:1fr} }
+  .panel{border:1px solid var(--line);border-radius:16px;padding:22px;background:var(--card)}
+  .panel h3{font-size:19px;font-weight:750;margin-bottom:6px;display:flex;align-items:center;gap:9px}
+  .panel ul{list-style:none;margin-top:12px;display:flex;flex-direction:column;gap:9px}
+  .panel li{font-size:14.5px;color:var(--body);line-height:1.4;padding-left:22px;position:relative}
+  .panel li::before{content:"›";position:absolute;left:4px;color:var(--brass-hi);font-weight:700}
+  .panel.done{border-color:rgba(63,207,127,.4)}
+  .panel.done h3{color:var(--ok)}
+  .panel.done li::before{content:"✓";color:var(--ok);font-size:12px;top:2px}
+  .panel.you{border-color:rgba(213,162,76,.45)}
+  .panel.you h3{color:var(--brass-hi)}
+
+  .note{margin-top:26px;font-size:14.5px;color:var(--muted);font-style:italic}
+  .pill{display:inline-block;font-family:var(--mono);font-size:12px;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--brass-hi);border:1px solid rgba(213,162,76,.4);border-radius:999px;padding:5px 12px;margin-top:8px}
+  .callout{margin-top:26px;border:1px solid rgba(255,154,82,.45);background:rgba(255,154,82,.08);
+    border-radius:14px;padding:16px 20px;font-size:clamp(14px,2vw,16px);line-height:1.5;color:var(--body)}
+  .callout b{color:var(--hot)}
+  .kv{margin-top:26px;display:flex;flex-direction:column;gap:8px;font-family:var(--mono);font-size:clamp(12.5px,1.7vw,15px)}
+  .kv div{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:11px 15px;color:var(--body)}
+  .kv b{color:var(--brass-hi);font-weight:600}
+  .kv .rm{color:var(--hot)}
+  /* example chat bubbles */
+  .chat{max-width:540px;margin:32px auto 0;display:flex;flex-direction:column;gap:10px}
+  .bub{max-width:84%;padding:11px 15px;border-radius:16px;font-size:clamp(13.5px,1.9vw,16px);line-height:1.45}
+  .bub.in{align-self:flex-start;background:var(--ink-3);border-bottom-left-radius:5px}
+  .bub.out{align-self:flex-end;background:linear-gradient(160deg,#0b5c46,#0a4f3c);color:#eafff6;border-bottom-right-radius:5px}
+  .bub .tk{color:#7fd6b3;font-size:.85em}
+  .cap{margin-top:16px;font-size:clamp(13px,1.8vw,15px);color:var(--muted);font-style:italic;text-align:center}
+  .exbub{max-width:580px;margin:30px auto 0;padding:16px 20px;border-radius:18px;border-bottom-right-radius:6px;
+    background:linear-gradient(160deg,#0b5c46,#0a4f3c);color:#eafff6;font-size:clamp(15px,2.4vw,19px);line-height:1.5}
+  .exlabel{max-width:580px;margin:8px auto 0;font-family:var(--mono);font-size:12px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--brass-hi)}
+
+  /* chrome */
+  .brandmark{position:fixed;top:22px;left:26px;display:flex;align-items:center;gap:9px;z-index:5;opacity:.9}
+  .brandmark .m{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;
+    background:linear-gradient(150deg,var(--brass-hi),var(--brass));color:#1a1206;font-weight:800;font-size:13px}
+  .brandmark b{font-size:14px;font-weight:700} .brandmark b span{color:var(--brass-hi)}
+  .progress{position:fixed;top:0;left:0;height:3px;background:var(--brass);z-index:6;transition:width .4s ease}
+  .hud{position:fixed;bottom:22px;right:26px;display:flex;align-items:center;gap:14px;z-index:6}
+  .count{font-family:var(--mono);font-size:13px;color:var(--muted)}
+  .nav{display:flex;gap:8px}
+  .nav button{width:40px;height:40px;border-radius:10px;border:1px solid var(--line);background:var(--card);
+    color:var(--text);font-size:18px;cursor:pointer;transition:background .15s}
+  .nav button:hover{background:rgba(255,255,255,.09)}
+  .hint{position:fixed;bottom:26px;left:26px;font-size:12.5px;color:var(--muted);z-index:6}
+  /* click zones */
+  .zone{position:fixed;top:0;bottom:0;width:15%;z-index:4;cursor:pointer}
+  .zone.l{left:0} .zone.r{right:0}
+  @media (max-width:640px){ .brandmark,.hint{display:none} }
+</style>
+</head>
+<body>
+<div class="progress" id="prog"></div>
+<div class="brandmark"><div class="m">R</div><b>Reception<span>AI</span></b></div>
+
+<div class="zone l" id="zl" aria-hidden="true"></div>
+<div class="zone r" id="zr" aria-hidden="true"></div>
+
+<div id="deck">
+
+  <!-- 1 cover -->
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">ReceptionAI · how it works</div>
+      <h1>Your AI receptionist,<br><span class="glow">explained.</span></h1>
+      <p class="lead">WhatsApp message in → booked viewing out. The whole setup, in plain English — no jargon.</p>
+      <div class="pill">← → arrow keys, or tap the sides</div>
+    </div>
+  </section>
+
+  <!-- 2 the idea -->
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">The idea in one line</div>
+      <p class="big">A customer messages your client's <span class="glow">WhatsApp</span>. An AI answers in seconds — day or night — <span class="k">captures the lead, books the viewing</span>, and the owner wakes up to it already done.</p>
+    </div>
+  </section>
+
+  <!-- 3 big picture -->
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">The big picture</div>
+      <h2>Four boxes. That's the whole thing.</h2>
+      <div class="flow">
+        <div class="node"><div class="ic">📱</div><b>Customer</b><span>Messages on WhatsApp — "is the 2BR in JVC available?"</span></div>
+        <div class="arrow">→</div>
+        <div class="node"><div class="ic">💬</div><b>WhatsApp</b><span>Meta delivers the message to your app</span></div>
+        <div class="arrow">→</div>
+        <div class="node brass"><div class="ic">🤖</div><b>The AI</b><span>Answers · qualifies · books · alerts the owner</span></div>
+        <div class="arrow">→</div>
+        <div class="node"><div class="ic">📊</div><b>Owner</b><span>Sees every lead & booking in the dashboard</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 what the AI does -->
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">What the AI actually does</div>
+      <h2>It's not a chatbot — it's an operator.</h2>
+      <div class="grid">
+        <div class="cell"><div class="ic">📥</div><b>Captures every lead</b><p>Name + number saved the moment someone's interested. Nothing slips.</p></div>
+        <div class="cell"><div class="ic">⭐</div><b>Qualifies & scores</b><p>Budget, area, timeline → an A / B / C grade so the agent calls the hot ones first.</p></div>
+        <div class="cell"><div class="ic">📅</div><b>Books viewings</b><p>Offers only real free slots. Two people can never take the same one.</p></div>
+        <div class="cell"><div class="ic">🌐</div><b>English & Arabic</b><p>Replies in whichever the customer uses, and switches mid-chat.</p></div>
+        <div class="cell"><div class="ic">🙋</div><b>Hands off to a human</b><p>Price talk, paperwork, anything legal → routed to a real agent.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4b example conversation -->
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">Example · a real enquiry</div>
+      <h2>What it looks like to the customer</h2>
+      <div class="chat">
+        <div class="bub in">Hi, saw the 2BR in JVC on Bayut — still available?</div>
+        <div class="bub out">Yes! It's available at AED 1.4M. May I take your name? 😊</div>
+        <div class="bub in">Ahmed. Budget's around 1.5M, looking to buy in the next month.</div>
+        <div class="bub out">Perfect, Ahmed 👍 Thursday 4pm is free for a viewing — shall I lock it in?</div>
+        <div class="bub in">Yes please</div>
+        <div class="bub out">Booked ✅ Thursday 4:00 PM. An agent will confirm shortly. <span class="tk">✓✓</span></div>
+      </div>
+      <p class="cap">Lead captured · qualified as Grade A · viewing booked — and no human touched it.</p>
+    </div>
+  </section>
+
+  <!-- 5 the pieces -->
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">The pieces (in plain terms)</div>
+      <h2>Five parts, each with one job.</h2>
+      <div class="rows">
+        <div class="r"><div class="ic">💬</div><b>WhatsApp (Meta)</b><span>the phone line your client's customers actually use</span></div>
+        <div class="r"><div class="ic">🖥️</div><b>Render</b><span>the always-on computer your app lives on (so it never sleeps)</span></div>
+        <div class="r"><div class="ic">🧠</div><b>Gemini (the AI)</b><span>reads the message and writes the reply</span></div>
+        <div class="r"><div class="ic">📒</div><b>Supabase</b><span>the notebook — every lead, booking, and conversation is remembered</span></div>
+        <div class="r"><div class="ic">✉️</div><b>Resend</b><span>emails the owner the instant a lead or booking comes in</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6 message flow -->
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">How one message flows</div>
+      <h2>Message → reply, in about 3 seconds.</h2>
+      <div class="steps">
+        <div class="step"><div class="n">1</div><p>A customer <b>texts the number</b> on WhatsApp.</p></div>
+        <div class="step"><div class="n">2</div><p>Meta instantly <b>pings your app</b> (a "webhook" — Meta knocking on your server's door).</p></div>
+        <div class="step"><div class="n">3</div><p>Your app asks the <b>AI</b> for a reply — handing it that business's memory, listings & rules.</p></div>
+        <div class="step"><div class="n">4</div><p>The AI writes a reply <b>and does the work</b> — captures the lead, books the slot.</p></div>
+        <div class="step"><div class="n">5</div><p>The reply goes <b>back on WhatsApp</b>, and the owner gets an <b>email alert</b>.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6b follow-up loop: divider -->
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">The follow-up loop</div>
+      <h1 style="font-size:clamp(30px,5.5vw,58px)">It doesn't stop at<br>the <span class="glow">first reply.</span></h1>
+      <p class="lead" style="max-width:46ch">A lead rarely books on message one. So the system keeps every lead warm <b class="k">three ways — automatically</b>, and never lets one go cold.</p>
+    </div>
+  </section>
+
+  <!-- 6c reminders -->
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">Follow-up ① · Reminders</div>
+      <h2>Before a booked viewing</h2>
+      <div class="exlabel">Sent 24h and 2h before</div>
+      <div class="exbub">Hi Ahmed! A reminder about your viewing <b>tomorrow at 4 PM</b> at Skyline Realty. Reply to confirm or reschedule 👍</div>
+      <p class="cap">Cuts no-shows — and a reply reschedules on the spot, no phone tag.</p>
+    </div>
+  </section>
+
+  <!-- 6d nurture -->
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">Follow-up ② · Quiet leads</div>
+      <h2>When a lead goes silent</h2>
+      <div class="exlabel">A gentle nudge at day 2, 7 and 30</div>
+      <div class="exbub">Hi Ahmed! Still on the hunt for a <b>2BR in JVC</b>? Happy to line up a couple of options whenever you're ready 🙂</div>
+      <p class="cap">Warm, no discount-baiting — and it stops the instant they book.</p>
+    </div>
+  </section>
+
+  <!-- 6e requirement-match -->
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">Follow-up ③ · The right property appears</div>
+      <h2>"We found you something"</h2>
+      <div class="exlabel">A new listing matches what they asked for</div>
+      <div class="exbub">Hi Ahmed! A <b>new 2BR in JVC</b> matching what you were after just came up — 2BR Bloom Towers, 1.4M. Want me to arrange a viewing? 🔑</div>
+      <p class="cap">New listing → matched to the leads who wanted exactly that. The move agents do by hand — automated.</p>
+    </div>
+  </section>
+
+  <!-- 6f why it won't spam -->
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">The guardrails</div>
+      <h2>Why it never turns into spam</h2>
+      <div class="grid">
+        <div class="cell"><div class="ic">🛡️</div><b>Permit-gated</b><p>Never advertises a property without a valid DLD permit.</p></div>
+        <div class="cell"><div class="ic">🎯</div><b>Real match only</b><p>Area + bedrooms + budget must actually line up — no blind blasts.</p></div>
+        <div class="cell"><div class="ic">🔂</div><b>Once per property</b><p>A lead hears about a given listing at most once.</p></div>
+        <div class="cell"><div class="ic">⏱️</div><b>Throttled</b><p>At most ~one match message per lead per day.</p></div>
+        <div class="cell"><div class="ic">🚫</div><b>Knows when to stop</b><p>Skips anyone who already booked or opted out.</p></div>
+        <div class="cell"><div class="ic">⏰</div><b>Plays by WhatsApp's rules</b><p>Uses an approved template outside the 24-hour window.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7 test vs real number -->
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">The one catch: the number</div>
+      <h2>Every WhatsApp number is one of two kinds.</h2>
+      <div class="two">
+        <div class="panel">
+          <h3>🧪 Test number <span style="font-size:12px;color:var(--muted)">(you have this)</span></h3>
+          <p style="font-size:14.5px;color:var(--body)">Works right now — the AI really replies. <b class="k">But only 5 phone numbers</b> you pre-approve can message it.</p>
+          <div class="pill" style="border-color:var(--line);color:var(--muted)">Great for demos · useless for real customers</div>
+        </div>
+        <div class="panel" style="border-color:rgba(63,207,127,.4)">
+          <h3 style="color:var(--ok)">✅ Real number</h3>
+          <p style="font-size:14.5px;color:var(--body)"><b class="k">Anyone</b> can message it — a real business line. The catch: it first needs <b class="glow">Meta Business Verification</b>.</p>
+          <div class="pill" style="border-color:rgba(63,207,127,.4);color:var(--ok)">The unlock for paying clients</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8 verification -->
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">Meta Business Verification</div>
+      <h2>Meta checks the business is real<br>before letting it message the public.</h2>
+      <div class="grid" style="margin-top:30px">
+        <div class="cell"><div class="ic">📄</div><b>A document</b><p>A trade license (or incorporation cert / utility bill) in the business name.</p></div>
+        <div class="cell"><div class="ic">🏢</div><b>Business details</b><p>Legal name, address, a website and a business email.</p></div>
+        <div class="cell"><div class="ic">⏳</div><b>2–5 day review</b><p>Meta approves it → the number can message unlimited real customers.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 9 whose license (the key) -->
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">The smart part 🔑</div>
+      <h1 style="font-size:clamp(30px,5.5vw,56px)">You don't need your <span class="glow">own</span> license yet.</h1>
+      <p class="lead" style="max-width:44ch">The <b class="k">client</b> — the agency — already has a trade license. <b class="k">They</b> verify their own WhatsApp number, and you connect as their tech provider. Their license, their brand, their verification.</p>
+      <p class="lead" style="max-width:44ch;color:var(--brass-soft)">You stay license-free until you're actually earning.</p>
+    </div>
+  </section>
+
+  <!-- 10 connecting a client -->
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">Connecting a client · ~15 minutes</div>
+      <h2>All the code is built. This is just clicking.</h2>
+      <div class="steps" style="margin-top:26px">
+        <div class="step"><div class="n">1</div><p><b>Add their number</b> in Meta → copy its two IDs (the number's ID + the account ID).</p></div>
+        <div class="step"><div class="n">2</div><p>Make a <b>permanent access token</b> and put it (+ the secret) on your server.</p></div>
+        <div class="step"><div class="n">3</div><p>Point Meta's <b>webhook</b> at your app's address.</p></div>
+        <div class="step"><div class="n">4</div><p>In your dashboard, set that client's <b>number ID</b> on their business.</p></div>
+        <div class="step"><div class="n">5</div><p><b>Subscribe</b> their account + <b>test</b>: a random phone messages it → the AI replies.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 11 done vs you -->
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">What's done vs what you do</div>
+      <h2>The hard part is finished.</h2>
+      <div class="two">
+        <div class="panel done">
+          <h3>✅ Already built (the code)</h3>
+          <ul>
+            <li>The AI brain + English/Arabic replies</li>
+            <li>WhatsApp in <em>and</em> out</li>
+            <li>Booking + no double-booking</li>
+            <li>Lead capture, qualify & A/B/C scoring</li>
+            <li>Owner dashboard + memory</li>
+            <li>Security + each client kept separate</li>
+          </ul>
+        </div>
+        <div class="panel you">
+          <h3>👉 You, when a client says yes</h3>
+          <ul>
+            <li>Flip Render to always-on ($7/mo)</li>
+            <li>Their number + Meta verification (their license)</li>
+            <li>Get message templates approved</li>
+            <li>15 min of onboarding clicks</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 12 where you are -->
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">Where you are now</div>
+      <h2>The product is ready. The number is a<br>day-one setup, not a blocker.</h2>
+      <p class="lead" style="max-width:46ch">Your test number works — you can <b class="k">demo today</b>. The moment an agency says "yes, let's pilot," you set up <b class="k">their</b> number together (their license does the verification).</p>
+      <p class="big glow" style="margin-top:26px;font-size:clamp(22px,3.4vw,34px)">Nothing to buy until someone says yes.</p>
+    </div>
+  </section>
+
+  <!-- 13 WhatsApp appendix divider -->
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">Appendix</div>
+      <h1 style="font-size:clamp(32px,6vw,60px)">WhatsApp,<br><span class="glow">click by click.</span></h1>
+      <p class="lead" style="max-width:46ch">The ~15-minute setup for a real number — for the day a client says yes. Two sides: <b class="k">collect the keys from Meta</b>, then <b class="k">plug them into your app</b>.</p>
+    </div>
+  </section>
+
+  <!-- 14 the two sides -->
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">The shape of it</div>
+      <h2>Everything is just moving 5 things<br>from Meta into your app.</h2>
+      <div class="two">
+        <div class="panel">
+          <h3>① On Meta you collect</h3>
+          <ul>
+            <li>Phone number ID</li>
+            <li>WhatsApp Account (WABA) ID</li>
+            <li>A permanent access token</li>
+            <li>The app secret</li>
+            <li>A verify token (you invent this)</li>
+          </ul>
+        </div>
+        <div class="panel you">
+          <h3>② On your side you</h3>
+          <ul>
+            <li>Paste those onto Render</li>
+            <li>Set the client's number ID in the dashboard</li>
+            <li>Subscribe their account to your app</li>
+            <li>Send a test message</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 15 Meta: get the number -->
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">Meta side · ① get the number</div>
+      <h2>Add the real number & grab its two IDs.</h2>
+      <div class="steps" style="margin-top:24px">
+        <div class="step"><div class="n">1</div><p>Have a <b>Meta Business account</b> (business.facebook.com).</p></div>
+        <div class="step"><div class="n">2</div><p>Your app → add the <b>WhatsApp</b> product → open <b>API Setup</b>.</p></div>
+        <div class="step"><div class="n">3</div><p><b>Add phone number</b> → verify it by SMS or call. <span style="color:var(--muted)">(a number NOT already on the WhatsApp app)</span></p></div>
+        <div class="step"><div class="n">4</div><p>Copy the <b>Phone number ID</b> and the <b>WhatsApp Account (WABA) ID</b>.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 16 Meta: permanent token -->
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">Meta side · ② the permanent key</div>
+      <h2>The token from API Setup dies in 24h.<br>Make one that never expires.</h2>
+      <div class="steps" style="margin-top:22px">
+        <div class="step"><div class="n">1</div><p>Business Settings → <b>Users → System Users</b> → create <b>reception-bot</b>.</p></div>
+        <div class="step"><div class="n">2</div><p><b>Add Assets</b> → add the <b>App AND the WABA</b> → Full control.</p></div>
+        <div class="step"><div class="n">3</div><p><b>Generate token</b> → scopes <b>whatsapp_business_messaging</b> + <b>whatsapp_business_management</b> → copy it.</p></div>
+      </div>
+      <div class="callout">⚠️ <b>The #1 thing that breaks it:</b> forgetting to add the <b>WABA</b> as an asset (step 2). Without it the token looks fine but can't send — "access denied".</div>
+    </div>
+  </section>
+
+  <!-- 17 Meta: webhook + secret -->
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">Meta side · ③ webhook & secret</div>
+      <h2>Tell Meta where to knock.</h2>
+      <div class="steps" style="margin-top:22px">
+        <div class="step"><div class="n">1</div><p>App → WhatsApp → <b>Configuration</b> → Callback URL:</p></div>
+      </div>
+      <div class="kv"><div><b>Callback URL</b>&nbsp; https://agent-platform-mivq.onrender.com/whatsapp/webhook</div></div>
+      <div class="steps" style="margin-top:14px">
+        <div class="step"><div class="n">2</div><p><b>Verify token</b> = any secret string you pick (must match your server's).</p></div>
+        <div class="step"><div class="n">3</div><p>Subscribe to the <b>messages</b> field.</p></div>
+        <div class="step"><div class="n">4</div><p>App → Settings → Basic → copy the <b>App Secret</b>.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 18 Your side: plug in -->
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">Your side · plug it in</div>
+      <h2>Paste the 5 things where they go.</h2>
+      <div class="kv">
+        <div><b>WHATSAPP_ACCESS_TOKEN</b>&nbsp; = the permanent token</div>
+        <div><b>WHATSAPP_VERIFY_TOKEN</b>&nbsp; = your verify string</div>
+        <div><b>WHATSAPP_APP_SECRET</b>&nbsp; = the app secret</div>
+        <div class="rm">– remove WHATSAPP_SKIP_SIGNATURE</div>
+      </div>
+      <p class="note" style="margin-top:20px">Those three go in <b class="k" style="font-style:normal">Render → Environment</b>. Then in your <b class="k" style="font-style:normal">dashboard</b>, open the client's business and set <b class="k" style="font-style:normal">whatsapp_phone_id</b> = the Phone number ID.</p>
+    </div>
+  </section>
+
+  <!-- 19 the step everyone forgets -->
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">The step everyone forgets</div>
+      <h1 style="font-size:clamp(28px,5vw,52px)">Subscribe their account<br>to <span class="glow">your</span> app.</h1>
+      <p class="lead" style="max-width:46ch">Run your <b class="k">/admin/whatsapp-subscribe</b> for their WABA id. Without it, inbound messages never reach you.</p>
+      <div class="callout">🕳️ Meta's "Try it out" / API-Setup flow <b>silently re-points webhooks to Meta's own test app</b> and unsubscribes yours — messages just stop, with zero errors. If inbound ever goes quiet, re-run subscribe. (Use <b>/admin/whatsapp-status</b> to check.)</div>
+    </div>
+  </section>
+
+  <!-- 20 test + gotchas -->
+  <section class="slide">
+    <div class="wrap">
+      <div class="eyebrow">Test & the 3 gotchas</div>
+      <h2>Message it from any phone → the AI replies.</h2>
+      <div class="rows" style="margin-top:30px">
+        <div class="r"><div class="ic">🚫</div><b>Not on WhatsApp</b><span>the number can't already be on the WhatsApp / WhatsApp Business app</span></div>
+        <div class="r"><div class="ic">💤</div><b>Always-on</b><span>a sleeping (free-tier) server misses the webhook — use Render's $7 plan</span></div>
+        <div class="r"><div class="ic">⏰</div><b>24-hour rule</b><span>messages the AI <em>starts</em> (reminders) outside 24h need an approved template</span></div>
+      </div>
+      <p class="big glow" style="margin-top:30px;font-size:clamp(20px,3vw,30px)">That's the whole WhatsApp setup.</p>
+    </div>
+  </section>
+
+</div>
+
+<div class="hud">
+  <span class="count" id="count">1 / 12</span>
+  <div class="nav"><button id="prev" aria-label="Previous">‹</button><button id="next" aria-label="Next">›</button></div>
+</div>
+<div class="hint">← → to move · press F for fullscreen</div>
+
+<script>
+  const slides = [...document.querySelectorAll(".slide")];
+  const prog = document.getElementById("prog"), count = document.getElementById("count");
+  let i = 0;
+  function show(n){
+    i = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach((s, k) => s.classList.toggle("on", k === i));
+    prog.style.width = ((i + 1) / slides.length * 100) + "%";
+    count.textContent = (i + 1) + " / " + slides.length;
+  }
+  function next(){ show(i + 1); } function prev(){ show(i - 1); }
+  document.getElementById("next").onclick = next;
+  document.getElementById("prev").onclick = prev;
+  document.getElementById("zr").onclick = next;
+  document.getElementById("zl").onclick = prev;
+  addEventListener("keydown", e => {
+    if (e.key === "ArrowRight" || e.key === " " || e.key === "PageDown") { e.preventDefault(); next(); }
+    else if (e.key === "ArrowLeft" || e.key === "PageUp") { e.preventDefault(); prev(); }
+    else if (e.key === "Home") show(0);
+    else if (e.key === "End") show(slides.length - 1);
+    else if (e.key.toLowerCase() === "f") {
+      if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+      else document.exitFullscreen?.();
+    }
+  });
+  show(0);
+</script>
+</body>
+</html>
