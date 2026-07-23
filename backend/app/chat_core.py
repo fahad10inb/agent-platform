@@ -13,7 +13,7 @@ import logging
 import zoneinfo
 from collections.abc import Callable
 
-from app import db, distill_service, notify_service
+from app import db, distill_service, lead_safety, notify_service
 from app.llm_service import generate_reply
 from app.prompt_service import build_system_prompt
 from app.tools.calendar_tools import make_calendar_tools
@@ -183,6 +183,12 @@ async def run_turn(
         db.save_message(business_id, conversation_id, "user", message)
         db.save_message(business_id, conversation_id, "model", reply)
         db.bump_usage(business_id)
+
+        # Deterministic lead-capture safety net: capture_lead is stochastic and
+        # can miss (an empty-reply turn skips the tool), so a caller who left a
+        # number must never be silently lost. Runs in the background; no-ops when
+        # the tool already captured them or they've booked.
+        schedule(lead_safety.ensure_lead_captured, business, conversation_id)
 
         # Every 6th caller message, distill the conversation into durable caller
         # memory — deferred so the caller never waits on it. Count the DURABLE
