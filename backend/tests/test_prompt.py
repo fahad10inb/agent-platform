@@ -83,3 +83,12 @@ def test_dynamic_lines_come_after_the_static_prefix(monkeypatch):
     closed = build_system_prompt({"name": "X", "type": "salon", "open_hour": 9, "close_hour": 17})
     assert closed.index("CLOSED") > closed.index("recall_caller")
     assert closed.index("CLOSED") > closed.index("Today is ")
+
+
+def test_prompt_enforces_tool_discipline_against_the_say_do_gap():
+    """Live QA caught the model narrating a booking without calling the tool.
+    The prompt must carry the hard 'actions only via tools' rule prominently."""
+    p = build_system_prompt({"name": "X", "type": "real estate agency", "vertical": "real_estate"})
+    assert "ACTIONS HAPPEN ONLY THROUGH TOOLS" in p
+    assert "you MUST have called the matching tool" in p
+    assert "call capture_lead" in p and "MUST call" in p and "book_appointment" in p
