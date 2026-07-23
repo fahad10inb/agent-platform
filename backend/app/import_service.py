@@ -306,7 +306,11 @@ def _clamp(data: dict) -> dict:
     """Force the LLM's output inside the same bounds the form enforces, so the
     prefill can never itself be rejected by validation."""
     limits = {"name": 120, "type": 60, "tone": 200, "hours": 500, "services": 2000,
-              "staff": 1000, "location": 500, "policies": 2000, "faq": 8000}
+              "staff": 1000, "location": 500, "policies": 2000, "faq": 8000,
+              # Real-estate profile — caps match BusinessSettings/NewBusiness. Was
+              # missing here, so website-import silently blanked all four even
+              # though the prompt, schema and dashboard mapping all carry them.
+              "areas_covered": 1000, "deal_focus": 500, "languages": 300, "orn": 60}
     out = {}
     for key, cap in limits.items():
         out[key] = str(data.get(key) or "")[:cap]

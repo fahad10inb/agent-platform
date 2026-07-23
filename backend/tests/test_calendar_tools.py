@@ -116,3 +116,33 @@ def test_availability_hides_booked_slots(client):
     out = tools["check_availability"]("2026-07-10")
     assert "9:00 AM" not in out["available_slots"]
     assert "9:30 AM" in out["available_slots"]
+
+
+# ── business-hours gate: the DB enforces only slot UNIQUENESS, so book/reschedule
+# must reject out-of-hours times themselves (else a pushy caller books "6 PM"). ──
+def test_book_rejects_a_time_after_closing():
+    r = _tools()["book_appointment"]("2026-07-10", "12:00 PM", "Sam")  # BIZ closes 11
+    assert r["status"] == "unavailable" and "hours" in r["reason"]
+
+
+def test_book_rejects_a_time_before_opening():
+    r = _tools()["book_appointment"]("2026-07-10", "8:00 AM", "Sam")   # BIZ opens 9
+    assert r["status"] == "unavailable" and "hours" in r["reason"]
+
+
+def test_book_rejects_a_slot_that_runs_past_closing():
+    r = _tools()["book_appointment"]("2026-07-10", "10:45 AM", "Sam")  # +30 = 11:15 > 11:00
+    assert r["status"] == "unavailable" and "hours" in r["reason"]
+
+
+def test_book_accepts_a_slot_that_ends_exactly_at_closing():
+    r = _tools()["book_appointment"]("2026-07-10", "10:30 AM", "Sam")  # ends 11:00 = close
+    assert r["status"] == "confirmed"
+
+
+def test_availability_never_offers_a_slot_that_overruns_closing():
+    # 45-min slots in a 9-11 day: the 10:30 start would run to 11:15, past close.
+    tools = _tools({"id": "bright-smile", "open_hour": 9, "close_hour": 11, "slot_minutes": 45})
+    free = tools["check_availability"]("2026-07-10")["available_slots"]
+    assert "10:30 AM" not in free
+    assert "9:00 AM" in free and "9:45 AM" in free

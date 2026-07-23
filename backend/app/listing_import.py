@@ -25,8 +25,10 @@ _ALIASES = {
     "area": "area", "community": "area", "location": "area", "subcommunity": "area", "city": "area",
     "bedrooms": "bedrooms", "beds": "bedrooms", "bed": "bedrooms", "br": "bedrooms", "bedroom": "bedrooms",
     "price": "price", "amount": "price", "rent": "price", "saleprice": "price", "askingprice": "price",
-    "purpose": "purpose", "offeringtype": "purpose", "category": "purpose", "type": "purpose",
-    "transactiontype": "purpose",
+    # Purpose = sale vs rent. Deliberately NOT bare "type"/"category" — those
+    # usually mean PROPERTY type (apartment/villa) and mis-map into sale/rent.
+    "purpose": "purpose", "offeringtype": "purpose", "transactiontype": "purpose",
+    "saleorrent": "purpose", "listingpurpose": "purpose",
     "permitnumber": "permit_number", "permit": "permit_number", "trakheesi": "permit_number",
     "rerapermit": "permit_number", "madhmoun": "permit_number", "permitno": "permit_number",
     "dldpermit": "permit_number", "qrpermit": "permit_number",
@@ -45,8 +47,17 @@ def normalize_listing(raw: dict) -> dict | None:
     """One source record → our schema, or None if it has no title (not a listing)."""
     out = {f: "" for f in _FIELDS}
     for key, value in (raw or {}).items():
-        field = _ALIASES.get(_canon_key(key))
-        if field and not out[field] and value not in (None, ""):
+        if value in (None, ""):
+            continue
+        canon = _canon_key(key)
+        field = _ALIASES.get(canon)
+        if field is None and any(w in canon for w in ("permit", "trakheesi", "madhmoun")):
+            # Permit headers vary wildly ("DLD Permit No", "Trakheesi Permit #",
+            # "Permit Number (Trakheesi)") and the permit is the COMPLIANCE key —
+            # a single missed one over-withholds every listing (AI refuses all
+            # prices, agency thinks it's broken). These keywords are unambiguous.
+            field = "permit_number"
+        if field and not out[field]:
             out[field] = str(value).strip()
     return out if out["title"] else None
 

@@ -72,3 +72,18 @@ def test_clamp_forces_form_bounds():
     assert len(out["name"]) == 120
     assert out["vertical"] == "general"
     assert 0 <= out["open_hour"] < out["close_hour"] <= 24
+
+
+def test_clamp_keeps_the_real_estate_profile_fields():
+    """_clamp filters output to a fixed key list; the four RE fields were missing,
+    so website-import silently blanked areas/focus/languages/ORN."""
+    from app.import_service import _clamp
+    out = _clamp({
+        "name": "X", "type": "real estate agency", "vertical": "real_estate",
+        "areas_covered": "JVC, Marina", "deal_focus": "Sale + rent",
+        "languages": "English, Arabic", "orn": "28154",
+    })
+    assert out["areas_covered"] == "JVC, Marina"
+    assert out["deal_focus"] == "Sale + rent"
+    assert out["languages"] == "English, Arabic"
+    assert out["orn"] == "28154"

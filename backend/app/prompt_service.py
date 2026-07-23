@@ -133,21 +133,36 @@ def build_system_prompt(business: dict) -> str:
         # permitted listings carry their price (and purpose) into the prompt.
         def _row(r):
             permitted = bool((r.get("permit_number") or "").strip())
+            area = (r.get("area") or "").strip()
+            beds = (r.get("bedrooms") or "").strip()
+            if not permitted:
+                # HARD gate: for an unpermitted listing render ONLY a safe,
+                # structured descriptor (area + bedrooms) — NEVER the raw title
+                # or notes, which routinely carry the very price the gate must
+                # withhold ("Spacious 2BR, Marina — AED 1.6M"). The model cannot
+                # quote a number it was never given.
+                if beds and area:
+                    desc = f"{beds} BR in {area}"
+                elif beds:
+                    desc = f"{beds} BR"
+                elif area:
+                    desc = area
+                else:
+                    desc = "a property"
+                return f"{desc} [NO PERMIT — price withheld]"
             parts = [r["title"]]
-            if (r.get("area") or "").strip():
-                parts.append(f"— {r['area']}")
-            if (r.get("bedrooms") or "").strip():
-                parts.append(f"— {r['bedrooms']} BR")
-            if permitted and (r.get("price") or "").strip():
+            if area:
+                parts.append(f"— {area}")
+            if beds:
+                parts.append(f"— {beds} BR")
+            if (r.get("price") or "").strip():
                 parts.append(f"— {r['price']}")
-            if permitted and (r.get("purpose") or "").strip():
+            if (r.get("purpose") or "").strip():
                 parts.append(f"— for {r['purpose']}")
-            parts.append(f"[permit {r['permit_number']}]" if permitted
-                         else "[NO PERMIT — price withheld]")
-            # Notes come from the source description/remarks, which often carry a
-            # price ("asking 1.6M, sea view") — so for an unpermitted listing they
-            # are withheld too, not just the structured price column.
-            if permitted and (r.get("notes") or "").strip():
+            parts.append(f"[permit {r['permit_number']}]")
+            # Notes (source description/remarks) can carry a price too — only ever
+            # attached to a PERMITTED row, alongside its real permit number.
+            if (r.get("notes") or "").strip():
                 parts.append(f"({r['notes']})")
             return " ".join(parts)
 

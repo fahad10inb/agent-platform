@@ -205,6 +205,10 @@ def make_calendar_tools(business: dict) -> list:
             free = [
                 s for s in _all_slots(open_hour, close_hour, step)
                 if s not in taken and not _too_soon(date, s)
+                # …and the slot must actually FINISH by closing: with a slot
+                # length that doesn't divide the day (e.g. 45-min in 9–5), the
+                # last start (4:30) would otherwise run 15 min past close.
+                and (_label_to_minutes(s) or 0) + slot_minutes <= close_hour * 60
             ]
         print(f"  TOOL -> check_availability(date={date!r}) [biz={business_id}] free={len(free)}")
         out = {"date": date, "available_slots": free}
@@ -246,13 +250,23 @@ def make_calendar_tools(business: dict) -> list:
                 "date": date, "time": time,
             }
         svc = _find_service(service)
-        if svc:
+        duration = (svc.get("duration_min") if svc else None) or slot_minutes
+        # Business-hours gate: the DB enforces only slot UNIQUENESS, so without
+        # this a caller could book before opening or after closing (a pushy
+        # caller + a compliant model happily booked "6:00 PM" with hours 9–5).
+        # Reject a start before open, or an appointment that would run past close.
+        start_min = _label_to_minutes(time)
+        if start_min is None or start_min < open_hour * 60 or start_min + duration > close_hour * 60:
+            return {
+                "status": "unavailable",
+                "reason": "that time is outside our opening hours",
+                "date": date, "time": time,
+            }
+        if svc and (svc["name"] or "").strip().lower() not in (reason or "").lower():
             # The stored reason must name the menu service — that's how future
             # overlap checks recover this booking's true duration from the DB.
-            if (svc["name"] or "").strip().lower() not in (reason or "").lower():
-                reason = svc["name"] + (f" — {reason}" if (reason or "").strip() else "")
+            reason = svc["name"] + (f" — {reason}" if (reason or "").strip() else "")
         if services:
-            duration = (svc.get("duration_min") if svc else None) or slot_minutes
             if _overlaps_existing(date, time, duration):
                 print(f"  TOOL -> book_appointment DENIED (overlap) date={date!r} time={time!r} [biz={business_id}]")
                 return {"status": "unavailable", "reason": f"{time} on {date} is already booked", "date": date, "time": time}
@@ -386,17 +400,23 @@ def make_calendar_tools(business: dict) -> list:
             return {"status": "unavailable", "reason": why}
         if _too_soon(new_date, new_time):
             return {"status": "unavailable", "reason": f"we need at least {min_notice_h} hour(s) notice"}
-        # The new slot must be free — using the SAME duration-aware overlap check
-        # book_appointment uses (a plain same-start check let a rescheduled trim
-        # drop into the middle of a 90-min colour). Recover the moved booking's
-        # true length from its stored reason, and exclude it from the check when
-        # it's moving within the same day so it can't collide with itself.
+        # Recover the moved booking's true length (menu duration or the global
+        # slot) so BOTH the hours gate and the overlap check use the real span.
+        duration = slot_minutes
         if services:
-            duration = slot_minutes
             for r in db.bookings_with_times(business_id, old_date):
                 if _norm_time(r.get("time") or "") == old_time:
                     duration = _infer_duration(r.get("reason") or "")
                     break
+        # Business-hours gate on the NEW slot — same as book_appointment.
+        start_min = _label_to_minutes(new_time)
+        if start_min is None or start_min < open_hour * 60 or start_min + duration > close_hour * 60:
+            return {"status": "unavailable", "reason": "that time is outside our opening hours"}
+        # The new slot must be free — using the SAME duration-aware overlap check
+        # book_appointment uses (a plain same-start check let a rescheduled trim
+        # drop into the middle of a 90-min colour). Exclude the booking being
+        # moved when it stays on the same day so it can't collide with itself.
+        if services:
             exclude = old_time if new_date == old_date else ""
             if _overlaps_existing(new_date, new_time, duration, exclude_time=exclude):
                 print(f"  TOOL -> reschedule DENIED (overlap) [biz={business_id}]")

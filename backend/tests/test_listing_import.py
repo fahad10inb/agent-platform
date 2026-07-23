@@ -81,3 +81,18 @@ def test_prompt_marks_permitted_and_unpermitted_listings(client):
     assert "permit 7129XYZ" in p
     assert "[NO PERMIT]" in p
     assert "illegal to advertise a property without a valid advertising permit" in p
+
+
+# ── permit header robustness: a missed permit column over-withholds EVERY listing
+# (AI refuses all prices → agency thinks it's broken), so odd headers must match. ─
+def test_permit_header_variants_all_map_to_permit_number():
+    from app.listing_import import normalize_listing
+    for header in ("DLD Permit No", "Trakheesi Permit #", "Permit Number (Trakheesi)", "Madhmoun No"):
+        row = normalize_listing({"Title": "2BR Marina", header: "7129XYZ"})
+        assert row and row["permit_number"] == "7129XYZ", header
+
+
+def test_a_bare_type_column_is_not_mistaken_for_sale_rent_purpose():
+    from app.listing_import import normalize_listing
+    row = normalize_listing({"Title": "Villa", "Type": "Apartment"})
+    assert row["purpose"] == ""   # 'Type' usually means property type, not purpose

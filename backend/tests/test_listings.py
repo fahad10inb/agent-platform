@@ -45,10 +45,11 @@ def test_prompt_carries_the_sheet_and_the_only_these_rule(client):
     db.replace_listings("skyline-realty", [dict(r) for r in SHEET["listings"]])
     p = build_system_prompt(db.get_business("skyline-realty"))
     assert "CURRENT LISTINGS" in p
-    # These seed rows carry NO permit, so the hard gate withholds their price,
-    # purpose AND notes (a description can hide a price) — only title/area/beds
-    # + the withheld marker show.
-    assert "2BR apartment, Bloom Towers — JVC — 2 BR [NO PERMIT — price withheld]" in p
+    # These seed rows carry NO permit, so the hard gate withholds the price,
+    # purpose, notes AND the raw title (any of which can hide a price) — only a
+    # safe area+bedrooms descriptor + the withheld marker show.
+    assert "2 BR in JVC [NO PERMIT — price withheld]" in p
+    assert "Bloom Towers" not in p                    # raw title withheld
     assert "1.2M" not in p and "near park" not in p  # price and description gone
     assert "the ONLY properties that exist" in p
     # And a business with no sheet gets no block (nothing changes for salons).

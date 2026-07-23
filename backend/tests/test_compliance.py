@@ -17,7 +17,10 @@ def test_unpermitted_price_is_withheld_from_the_prompt(client):
     p = build_system_prompt(db.get_business("skyline-realty"))
     assert "1.8M" in p and "permit 7129XYZ" in p          # permitted: price present
     assert "25M" not in p                                 # unpermitted: price GONE
-    assert "Secret Villa" in p and "[NO PERMIT — price withheld]" in p
+    # The raw TITLE is withheld too — a real title routinely hides the price
+    # ("Secret Villa 25M") — leaving only a safe structured descriptor + marker.
+    assert "Secret Villa" not in p
+    assert "Emirates Hills [NO PERMIT — price withheld]" in p
     assert "not been given its price" in p                # the instruction is there
 
 
