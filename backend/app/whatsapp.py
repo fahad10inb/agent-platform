@@ -74,7 +74,9 @@ def verify_webhook(request: Request):
         params.get("hub.mode") == "subscribe"
         and params.get("hub.verify_token") == settings.whatsapp_verify_token
     ):
-        return Response(content=params.get("hub.challenge", ""), media_type="text/plain")
+        return Response(
+            content=params.get("hub.challenge", ""), media_type="text/plain"
+        )
     raise HTTPException(status_code=403, detail="Verification failed.")
 
 
@@ -94,18 +96,28 @@ async def receive_webhook(request: Request):
     # is a DEBUG escape hatch (default off) for isolating a mis-pasted app secret
     # during setup — turn it back off once the secret is confirmed correct.
     if settings.whatsapp_skip_signature:
-        logger.warning("WHATSAPP_SKIP_SIGNATURE is ON — signature check bypassed (debug only)")
+        logger.warning(
+            "WHATSAPP_SKIP_SIGNATURE is ON — signature check bypassed (debug only)"
+        )
     else:
         if not settings.whatsapp_app_secret:
-            logger.error("WHATSAPP_APP_SECRET is not set — refusing unsigned webhook traffic")
-            raise HTTPException(status_code=503, detail="WhatsApp channel misconfigured.")
+            logger.error(
+                "WHATSAPP_APP_SECRET is not set — refusing unsigned webhook traffic"
+            )
+            raise HTTPException(
+                status_code=503, detail="WhatsApp channel misconfigured."
+            )
         expected = (
             "sha256="
-            + hmac.new(settings.whatsapp_app_secret.encode(), raw, hashlib.sha256).hexdigest()
+            + hmac.new(
+                settings.whatsapp_app_secret.encode(), raw, hashlib.sha256
+            ).hexdigest()
         )
         given = request.headers.get("X-Hub-Signature-256", "")
         if not hmac.compare_digest(expected, given):
-            logger.warning("whatsapp webhook rejected: signature mismatch (check WHATSAPP_APP_SECRET)")
+            logger.warning(
+                "whatsapp webhook rejected: signature mismatch (check WHATSAPP_APP_SECRET)"
+            )
             raise HTTPException(status_code=403, detail="Bad signature.")
 
     try:
@@ -140,7 +152,9 @@ def _inbound_messages(payload: dict) -> list[tuple[str, str, str, str]]:
     return out
 
 
-async def _handle_message(business_id: str, phone_id: str, sender: str, text: str) -> None:
+async def _handle_message(
+    business_id: str, phone_id: str, sender: str, text: str
+) -> None:
     """One customer message → one reply, off the webhook's clock. Best-effort:
     a failure is logged, never re-raised (Meta would just retry the webhook)."""
     try:
@@ -195,12 +209,58 @@ async def _send_text(phone_id: str, to: str, text: str) -> None:
 # free-form is rejected (131047). send_business_message routes to a template when
 # one is configured for that message kind, else falls back to free-form text.
 
-_TEMPLATE_SETTING = {
-    "reminder": "whatsapp_template_reminder",
-    "nurture": "whatsapp_template_nurture",
-    "review": "whatsapp_template_review",
-    "outreach": "whatsapp_template_outreach",
-    "match": "whatsapp_template_match",
+# The APPROVED-TEMPLATE contract, one per business-initiated kind:
+#   setting — the config field holding the tenant's approved template NAME
+#   vars    — how many {{n}} body variables the template has; the sender MUST
+#             pass exactly this many params, IN ORDER
+#   body    — the EXACT body text to submit to Meta for approval. The variable
+#             positions here define the param order the sender sends, so code and
+#             the approved template can't drift. Copy-paste version + Meta steps
+#             live in WHATSAPP-TEMPLATES.md. Meta rejects a body that is only a
+#             variable, so each has real fixed text around the {{n}} slots.
+_TEMPLATE_SPECS = {
+    "reminder": {
+        "setting": "whatsapp_template_reminder",
+        "vars": 5,  # [first_name, what, business, day_word, time]
+        "body": (
+            "Hi {{1}}, a reminder about {{2}} at {{3}} — {{4}} at {{5}}. "
+            "Reply CONFIRM to keep it, or reply here if you'd like a different time."
+        ),
+    },
+    "nurture": {
+        "setting": "whatsapp_template_nurture",
+        "vars": 3,  # [first_name, business, stage_line]
+        "body": (
+            "Hi {{1}}, it's {{2}} following up on your enquiry. {{3}} "
+            "Reply here whenever suits you — no rush."
+        ),
+    },
+    "review": {
+        "setting": "whatsapp_template_review",
+        "vars": 3,  # [first_name, business, review_url]
+        "body": (
+            "Hi {{1}}, thanks for choosing {{2}}! If you have a moment, we'd really "
+            "appreciate a quick Google review: {{3}} — it genuinely helps others "
+            "find us. Thank you!"
+        ),
+    },
+    "outreach": {
+        "setting": "whatsapp_template_outreach",
+        "vars": 2,  # [first_name, business]
+        "body": (
+            "Hi {{1}}, thanks for your enquiry — this is the assistant at {{2}}. "
+            "I can get you property details and set up a viewing fast. What's your "
+            "budget range and which area are you focused on?"
+        ),
+    },
+    "match": {
+        "setting": "whatsapp_template_match",
+        "vars": 4,  # [first_name, what, business, listing_desc]
+        "body": (
+            "Hi {{1}}, a new {{2}} matching what you were after just came up at "
+            "{{3}} — {{4}}. Want me to arrange a viewing?"
+        ),
+    },
 }
 
 
@@ -219,7 +279,9 @@ def _template_payload(to: str, name: str, lang: str, params: list) -> dict:
     return payload
 
 
-async def _send_template(phone_id: str, to: str, name: str, lang: str, params: list) -> bool:
+async def _send_template(
+    phone_id: str, to: str, name: str, lang: str, params: list
+) -> bool:
     """Deliver a pre-approved template — the only message type allowed outside the
     24h window. Returns True on success (a 2xx from Graph)."""
     settings = get_settings()
@@ -230,7 +292,9 @@ async def _send_template(phone_id: str, to: str, name: str, lang: str, params: l
             json=_template_payload(to, name, lang, params),
         )
     if r.status_code >= 400:
-        logger.error("whatsapp template send failed (%s): %s", r.status_code, r.text[:300])
+        logger.error(
+            "whatsapp template send failed (%s): %s", r.status_code, r.text[:300]
+        )
     return r.status_code < 400
 
 
@@ -238,12 +302,30 @@ async def send_business_message(
     phone_id: str, to: str, *, kind: str, params: list, fallback_text: str
 ) -> bool:
     """Send a message the business INITIATED. If an approved template is configured
-    for this `kind` (reminder/nurture/review/outreach), send the template (required
-    outside 24h); otherwise send free-form text — correct within 24h / on the test
-    number, and the current behaviour, so nothing changes until a template is set."""
+    for this `kind` (reminder/nurture/review/outreach/match), send the template
+    (required outside the 24h window); otherwise send free-form text — correct
+    within 24h / on the test number, and the default, so nothing changes until a
+    template name is set.
+
+    `params` MUST be the kind's template variables in order (see _TEMPLATE_SPECS
+    / WHATSAPP-TEMPLATES.md). If the count doesn't match the spec, we log and fall
+    back to free-form text rather than let Meta bounce the send (error 132000,
+    "number of parameters does not match") with a cryptic message."""
     settings = get_settings()
-    name = getattr(settings, _TEMPLATE_SETTING.get(kind, ""), "") if kind in _TEMPLATE_SETTING else ""
+    spec = _TEMPLATE_SPECS.get(kind)
+    name = getattr(settings, spec["setting"], "") if spec else ""
+    if name and len(params) != spec["vars"]:
+        logger.error(
+            "whatsapp template '%s' (%s) expects %d vars, got %d — sending free text",
+            name,
+            kind,
+            spec["vars"],
+            len(params),
+        )
+        name = ""  # fall through to free-form text
     if name:
-        return await _send_template(phone_id, to, name, settings.whatsapp_template_lang, params)
+        return await _send_template(
+            phone_id, to, name, settings.whatsapp_template_lang, params
+        )
     await _send_text(phone_id, to, fallback_text)
     return True

@@ -31,8 +31,16 @@ _LABELS = {
     "name": ("name", "client name", "customer name", "lead name", "full name"),
     "phone": ("phone", "mobile", "mobile number", "contact number", "tel", "telephone"),
     "email": ("email", "e-mail", "email address"),
-    "property_ref": ("reference", "ref", "ref no", "property reference", "listing",
-                     "listing reference", "permit", "permit number"),
+    "property_ref": (
+        "reference",
+        "ref",
+        "ref no",
+        "property reference",
+        "listing",
+        "listing reference",
+        "permit",
+        "permit number",
+    ),
     "message": ("message", "comment", "comments", "enquiry", "inquiry", "note"),
 }
 
@@ -88,8 +96,11 @@ def parse_portal_lead(subject: str, body: str, from_hint: str = "") -> dict | No
 
     name = fields.get("name") or ""
     if not name:
-        m = re.search(r"(?:from|lead from|enquiry from)\s+([A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+)?)",
-                      subject or "", re.IGNORECASE)
+        m = re.search(
+            r"(?:from|lead from|enquiry from)\s+([A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+)?)",
+            subject or "",
+            re.IGNORECASE,
+        )
         name = m.group(1).strip() if m else ""
 
     return {
@@ -119,12 +130,24 @@ def _compose_outreach(business: dict, lead: dict) -> str:
     )
 
 
+def _outreach_params(business: dict, lead: dict) -> list[str]:
+    """The ordered {{n}} body variables for the outreach WhatsApp template
+    (whatsapp._TEMPLATE_SPECS['outreach']): [first_name, business]. The property
+    ref / source in the fallback text are dropped from the template — the seeded
+    conversation still carries them for the lead's reply."""
+    first = (lead.get("name") or "there").split()[0] if lead.get("name") else "there"
+    biz = business.get("name") or "our team"
+    return [first, biz]
+
+
 def ingest_lead(business: dict, parsed: dict) -> dict:
     """Turn a parsed portal lead into a captured lead + instant owner alert +
     instant outreach to the lead. Dedupes on the phone (a portal re-notifying
     the same enquiry must not make two leads or two owner emails)."""
     business_id = business["id"]
-    interest_bits = [x for x in (parsed.get("property_ref"), parsed.get("message")) if x]
+    interest_bits = [
+        x for x in (parsed.get("property_ref"), parsed.get("message")) if x
+    ]
     interest = " — ".join(interest_bits) or "Property enquiry"
     src = parsed.get("source") or "unknown"
     notes = f"via {src}" + (f"; email {parsed['email']}" if parsed.get("email") else "")
@@ -137,7 +160,9 @@ def ingest_lead(business: dict, parsed: dict) -> dict:
         outcome = "updated"
         lead_id = existing["id"]
     else:
-        lead_id = db.save_lead(business_id, parsed.get("name") or "Portal lead", phone, interest, notes)
+        lead_id = db.save_lead(
+            business_id, parsed.get("name") or "Portal lead", phone, interest, notes
+        )
         # A portal lead is money on the clock — tell the owner instantly.
         notify_service.notify_owner(
             business_id,
@@ -148,7 +173,13 @@ def ingest_lead(business: dict, parsed: dict) -> dict:
         outcome = "captured"
 
     reached = _reach_out(business, parsed) if phone else False
-    logger.info("[leadintake] %s %s lead for business=%s (reached=%s)", outcome, src, business_id, reached)
+    logger.info(
+        "[leadintake] %s %s lead for business=%s (reached=%s)",
+        outcome,
+        src,
+        business_id,
+        reached,
+    )
     return {"status": outcome, "lead_id": lead_id, "reached_out": reached}
 
 
@@ -170,11 +201,20 @@ def _reach_out(business: dict, parsed: dict) -> bool:
         import asyncio
 
         try:
-            asyncio.run(whatsapp.send_business_message(
-                phone_id, to, kind="outreach", params=[text], fallback_text=text))
+            asyncio.run(
+                whatsapp.send_business_message(
+                    phone_id,
+                    to,
+                    kind="outreach",
+                    params=_outreach_params(business, parsed),
+                    fallback_text=text,
+                )
+            )
             delivered = True
         except Exception:  # noqa: BLE001 — fall through to the seeded/logged path
-            logger.exception("[leadintake] whatsapp outreach failed for business=%s", business["id"])
+            logger.exception(
+                "[leadintake] whatsapp outreach failed for business=%s", business["id"]
+            )
     # Record the opener as the model's turn so the lead's reply has context and
     # is scored/qualified normally by run_turn.
     db.save_message(business["id"], conversation_id, "model", text)

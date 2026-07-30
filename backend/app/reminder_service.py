@@ -62,7 +62,9 @@ def _booking_datetime(date_str: str, time_str: str):
     mins = _time_to_minutes(time_str)
     if mins is None:
         return None
-    return datetime.datetime(d.year, d.month, d.day, mins // 60, mins % 60, tzinfo=_DUBAI_TZ)
+    return datetime.datetime(
+        d.year, d.month, d.day, mins // 60, mins % 60, tzinfo=_DUBAI_TZ
+    )
 
 
 def _due_stage(hours_until: float):
@@ -105,6 +107,24 @@ def compose_reminder(business: dict, booking: dict, stage: str) -> str:
         f"{booking.get('time')} on {booking.get('date')}. "
         "Reply CONFIRM to lock it in, or tell me if you'd like to change the time."
     )
+
+
+def reminder_params(business: dict, booking: dict) -> list[str]:
+    """The ordered {{n}} body variables for the reminder WhatsApp template
+    (whatsapp._TEMPLATE_SPECS['reminder']): [first_name, what, business, when,
+    time]. Kept beside compose_reminder so the template slots and the fallback
+    text stay in step."""
+    name = (booking.get("patient_name") or "there").split()[0]
+    reason = (booking.get("reason") or "").strip()
+    what = f"your {reason}" if reason else "your appointment"
+    biz = business.get("name") or "us"
+    return [
+        name,
+        what,
+        biz,
+        _day_word(booking.get("date")),
+        str(booking.get("time") or ""),
+    ]
 
 
 def send_due_reminders() -> int:
@@ -153,14 +173,25 @@ def _deliver(business: dict, booking: dict, stage: str) -> bool:
         import asyncio
 
         try:
-            asyncio.run(whatsapp.send_business_message(
-                phone_id, to, kind="reminder", params=[text], fallback_text=text))
+            asyncio.run(
+                whatsapp.send_business_message(
+                    phone_id,
+                    to,
+                    kind="reminder",
+                    params=reminder_params(business, booking),
+                    fallback_text=text,
+                )
+            )
             # Seed the reminder into the thread so a bare "CONFIRM" reply has
             # context when it flows back through run_turn (same as nurture/outreach).
             db.save_message(business["id"], f"wa-{to}", "model", text)
-            logger.info("[reminders] whatsapp %s reminder -> booking %s", stage, booking["id"])
+            logger.info(
+                "[reminders] whatsapp %s reminder -> booking %s", stage, booking["id"]
+            )
             return True
         except Exception:  # noqa: BLE001 — fall through to the logged path
-            logger.exception("[reminders] whatsapp send failed for booking %s", booking["id"])
+            logger.exception(
+                "[reminders] whatsapp send failed for booking %s", booking["id"]
+            )
     logger.info("[reminders] (not delivered — no channel) %s: %s", stage, text)
     return False

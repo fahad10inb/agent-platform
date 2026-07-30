@@ -10,25 +10,41 @@ from app import chat_core, whatsapp
 from app.config import get_settings
 
 
-def _sample_payload(phone_id="111222333", sender="971501234567", text="hi, do you have a 2BR?"):
+def _sample_payload(
+    phone_id="111222333", sender="971501234567", text="hi, do you have a 2BR?"
+):
     """The shape Meta actually POSTs (trimmed to the fields that matter)."""
     return {
         "object": "whatsapp_business_account",
-        "entry": [{
-            "id": "WABA_ID",
-            "changes": [{
-                "field": "messages",
-                "value": {
-                    "messaging_product": "whatsapp",
-                    "metadata": {"display_phone_number": "15550001111", "phone_number_id": phone_id},
-                    "contacts": [{"profile": {"name": "Rashid"}, "wa_id": sender}],
-                    "messages": [{
-                        "from": sender, "id": "wamid.X", "timestamp": "1700000000",
-                        "type": "text", "text": {"body": text},
-                    }],
-                },
-            }],
-        }],
+        "entry": [
+            {
+                "id": "WABA_ID",
+                "changes": [
+                    {
+                        "field": "messages",
+                        "value": {
+                            "messaging_product": "whatsapp",
+                            "metadata": {
+                                "display_phone_number": "15550001111",
+                                "phone_number_id": phone_id,
+                            },
+                            "contacts": [
+                                {"profile": {"name": "Rashid"}, "wa_id": sender}
+                            ],
+                            "messages": [
+                                {
+                                    "from": sender,
+                                    "id": "wamid.X",
+                                    "timestamp": "1700000000",
+                                    "type": "text",
+                                    "text": {"body": text},
+                                }
+                            ],
+                        },
+                    }
+                ],
+            }
+        ],
     }
 
 
@@ -45,23 +61,39 @@ def test_verify_handshake_echoes_the_challenge(client, monkeypatch):
     assert r.status_code == 200
     assert r.text == "42abc"
     # The wrong token is turned away.
-    r = client.get("/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=WRONG&hub.challenge=x")
+    r = client.get(
+        "/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=WRONG&hub.challenge=x"
+    )
     assert r.status_code == 403
 
 
 def test_inbound_parser_takes_texts_and_skips_receipts():
     events = whatsapp._inbound_messages(_sample_payload())
-    assert events == [("111222333", "971501234567", "hi, do you have a 2BR?", "wamid.X")]
+    assert events == [
+        ("111222333", "971501234567", "hi, do you have a 2BR?", "wamid.X")
+    ]
     # A delivery-receipt payload (statuses, no messages) yields nothing.
-    receipt = {"entry": [{"changes": [{"value": {
-        "metadata": {"phone_number_id": "111222333"},
-        "statuses": [{"id": "wamid.X", "status": "delivered"}],
-    }}]}]}
+    receipt = {
+        "entry": [
+            {
+                "changes": [
+                    {
+                        "value": {
+                            "metadata": {"phone_number_id": "111222333"},
+                            "statuses": [{"id": "wamid.X", "status": "delivered"}],
+                        }
+                    }
+                ]
+            }
+        ]
+    }
     assert whatsapp._inbound_messages(receipt) == []
     # Non-text messages (an image) fall through in v1.
     img = _sample_payload()
     img["entry"][0]["changes"][0]["value"]["messages"][0] = {
-        "from": "971501234567", "type": "image", "image": {"id": "MEDIA_ID"},
+        "from": "971501234567",
+        "type": "image",
+        "image": {"id": "MEDIA_ID"},
     }
     assert whatsapp._inbound_messages(img) == []
 
@@ -72,8 +104,11 @@ def test_webhook_accepts_and_acks_fast(client, monkeypatch):
     monkeypatch.setattr(settings, "whatsapp_app_secret", "shhh")
     body = json.dumps(_sample_payload()).encode()
     sig = "sha256=" + hmac.new(b"shhh", body, hashlib.sha256).hexdigest()
-    r = client.post("/whatsapp/webhook", content=body,
-                    headers={"X-Hub-Signature-256": sig, "Content-Type": "application/json"})
+    r = client.post(
+        "/whatsapp/webhook",
+        content=body,
+        headers={"X-Hub-Signature-256": sig, "Content-Type": "application/json"},
+    )
     assert r.status_code == 200
     assert r.json() == {"status": "received"}
 
@@ -84,11 +119,20 @@ def test_webhook_rejects_bad_signatures_when_secret_set(client, monkeypatch):
     monkeypatch.setattr(settings, "whatsapp_app_secret", "shhh")
     body = json.dumps(_sample_payload()).encode()
     good = "sha256=" + hmac.new(b"shhh", body, hashlib.sha256).hexdigest()
-    r = client.post("/whatsapp/webhook", content=body,
-                    headers={"X-Hub-Signature-256": good, "Content-Type": "application/json"})
+    r = client.post(
+        "/whatsapp/webhook",
+        content=body,
+        headers={"X-Hub-Signature-256": good, "Content-Type": "application/json"},
+    )
     assert r.status_code == 200
-    r = client.post("/whatsapp/webhook", content=body,
-                    headers={"X-Hub-Signature-256": "sha256=forged", "Content-Type": "application/json"})
+    r = client.post(
+        "/whatsapp/webhook",
+        content=body,
+        headers={
+            "X-Hub-Signature-256": "sha256=forged",
+            "Content-Type": "application/json",
+        },
+    )
     assert r.status_code == 403
 
 
@@ -106,7 +150,11 @@ def test_handle_message_runs_a_turn_and_replies(client, monkeypatch):
     monkeypatch.setattr(chat_core, "run_turn", _fake_turn)
     monkeypatch.setattr(whatsapp, "_send_text", _fake_send)
 
-    asyncio.run(whatsapp._handle_message("skyline-realty", "111222333", "971501234567", "any 2BR?"))
+    asyncio.run(
+        whatsapp._handle_message(
+            "skyline-realty", "111222333", "971501234567", "any 2BR?"
+        )
+    )
 
     # The customer's own number IS the conversation — memory rides on it.
     assert turns == [("skyline-realty", "wa-971501234567", "any 2BR?")]
@@ -120,12 +168,16 @@ def test_handle_message_never_raises(client, monkeypatch):
         raise RuntimeError("gemini down")
 
     monkeypatch.setattr(chat_core, "run_turn", _boom)
-    asyncio.run(whatsapp._handle_message("skyline-realty", "111", "9715", "hi"))  # no raise
+    asyncio.run(
+        whatsapp._handle_message("skyline-realty", "111", "9715", "hi")
+    )  # no raise
 
 
 # ── business-initiated messages: templates (Meta requires them outside 24h) ───
 def test_template_payload_has_the_right_shape():
-    p = whatsapp._template_payload("971501234567", "reminder_v1", "en_US", ["your viewing tomorrow"])
+    p = whatsapp._template_payload(
+        "971501234567", "reminder_v1", "en_US", ["your viewing tomorrow"]
+    )
     assert p["type"] == "template"
     assert p["to"] == "971501234567"
     assert p["template"]["name"] == "reminder_v1"
@@ -136,7 +188,9 @@ def test_template_payload_has_the_right_shape():
 
 def test_template_payload_without_params_omits_components():
     p = whatsapp._template_payload("x", "t", "en", [])
-    assert "components" not in p["template"]  # a body-less template must not send an empty body block
+    assert (
+        "components" not in p["template"]
+    )  # a body-less template must not send an empty body block
 
 
 def test_business_message_falls_back_to_free_text_when_no_template(monkeypatch):
@@ -154,8 +208,11 @@ def test_business_message_falls_back_to_free_text_when_no_template(monkeypatch):
     monkeypatch.setattr(whatsapp, "_send_text", fake_text)
     monkeypatch.setattr(whatsapp, "_send_template", fake_tpl)
     monkeypatch.setattr(get_settings(), "whatsapp_template_reminder", "")
-    ok = asyncio.run(whatsapp.send_business_message(
-        "pid", "to", kind="reminder", params=["hi"], fallback_text="hi there"))
+    ok = asyncio.run(
+        whatsapp.send_business_message(
+            "pid", "to", kind="reminder", params=["hi"], fallback_text="hi there"
+        )
+    )
     assert ok is True
     assert calls == {"text": ("pid", "to", "hi there")}  # text path, not template
 
@@ -176,8 +233,104 @@ def test_business_message_uses_the_template_once_configured(monkeypatch):
     s = get_settings()
     monkeypatch.setattr(s, "whatsapp_template_reminder", "reminder_v1")
     monkeypatch.setattr(s, "whatsapp_template_lang", "en_US")
-    ok = asyncio.run(whatsapp.send_business_message(
-        "pid", "to", kind="reminder", params=["hi"], fallback_text="hi there"))
+    # reminder's template has 5 body variables — pass exactly that many.
+    p = ["Sam", "your viewing", "Skyline", "tomorrow", "4:00 PM"]
+    ok = asyncio.run(
+        whatsapp.send_business_message(
+            "pid", "to", kind="reminder", params=p, fallback_text="hi there"
+        )
+    )
     assert ok is True
     assert "text" not in calls
-    assert calls["tpl"] == ("pid", "to", "reminder_v1", "en_US", ["hi"])
+    assert calls["tpl"] == ("pid", "to", "reminder_v1", "en_US", p)
+
+
+def test_business_message_falls_back_to_text_on_param_count_mismatch(monkeypatch):
+    """A wrong param count must NOT be sent as a template (Meta bounces it with a
+    cryptic 132000) — it falls back to the free-form fallback_text instead."""
+    calls = {}
+
+    async def fake_text(pid, to, text):
+        calls["text"] = (pid, to, text)
+
+    async def fake_tpl(*a, **k):
+        calls["tpl"] = True
+        return True
+
+    monkeypatch.setattr(whatsapp, "_send_text", fake_text)
+    monkeypatch.setattr(whatsapp, "_send_template", fake_tpl)
+    s = get_settings()
+    monkeypatch.setattr(s, "whatsapp_template_reminder", "reminder_v1")
+    # reminder expects 5 vars; give it 1 → guard trips, free text sent.
+    ok = asyncio.run(
+        whatsapp.send_business_message(
+            "pid", "to", kind="reminder", params=["just one"], fallback_text="hi there"
+        )
+    )
+    assert ok is True
+    assert "tpl" not in calls
+    assert calls["text"] == ("pid", "to", "hi there")
+
+
+def test_every_template_spec_body_matches_its_declared_var_count():
+    """The registry is the contract shared with Meta: the {{n}} count in each
+    body must equal `vars`, or a sender's param list won't line up with the
+    approved template."""
+    import re
+
+    for kind, spec in whatsapp._TEMPLATE_SPECS.items():
+        highest = max(int(n) for n in re.findall(r"\{\{(\d+)\}\}", spec["body"]))
+        assert highest == spec["vars"], (
+            f"{kind}: body uses {{{{{highest}}}}} but vars={spec['vars']}"
+        )
+        assert hasattr(get_settings(), spec["setting"]), (
+            f"{kind}: missing config {spec['setting']}"
+        )
+
+
+def test_sender_param_builders_match_their_spec_var_counts():
+    """Each sender's *_params() must return exactly as many values as its
+    template declares — the thing that keeps the wiring honest end to end."""
+    from app import (
+        lead_intake,
+        matcher_service,
+        nurture_service,
+        reminder_service,
+        review_service,
+    )
+
+    biz = {"name": "Skyline", "id": "skyline-realty"}
+    booking = {
+        "patient_name": "Sam Ali",
+        "date": "2026-09-01",
+        "time": "4:00 PM",
+        "reason": "viewing",
+    }
+    lead = {"name": "Sam Ali", "phone": "0501234567"}
+    listing = {
+        "title": "2BR Marina View",
+        "area": "Marina",
+        "bedrooms": "2",
+        "price": "1.6M",
+    }
+
+    assert (
+        len(reminder_service.reminder_params(biz, booking))
+        == whatsapp._TEMPLATE_SPECS["reminder"]["vars"]
+    )
+    assert (
+        len(nurture_service.nurture_params(biz, lead, "day2"))
+        == whatsapp._TEMPLATE_SPECS["nurture"]["vars"]
+    )
+    assert (
+        len(review_service.review_params(biz, booking, "https://g.page/x"))
+        == whatsapp._TEMPLATE_SPECS["review"]["vars"]
+    )
+    assert (
+        len(lead_intake._outreach_params(biz, lead))
+        == whatsapp._TEMPLATE_SPECS["outreach"]["vars"]
+    )
+    assert (
+        len(matcher_service.match_params(biz, "Sam Ali", listing))
+        == whatsapp._TEMPLATE_SPECS["match"]["vars"]
+    )

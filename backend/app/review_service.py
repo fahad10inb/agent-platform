@@ -63,6 +63,14 @@ def compose_review_request(business: dict, booking: dict, review_url: str) -> st
     )
 
 
+def review_params(business: dict, booking: dict, review_url: str) -> list[str]:
+    """The ordered {{n}} body variables for the review WhatsApp template
+    (whatsapp._TEMPLATE_SPECS['review']): [first_name, business, review_url]."""
+    name = (booking.get("patient_name") or "there").split()[0]
+    biz = business.get("name") or "us"
+    return [name, biz, review_url]
+
+
 def send_due_review_requests() -> int:
     """One sweep: ask each eligible past-visit client for a review, once. Returns
     the number sent. Best-effort — a single bad booking is logged and skipped,
@@ -118,14 +126,27 @@ def _deliver(business: dict, booking: dict, review_url: str) -> bool:
         import asyncio
 
         try:
-            asyncio.run(whatsapp.send_business_message(
-                phone_id, to, kind="review", params=[text], fallback_text=text))
+            asyncio.run(
+                whatsapp.send_business_message(
+                    phone_id,
+                    to,
+                    kind="review",
+                    params=review_params(business, booking, review_url),
+                    fallback_text=text,
+                )
+            )
             # Seed it into the thread so a reply ("done!"/"how do I?") has context
             # when it flows back through run_turn — same as reminders/nurture.
             db.save_message(business["id"], f"wa-{to}", "model", text)
-            logger.info("[reviews] whatsapp review request -> booking %s", booking["id"])
+            logger.info(
+                "[reviews] whatsapp review request -> booking %s", booking["id"]
+            )
             return True
         except Exception:  # noqa: BLE001 — fall through to the logged path
-            logger.exception("[reviews] whatsapp send failed for booking %s", booking["id"])
-    logger.info("[reviews] (not delivered — no channel) booking %s: %s", booking["id"], text)
+            logger.exception(
+                "[reviews] whatsapp send failed for booking %s", booking["id"]
+            )
+    logger.info(
+        "[reviews] (not delivered — no channel) booking %s: %s", booking["id"], text
+    )
     return False

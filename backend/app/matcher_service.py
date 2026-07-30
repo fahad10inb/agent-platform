@@ -27,8 +27,8 @@ from app.phone import to_wa_number
 
 logger = logging.getLogger("agent-platform")
 
-_LEAD_WINDOW_DAYS = 60   # only re-engage reasonably recent leads
-_MIN_HOURS = 20          # at most one match alert per lead per ~day
+_LEAD_WINDOW_DAYS = 60  # only re-engage reasonably recent leads
+_MIN_HOURS = 20  # at most one match alert per lead per ~day
 
 
 def _digits(value) -> str:
@@ -79,7 +79,10 @@ def matches(fields: dict, listing: dict) -> bool:
     if want_beds and _digits(listing.get("bedrooms")) != want_beds:
         return False
     # purpose: if both stated, rent vs sale must line up
-    want_purpose, listing_purpose = _purpose(fields.get("purpose")), _purpose(listing.get("purpose"))
+    want_purpose, listing_purpose = (
+        _purpose(fields.get("purpose")),
+        _purpose(listing.get("purpose")),
+    )
     if want_purpose and listing_purpose and want_purpose != listing_purpose:
         return False
     # budget: if both parse, the price must be within ~10% of the lead's budget
@@ -98,11 +101,35 @@ def compose_match(business: dict, name: str, listing: dict) -> str:
     area = (listing.get("area") or "").strip()
     beds = _digits(listing.get("bedrooms"))
     price = (listing.get("price") or "").strip()
-    what = " ".join(x for x in [f"{beds}BR" if beds else "", f"in {area}" if area else ""] if x) or "property"
+    what = (
+        " ".join(
+            x for x in [f"{beds}BR" if beds else "", f"in {area}" if area else ""] if x
+        )
+        or "property"
+    )
     msg = f"Hi {who}! A new {what} matching what you were after just came up at {biz} — {title}"
     if price:
         msg += f", {price}"
     return msg + ". Want me to arrange a viewing?"
+
+
+def match_params(business: dict, name: str, listing: dict) -> list[str]:
+    """The ordered {{n}} body variables for the match WhatsApp template
+    (whatsapp._TEMPLATE_SPECS['match']): [first_name, what, business, listing_desc]."""
+    who = (name or "there").split()[0] if name else "there"
+    biz = business.get("name") or "our team"
+    title = (listing.get("title") or "a property").strip()
+    area = (listing.get("area") or "").strip()
+    beds = _digits(listing.get("bedrooms"))
+    price = (listing.get("price") or "").strip()
+    what = (
+        " ".join(
+            x for x in [f"{beds}BR" if beds else "", f"in {area}" if area else ""] if x
+        )
+        or "property"
+    )
+    desc = f"{title}, {price}" if price else title
+    return [who, what, biz, desc]
 
 
 def _deliver(business: dict, name: str, phone: str, listing: dict) -> None:
@@ -114,8 +141,15 @@ def _deliver(business: dict, name: str, phone: str, listing: dict) -> None:
         import asyncio
 
         try:
-            asyncio.run(whatsapp.send_business_message(
-                phone_id, phone, kind="match", params=[text], fallback_text=text))
+            asyncio.run(
+                whatsapp.send_business_message(
+                    phone_id,
+                    phone,
+                    kind="match",
+                    params=match_params(business, name, listing),
+                    fallback_text=text,
+                )
+            )
         except Exception:  # noqa: BLE001 — a bad send must never kill the sweep
             logger.exception("[match] whatsapp send failed for business=%s", bid)
     # Seed the alert as the model's turn so the lead's reply flows through run_turn
@@ -129,12 +163,20 @@ def send_due_matches() -> int:
     sent = 0
     for business in db.real_estate_businesses():
         bid = business["id"]
-        listings = [row for row in db.list_listings(bid) if (row.get("permit_number") or "").strip()]
+        listings = [
+            row
+            for row in db.list_listings(bid)
+            if (row.get("permit_number") or "").strip()
+        ]
         if not listings:
             continue
         for lead in db.list_qualifications(bid, within_days=_LEAD_WINDOW_DAYS):
             phone = to_wa_number(lead.get("phone") or "")
-            if not phone or db.phone_has_booking(bid, phone) or db.is_opted_out(bid, phone):
+            if (
+                not phone
+                or db.phone_has_booking(bid, phone)
+                or db.is_opted_out(bid, phone)
+            ):
                 continue
             if db.recent_match_alert(bid, phone, within_hours=_MIN_HOURS):
                 continue  # already pinged this lead recently — don't pile on
