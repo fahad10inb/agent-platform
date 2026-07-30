@@ -30,7 +30,12 @@ def frozen_clock(monkeypatch):
 
 
 def _tools(biz=None):
-    biz = biz or {"id": "bright-smile", "open_hour": 9, "close_hour": 17, "slot_minutes": 30}
+    biz = biz or {
+        "id": "bright-smile",
+        "open_hour": 9,
+        "close_hour": 17,
+        "slot_minutes": 30,
+    }
     return {f.__name__: f for f in ct.make_calendar_tools(biz)}
 
 
@@ -39,9 +44,24 @@ def test_services_endpoint_auth_matrix(client):
     """Deny by default, deny cross-tenant, allow own key and admin."""
     rows = {"services": [{"name": "skin fade", "duration_min": 45, "price": "80 AED"}]}
     assert client.post("/manage/bright-smile/services", json=rows).status_code == 401
-    assert client.post("/manage/bright-smile/services", json=rows, headers=VELVET).status_code == 403
-    assert client.post("/manage/bright-smile/services", json=rows, headers=BRIGHT).status_code == 200
-    assert client.post("/manage/bright-smile/services", json=rows, headers=ADMIN).status_code == 200
+    assert (
+        client.post(
+            "/manage/bright-smile/services", json=rows, headers=VELVET
+        ).status_code
+        == 403
+    )
+    assert (
+        client.post(
+            "/manage/bright-smile/services", json=rows, headers=BRIGHT
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(
+            "/manage/bright-smile/services", json=rows, headers=ADMIN
+        ).status_code
+        == 200
+    )
 
 
 def test_services_endpoint_validates_rows(client):
@@ -52,28 +72,42 @@ def test_services_endpoint_validates_rows(client):
         {"services": [{"name": "", "duration_min": 30}]},
         {"services": [{"name": f"s{i}", "duration_min": 30} for i in range(51)]},
     ):
-        assert client.post("/manage/bright-smile/services", json=bad, headers=BRIGHT).status_code == 422
+        assert (
+            client.post(
+                "/manage/bright-smile/services", json=bad, headers=BRIGHT
+            ).status_code
+            == 422
+        )
 
 
 def test_replace_semantics_and_manage_prefill(client):
     """POST replaces the whole menu (no appending), GET /manage returns it for
     the dashboard textarea, and menus never leak across tenants."""
-    client.post("/manage/bright-smile/services", json={"services": MENU}, headers=BRIGHT)
+    client.post(
+        "/manage/bright-smile/services", json={"services": MENU}, headers=BRIGHT
+    )
     rows = client.get("/manage/bright-smile", headers=BRIGHT).json()["services_rows"]
     assert [s["name"] for s in rows] == ["quick cut", "full color"]
     assert rows[1]["duration_min"] == 90 and rows[1]["price"] == "250 AED"
 
-    client.post("/manage/bright-smile/services",
-                json={"services": [{"name": "beard trim", "duration_min": 15}]}, headers=BRIGHT)
+    client.post(
+        "/manage/bright-smile/services",
+        json={"services": [{"name": "beard trim", "duration_min": 15}]},
+        headers=BRIGHT,
+    )
     rows = client.get("/manage/bright-smile", headers=BRIGHT).json()["services_rows"]
     assert [s["name"] for s in rows] == ["beard trim"]  # replaced, not appended
 
-    assert client.get("/manage/velvet-hair", headers=VELVET).json()["services_rows"] == []
+    assert (
+        client.get("/manage/velvet-hair", headers=VELVET).json()["services_rows"] == []
+    )
 
 
 # ── the menu in the prompt ────────────────────────────────────────────────────
 def test_menu_renders_in_prompt(client):
-    db.replace_services("bright-smile", [{"name": "skin fade", "duration_min": 45, "price": "80 AED"}])
+    db.replace_services(
+        "bright-smile", [{"name": "skin fade", "duration_min": 45, "price": "80 AED"}]
+    )
     p = build_system_prompt(db.get_business("bright-smile"))
     assert "SERVICE MENU" in p
     assert "skin fade — 45 min — 80 AED" in p
@@ -90,8 +124,12 @@ def test_service_duration_drives_the_grid(client, frozen_clock):
     """A 90-min service walks the day in 90-min steps and can't spill past
     closing; a name that's not on the menu falls back to the global grid."""
     db.replace_services("bright-smile", MENU)
-    tools = _tools({"id": "bright-smile", "open_hour": 9, "close_hour": 12, "slot_minutes": 30})
-    out = tools["check_availability"]("2026-07-08", service="Full Color")  # case-insensitive
+    tools = _tools(
+        {"id": "bright-smile", "open_hour": 9, "close_hour": 12, "slot_minutes": 30}
+    )
+    out = tools["check_availability"](
+        "2026-07-08", service="Full Color"
+    )  # case-insensitive
     assert out["available_slots"] == ["9:00 AM", "10:30 AM"]
     assert out["service"] == "full color" and out["duration_min"] == 90
 
@@ -104,10 +142,15 @@ def test_booked_service_blocks_every_slot_it_covers(client, frozen_clock):
     color, not just the 9:00 slot itself."""
     db.replace_services("bright-smile", MENU)
     tools = _tools()
-    assert tools["book_appointment"](
-        "2026-07-08", "9:00 AM", "Sara", "0501234567", service="full color"
-    )["status"] == "confirmed"
-    free = tools["check_availability"]("2026-07-08", service="quick cut")["available_slots"]
+    assert (
+        tools["book_appointment"](
+            "2026-07-08", "9:00 AM", "Sara", "0501234567", service="full color"
+        )["status"]
+        == "confirmed"
+    )
+    free = tools["check_availability"]("2026-07-08", service="quick cut")[
+        "available_slots"
+    ]
     assert "9:00 AM" not in free and "9:30 AM" not in free and "10:00 AM" not in free
     assert "10:30 AM" in free
 
@@ -117,9 +160,13 @@ def test_overlap_blocked_short_into_long(client, frozen_clock):
     db.replace_services("bright-smile", MENU)
     tools = _tools()
     tools["book_appointment"]("2026-07-08", "9:00 AM", "Sara", service="full color")
-    denied = tools["book_appointment"]("2026-07-08", "10:00 AM", "Omar", service="quick cut")
+    denied = tools["book_appointment"](
+        "2026-07-08", "10:00 AM", "Omar", service="quick cut"
+    )
     assert denied["status"] == "unavailable"
-    ok = tools["book_appointment"]("2026-07-08", "10:30 AM", "Omar", service="quick cut")
+    ok = tools["book_appointment"](
+        "2026-07-08", "10:30 AM", "Omar", service="quick cut"
+    )
     assert ok["status"] == "confirmed"  # first slot after the color ends
 
 
@@ -128,19 +175,91 @@ def test_overlap_blocked_long_over_short(client, frozen_clock):
     db.replace_services("bright-smile", MENU)
     tools = _tools()
     tools["book_appointment"]("2026-07-08", "11:00 AM", "Sara", service="quick cut")
-    denied = tools["book_appointment"]("2026-07-08", "10:00 AM", "Omar", service="full color")
+    denied = tools["book_appointment"](
+        "2026-07-08", "10:00 AM", "Omar", service="full color"
+    )
     assert denied["status"] == "unavailable"  # 10:00–11:30 covers the 11:00 cut
-    ok = tools["book_appointment"]("2026-07-08", "11:30 AM", "Omar", service="full color")
+    ok = tools["book_appointment"](
+        "2026-07-08", "11:30 AM", "Omar", service="full color"
+    )
     assert ok["status"] == "confirmed"  # starts exactly when the cut ends
+
+
+# ── the TOCTOU re-check (the advisory-locked write-time overlap guard) ────────
+# The pre-check reads the day and THEN we write; with mixed-length services two
+# overlapping bookings at DIFFERENT start times can both clear their own read and
+# both land (the unique index only stops the SAME label). save_booking /
+# reschedule_booking close that gap by re-running the overlap predicate INSIDE
+# the write transaction, under a per-(business, date) advisory lock. In prod the
+# lock serializes the racers; here we prove the contract that matters — the
+# predicate is consulted at WRITE time and its verdict decides the insert/update.
+def test_save_booking_rechecks_overlap_at_write_time(client):
+    """An overlap that only the write-time predicate can see still refuses the
+    insert (the exact label is free, so the unique index would not) and writes
+    nothing."""
+    biz = "bright-smile"
+    before = len(db.list_bookings(biz))
+    assert (
+        db.save_booking(
+            biz, "2026-09-01", "2:30 PM", "Racer", conflicts=lambda rows: True
+        )
+        is None
+    )
+    assert len(db.list_bookings(biz)) == before  # nothing slipped through
+
+
+def test_save_booking_write_time_recheck_allows_a_clear_slot(client):
+    """A clear predicate at write time inserts normally — the guard only blocks
+    real conflicts."""
+    assert (
+        db.save_booking(
+            "bright-smile",
+            "2026-09-01",
+            "3:30 PM",
+            "Clear",
+            conflicts=lambda rows: False,
+        )
+        is not None
+    )
+
+
+def test_reschedule_rechecks_overlap_at_write_time(client):
+    """A move whose new slot conflicts only at write time is refused (None) and
+    the booking stays at its old slot."""
+    biz = "bright-smile"
+    db.save_booking(biz, "2026-09-02", "9:00 AM", "Mover")
+    assert (
+        db.reschedule_booking(
+            biz,
+            "Mover",
+            "2026-09-02",
+            "9:00 AM",
+            "2026-09-02",
+            "11:00 AM",
+            conflicts=lambda rows: True,
+        )
+        is None
+    )
+    still = db.find_bookings(biz, "Mover")
+    assert still and still[0]["time"] == "9:00 AM"  # unmoved
 
 
 def test_existing_duration_inferred_from_reason(client, frozen_clock):
     """A booking saved without the service param still blocks its true window,
     because its stored reason names the service."""
     db.replace_services("bright-smile", MENU)
-    db.save_booking("bright-smile", "2026-07-08", "9:00 AM", "Sara", "", "full color for the wedding")
+    db.save_booking(
+        "bright-smile",
+        "2026-07-08",
+        "9:00 AM",
+        "Sara",
+        "",
+        "full color for the wedding",
+    )
     tools = _tools()
-    denied = tools["book_appointment"]("2026-07-08", "10:00 AM", "Omar", service="quick cut")
+    denied = tools["book_appointment"](
+        "2026-07-08", "10:00 AM", "Omar", service="quick cut"
+    )
     assert denied["status"] == "unavailable"
 
 
@@ -149,7 +268,12 @@ def test_booking_reason_records_the_service_name(client, frozen_clock, state):
     future overlap checks read the duration back from."""
     db.replace_services("bright-smile", MENU)
     _tools()["book_appointment"](
-        "2026-07-08", "9:00 AM", "Sara", "050", reason="going gray", service="full color"
+        "2026-07-08",
+        "9:00 AM",
+        "Sara",
+        "050",
+        reason="going gray",
+        service="full color",
     )
     assert state["bookings"][0]["reason"] == "full color — going gray"
 
@@ -158,9 +282,12 @@ def test_no_menu_keeps_the_old_behavior(client, frozen_clock):
     """Businesses without service rows behave exactly as before — the optional
     service arg is ignored and the exact-slot check still rules."""
     tools = _tools()
-    assert tools["book_appointment"](
-        "2026-07-08", "9:00 AM", "Sara", service="full color"
-    )["status"] == "confirmed"
+    assert (
+        tools["book_appointment"](
+            "2026-07-08", "9:00 AM", "Sara", service="full color"
+        )["status"]
+        == "confirmed"
+    )
     dup = tools["book_appointment"]("2026-07-08", "9:00 AM", "Omar")
     assert dup["status"] == "unavailable"
     free = tools["check_availability"]("2026-07-08")["available_slots"]

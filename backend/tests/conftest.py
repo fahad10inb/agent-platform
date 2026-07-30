@@ -20,10 +20,24 @@ import pytest  # noqa: E402
 from app import db  # noqa: E402
 
 # ── in-memory state, same shape the real tables hold ─────────────────────────
-_S = {"businesses": {}, "bookings": [], "memory": [], "leads": [], "messages": [],
-      "services": [], "listings": [], "reminders": set(), "nurtures": set(),
-      "opt_outs": set(), "quals": {}, "usage": {}, "ai_pauses": set(),
-      "review_requests": set(), "match_alerts": [], "next_id": 1}
+_S = {
+    "businesses": {},
+    "bookings": [],
+    "memory": [],
+    "leads": [],
+    "messages": [],
+    "services": [],
+    "listings": [],
+    "reminders": set(),
+    "nurtures": set(),
+    "opt_outs": set(),
+    "quals": {},
+    "usage": {},
+    "ai_pauses": set(),
+    "review_requests": set(),
+    "match_alerts": [],
+    "next_id": 1,
+}
 
 
 def _nid() -> int:
@@ -51,21 +65,49 @@ def _fake_upsert_business(b):
 def _fake_update_business_settings(business_id, fields):
     allowed = db._EDITABLE_BUSINESS_FIELDS
     if business_id in _S["businesses"]:
-        _S["businesses"][business_id].update({k: v for k, v in fields.items() if k in allowed})
+        _S["businesses"][business_id].update(
+            {k: v for k, v in fields.items() if k in allowed}
+        )
 
 
 def _fake_list_businesses():
-    return [{"id": b["id"], "name": b["name"], "type": b["type"]} for b in _S["businesses"].values()]
+    return [
+        {"id": b["id"], "name": b["name"], "type": b["type"]}
+        for b in _S["businesses"].values()
+    ]
 
 
-def _fake_save_booking(business_id, date, time, patient_name, phone="", reason=""):
+def _active_rows_on(business_id, date):
+    # What the real save_booking/reschedule_booking re-read inside the locked txn:
+    # non-cancelled bookings on that date, as {time, reason}.
+    return [
+        {"time": r["time"], "reason": r.get("reason")}
+        for r in _S["bookings"]
+        if r["business_id"] == business_id
+        and r["date"] == date
+        and r.get("status", "booked") != "cancelled"
+    ]
+
+
+def _fake_save_booking(
+    business_id, date, time, patient_name, phone="", reason="", conflicts=None
+):
     # The real layer enforces UNIQUE (business_id, date, time) — mirror it.
     for r in _S["bookings"]:
         if (r["business_id"], r["date"], r["time"]) == (business_id, date, time):
             return None
+    # Duration path: the real layer re-checks overlap inside the insert txn under
+    # an advisory lock. Mirror that here so the TOCTOU fix is exercised in-memory.
+    if conflicts is not None and conflicts(_active_rows_on(business_id, date)):
+        return None
     row = {
-        "id": _nid(), "business_id": business_id, "date": date, "time": time,
-        "patient_name": patient_name, "phone": phone, "reason": reason,
+        "id": _nid(),
+        "business_id": business_id,
+        "date": date,
+        "time": time,
+        "patient_name": patient_name,
+        "phone": phone,
+        "reason": reason,
         "status": "booked",
     }
     _S["bookings"].append(row)
@@ -104,21 +146,32 @@ def _fake_claim_review_request(business_id, booking_id):
 def _fake_set_booking_status(business_id, patient_name, date, time, status):
     name = (patient_name or "").strip().lower()
     for r in _S["bookings"]:
-        if (r["business_id"] == business_id and r["patient_name"].lower() == name
-                and r["date"] == date and r["time"] == time):
+        if (
+            r["business_id"] == business_id
+            and r["patient_name"].lower() == name
+            and r["date"] == date
+            and r["time"] == time
+        ):
             r["status"] = status
             return True
     return False
 
 
 def _fake_list_bookings(business_id, limit=100, offset=0):
-    rows = [dict(r) for r in reversed(_S["bookings"]) if r["business_id"] == business_id]
-    return rows[offset:offset + limit]
+    rows = [
+        dict(r) for r in reversed(_S["bookings"]) if r["business_id"] == business_id
+    ]
+    return rows[offset : offset + limit]
 
 
 def _fake_save_message(business_id, conversation_id, role, text):
     _S["messages"].append(
-        {"business_id": business_id, "conversation_id": conversation_id, "role": role, "text": text}
+        {
+            "business_id": business_id,
+            "conversation_id": conversation_id,
+            "role": role,
+            "text": text,
+        }
     )
 
 
@@ -127,8 +180,16 @@ def _fake_list_conversations(business_id, limit=50):
     for i, m in enumerate(_S["messages"]):
         if m["business_id"] != business_id:
             continue
-        c = convs.setdefault(m["conversation_id"], {"conversation_id": m["conversation_id"],
-                                                    "messages": 0, "last_text": "", "last_role": "", "_ord": 0})
+        c = convs.setdefault(
+            m["conversation_id"],
+            {
+                "conversation_id": m["conversation_id"],
+                "messages": 0,
+                "last_text": "",
+                "last_role": "",
+                "_ord": 0,
+            },
+        )
         c["messages"] += 1
         c["last_text"] = m["text"]
         c["last_role"] = m["role"]
@@ -140,9 +201,13 @@ def _fake_list_conversations(business_id, limit=50):
 
 
 def _fake_count_user_messages(business_id, conversation_id):
-    return sum(1 for m in _S["messages"]
-               if m["business_id"] == business_id and m["conversation_id"] == conversation_id
-               and m["role"] == "user")
+    return sum(
+        1
+        for m in _S["messages"]
+        if m["business_id"] == business_id
+        and m["conversation_id"] == conversation_id
+        and m["role"] == "user"
+    )
 
 
 def _fake_get_history(business_id, conversation_id, limit=40):
@@ -189,7 +254,9 @@ def _fake_get_metrics(business_id):
         "conversations_today": engaged,
         "conversations_30d": engaged,
         "messages_30d": sum(per_conv.values()),
-        "bookings_30d": sum(1 for b in _S["bookings"] if b["business_id"] == business_id),
+        "bookings_30d": sum(
+            1 for b in _S["bookings"] if b["business_id"] == business_id
+        ),
         "leads_30d": sum(1 for r in _S["leads"] if r["business_id"] == business_id),
     }
 
@@ -200,7 +267,9 @@ def _fake_get_week_stats(business_id):
     return {
         "conversations_7d": sum(1 for n in per_conv.values() if n >= 2),
         "messages_7d": sum(per_conv.values()),
-        "bookings_7d": sum(1 for b in _S["bookings"] if b["business_id"] == business_id),
+        "bookings_7d": sum(
+            1 for b in _S["bookings"] if b["business_id"] == business_id
+        ),
         "leads_7d": sum(1 for r in _S["leads"] if r["business_id"] == business_id),
     }
 
@@ -214,17 +283,26 @@ def _fake_set_last_digest(business_id):
 
 def _fake_list_businesses_full():
     return [
-        {"id": b["id"], "name": b["name"], "notify_email": b.get("notify_email"),
-         "last_digest_at": b.get("last_digest_at")}
+        {
+            "id": b["id"],
+            "name": b["name"],
+            "notify_email": b.get("notify_email"),
+            "last_digest_at": b.get("last_digest_at"),
+        }
         for b in _S["businesses"].values()
     ]
 
 
 def _fake_real_estate_businesses():
     return [
-        {"id": b["id"], "name": b["name"], "vertical": b.get("vertical"),
-         "whatsapp_phone_id": b.get("whatsapp_phone_id")}
-        for b in _S["businesses"].values() if b.get("vertical") == "real_estate"
+        {
+            "id": b["id"],
+            "name": b["name"],
+            "vertical": b.get("vertical"),
+            "whatsapp_phone_id": b.get("whatsapp_phone_id"),
+        }
+        for b in _S["businesses"].values()
+        if b.get("vertical") == "real_estate"
     ]
 
 
@@ -251,39 +329,67 @@ def _digits(s):
 
 def _fake_forget_caller(business_id, phone="", name=""):
     from app.phone import to_wa_number
+
     counts = {}
     key = to_wa_number(phone)
     if key:
         before = len(_S["bookings"])
-        _S["bookings"][:] = [r for r in _S["bookings"]
-                             if not (r["business_id"] == business_id and to_wa_number(r.get("phone")) == key)]
+        _S["bookings"][:] = [
+            r
+            for r in _S["bookings"]
+            if not (
+                r["business_id"] == business_id and to_wa_number(r.get("phone")) == key
+            )
+        ]
         counts["bookings"] = before - len(_S["bookings"])
         before = len(_S["leads"])
-        _S["leads"][:] = [r for r in _S["leads"]
-                          if not (r["business_id"] == business_id and to_wa_number(r.get("phone")) == key)]
+        _S["leads"][:] = [
+            r
+            for r in _S["leads"]
+            if not (
+                r["business_id"] == business_id and to_wa_number(r.get("phone")) == key
+            )
+        ]
         counts["leads"] = before - len(_S["leads"])
         before = len(_S["messages"])
-        _S["messages"][:] = [m for m in _S["messages"]
-                             if not (m["business_id"] == business_id and m["conversation_id"] == f"wa-{key}")]
+        _S["messages"][:] = [
+            m
+            for m in _S["messages"]
+            if not (
+                m["business_id"] == business_id and m["conversation_id"] == f"wa-{key}"
+            )
+        ]
         counts["whatsapp_messages"] = before - len(_S["messages"])
     if name:
         key = db._norm(name)
         before = len(_S["memory"])
-        _S["memory"][:] = [m for m in _S["memory"]
-                           if not (m["business_id"] == business_id and m["caller"] == key)]
+        _S["memory"][:] = [
+            m
+            for m in _S["memory"]
+            if not (m["business_id"] == business_id and m["caller"] == key)
+        ]
         counts["caller_memory"] = before - len(_S["memory"])
     return counts
 
 
 def _fake_booked_times(business_id, date):
-    return [r["time"] for r in _S["bookings"] if r["business_id"] == business_id and r["date"] == date]
+    return [
+        r["time"]
+        for r in _S["bookings"]
+        if r["business_id"] == business_id and r["date"] == date
+    ]
 
 
 def _fake_find_bookings(business_id, patient_name):
     name = (patient_name or "").strip().lower()
     return [
-        {"id": r["id"], "date": r["date"], "time": r["time"],
-         "patient_name": r["patient_name"], "phone": r["phone"]}
+        {
+            "id": r["id"],
+            "date": r["date"],
+            "time": r["time"],
+            "patient_name": r["patient_name"],
+            "phone": r["phone"],
+        }
         for r in _S["bookings"]
         if r["business_id"] == business_id and r["patient_name"].lower() == name
     ]
@@ -293,33 +399,56 @@ def _fake_cancel_booking(business_id, patient_name, date, time):
     name = (patient_name or "").strip().lower()
     before = len(_S["bookings"])
     _S["bookings"][:] = [
-        r for r in _S["bookings"]
-        if not (r["business_id"] == business_id and r["patient_name"].lower() == name
-                and r["date"] == date and r["time"] == time)
+        r
+        for r in _S["bookings"]
+        if not (
+            r["business_id"] == business_id
+            and r["patient_name"].lower() == name
+            and r["date"] == date
+            and r["time"] == time
+        )
     ]
     return len(_S["bookings"]) < before
 
 
-def _fake_reschedule_booking(business_id, patient_name, old_date, old_time, new_date, new_time):
+def _fake_reschedule_booking(
+    business_id, patient_name, old_date, old_time, new_date, new_time, conflicts=None
+):
     for r in _S["bookings"]:
-        if (r["business_id"], r["date"], r["time"]) == (business_id, new_date, new_time):
+        if (r["business_id"], r["date"], r["time"]) == (
+            business_id,
+            new_date,
+            new_time,
+        ):
             return None  # unique index would reject
+    if conflicts is not None and conflicts(_active_rows_on(business_id, new_date)):
+        return None  # advisory-locked overlap re-check
     name = (patient_name or "").strip().lower()
     for r in _S["bookings"]:
-        if (r["business_id"] == business_id and r["patient_name"].lower() == name
-                and r["date"] == old_date and r["time"] == old_time):
+        if (
+            r["business_id"] == business_id
+            and r["patient_name"].lower() == name
+            and r["date"] == old_date
+            and r["time"] == old_time
+        ):
             r["date"], r["time"] = new_date, new_time
             return True
     return False
 
 
 def _fake_save_caller_memory(business_id, name, note):
-    _S["memory"].append({"business_id": business_id, "caller": db._norm(name), "note": note})
+    _S["memory"].append(
+        {"business_id": business_id, "caller": db._norm(name), "note": note}
+    )
 
 
 def _fake_get_caller_memory(business_id, name):
     key = db._norm(name)
-    return [m["note"] for m in _S["memory"] if m["business_id"] == business_id and m["caller"] == key]
+    return [
+        m["note"]
+        for m in _S["memory"]
+        if m["business_id"] == business_id and m["caller"] == key
+    ]
 
 
 def _fake_replace_caller_memory(business_id, name, notes):
@@ -327,7 +456,9 @@ def _fake_replace_caller_memory(business_id, name, notes):
     # simply a filter-then-extend.
     key = db._norm(name)
     _S["memory"][:] = [
-        m for m in _S["memory"] if not (m["business_id"] == business_id and m["caller"] == key)
+        m
+        for m in _S["memory"]
+        if not (m["business_id"] == business_id and m["caller"] == key)
     ]
     for note in notes:
         _S["memory"].append({"business_id": business_id, "caller": key, "note": note})
@@ -343,7 +474,10 @@ def _fake_bookings_with_times(business_id, date):
 
 def _fake_list_services(business_id):
     return [
-        {k: s[k] for k in ("id", "name", "duration_min", "price", "category", "bookable")}
+        {
+            k: s[k]
+            for k in ("id", "name", "duration_min", "price", "category", "bookable")
+        }
         for s in _S["services"]
         if s["business_id"] == business_id
     ]
@@ -353,24 +487,36 @@ def _fake_replace_services(business_id, services):
     # Real layer: DELETE + INSERTs in one transaction — here, filter then extend.
     _S["services"][:] = [s for s in _S["services"] if s["business_id"] != business_id]
     for s in services:
-        _S["services"].append({
-            "id": _nid(), "business_id": business_id, "name": s["name"],
-            "duration_min": s["duration_min"], "price": s.get("price", ""),
-            "category": s.get("category", ""), "bookable": s.get("bookable", True),
-        })
+        _S["services"].append(
+            {
+                "id": _nid(),
+                "business_id": business_id,
+                "name": s["name"],
+                "duration_min": s["duration_min"],
+                "price": s.get("price", ""),
+                "category": s.get("category", ""),
+                "bookable": s.get("bookable", True),
+            }
+        )
 
 
 def _fake_save_lead(business_id, name, phone, interest, notes=""):
-    row = {"id": _nid(), "business_id": business_id, "name": name, "phone": phone,
-           "interest": interest, "notes": notes,
-           "created_at": datetime.datetime.now(datetime.timezone.utc)}
+    row = {
+        "id": _nid(),
+        "business_id": business_id,
+        "name": name,
+        "phone": phone,
+        "interest": interest,
+        "notes": notes,
+        "created_at": datetime.datetime.now(datetime.timezone.utc),
+    }
     _S["leads"].append(row)
     return row["id"]
 
 
 def _fake_list_leads(business_id, limit=100, offset=0):
     rows = [dict(r) for r in reversed(_S["leads"]) if r["business_id"] == business_id]
-    return rows[offset:offset + limit]
+    return rows[offset : offset + limit]
 
 
 def _fake_list_listings(business_id):
@@ -380,13 +526,20 @@ def _fake_list_listings(business_id):
 def _fake_replace_listings(business_id, listings):
     _S["listings"] = [r for r in _S["listings"] if r["business_id"] != business_id]
     for row in listings:
-        _S["listings"].append({
-            "id": _nid(), "business_id": business_id, "title": row["title"],
-            "area": row.get("area", ""), "bedrooms": row.get("bedrooms", ""),
-            "price": row.get("price", ""), "purpose": row.get("purpose", ""),
-            "notes": row.get("notes", ""), "permit_number": row.get("permit_number", ""),
-            "reference": row.get("reference", ""),
-        })
+        _S["listings"].append(
+            {
+                "id": _nid(),
+                "business_id": business_id,
+                "title": row["title"],
+                "area": row.get("area", ""),
+                "bedrooms": row.get("bedrooms", ""),
+                "price": row.get("price", ""),
+                "purpose": row.get("purpose", ""),
+                "notes": row.get("notes", ""),
+                "permit_number": row.get("permit_number", ""),
+                "reference": row.get("reference", ""),
+            }
+        )
 
 
 def _fake_rotate_api_key(business_id, new_key):
@@ -408,6 +561,7 @@ def _fake_get_business_by_whatsapp(phone_number_id):
 
 def _fake_set_opt_out(business_id, phone):
     from app.phone import to_wa_number
+
     key = to_wa_number(phone)
     if key:
         _S["opt_outs"].add((business_id, key))
@@ -415,6 +569,7 @@ def _fake_set_opt_out(business_id, phone):
 
 def _fake_is_opted_out(business_id, phone):
     from app.phone import to_wa_number
+
     return (business_id, to_wa_number(phone)) in _S["opt_outs"]
 
 
@@ -424,9 +579,16 @@ def _fake_leads_for_nurture(within_days=45):
 
 def _fake_phone_has_booking(business_id, phone):
     from app.phone import to_wa_number
+
     key = to_wa_number(phone)
-    return any(r["business_id"] == business_id and to_wa_number(r.get("phone")) == key
-               for r in _S["bookings"]) if key else False
+    return (
+        any(
+            r["business_id"] == business_id and to_wa_number(r.get("phone")) == key
+            for r in _S["bookings"]
+        )
+        if key
+        else False
+    )
 
 
 def _fake_claim_nurture(business_id, phone, stage):
@@ -438,7 +600,11 @@ def _fake_claim_nurture(business_id, phone, stage):
 
 
 def _fake_upsert_qualification(business_id, phone, name, fields, score):
-    _S["quals"][(business_id, phone)] = {"name": name, "fields": dict(fields), "score": score}
+    _S["quals"][(business_id, phone)] = {
+        "name": name,
+        "fields": dict(fields),
+        "score": score,
+    }
 
 
 def _fake_get_qualification(business_id, phone):
@@ -451,7 +617,11 @@ def _last9(phone):
 
 
 def _fake_list_qualifications(business_id, within_days=60):
-    return [{"phone": phone, **dict(q)} for (bid, phone), q in _S["quals"].items() if bid == business_id]
+    return [
+        {"phone": phone, **dict(q)}
+        for (bid, phone), q in _S["quals"].items()
+        if bid == business_id
+    ]
 
 
 def _fake_claim_match_alert(business_id, phone, listing_key):
@@ -463,7 +633,9 @@ def _fake_claim_match_alert(business_id, phone, listing_key):
 
 
 def _fake_recent_match_alert(business_id, phone, within_hours=20):
-    return any(b == business_id and p == _last9(phone) for (b, p, _k) in _S["match_alerts"])
+    return any(
+        b == business_id and p == _last9(phone) for (b, p, _k) in _S["match_alerts"]
+    )
 
 
 def _fake_get_business_by_ingest_token(token):
@@ -502,6 +674,7 @@ def _fake_set_calendar_token(business_id, token):
 
 def _fake_find_recent_lead(business_id, phone, within_hours=48):
     from app.phone import to_wa_number
+
     key = to_wa_number(phone)
     if not key:
         return None

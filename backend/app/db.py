@@ -138,56 +138,88 @@ def init_db() -> None:
         # they do sale/rent/off-plan, the languages the team speaks, and the
         # RERA ORN (broker registration number, the trust signal). Empty for
         # non-real-estate tenants; the prompt only surfaces what's present.
-        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS areas_covered TEXT")
+        conn.execute(
+            "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS areas_covered TEXT"
+        )
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS deal_focus TEXT")
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS languages TEXT")
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS orn TEXT")
         # Booking hygiene (Fresha-style): how much notice a booking needs, how
         # far ahead the calendar opens, and breathing room between appointments.
-        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS min_notice_hours INTEGER")
-        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS max_advance_days INTEGER")
-        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS buffer_min INTEGER")
+        conn.execute(
+            "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS min_notice_hours INTEGER"
+        )
+        conn.execute(
+            "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS max_advance_days INTEGER"
+        )
+        conn.execute(
+            "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS buffer_min INTEGER"
+        )
         # Where to email the owner when a booking or lead lands (empty = off).
-        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS notify_email TEXT")
+        conn.execute(
+            "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS notify_email TEXT"
+        )
         # Escalation + after-hours behavior: a number to hand a frustrated
         # caller (empty = take a message instead), and what the agent should do
         # outside opening hours ('take_message' | 'book_only' | 'info_only').
-        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS transfer_number TEXT")
-        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS after_hours_mode TEXT")
+        conn.execute(
+            "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS transfer_number TEXT"
+        )
+        conn.execute(
+            "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS after_hours_mode TEXT"
+        )
         # WhatsApp channel: the Cloud API phone_number_id whose webhooks belong
         # to this business (empty = WhatsApp not connected).
-        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS whatsapp_phone_id TEXT")
+        conn.execute(
+            "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS whatsapp_phone_id TEXT"
+        )
         # Google review deep link (…/review?placeid=… or a g.page/…/review short
         # link). Empty = the review-request sweep skips this business.
-        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS google_review_url TEXT")
+        conn.execute(
+            "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS google_review_url TEXT"
+        )
         # Portal lead-intake: an unguessable token that routes forwarded portal
         # emails to this business (empty = intake not set up).
-        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS lead_ingest_token TEXT")
+        conn.execute(
+            "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS lead_ingest_token TEXT"
+        )
         # Calendar feed token. Google Calendar subscribes to a bare URL and cannot
         # send an auth header, so the secret rides in the path — long, random, and
         # rotatable (rotating instantly kills every old subscription).
-        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS calendar_token TEXT")
+        conn.execute(
+            "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS calendar_token TEXT"
+        )
         # CRM write-back: a webhook the agency gives us (a Bitrix24 inbound
         # webhook URL, a Zapier/Make hook, or any endpoint) that qualified leads
         # are POSTed to. crm_type tunes the payload shape (empty = no write-back).
-        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS crm_webhook_url TEXT")
+        conn.execute(
+            "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS crm_webhook_url TEXT"
+        )
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS crm_type TEXT")
         # Plan + monthly message quota (the founding plan's fair-use fuse and the
         # billing prerequisite). NULL quota = uncapped (the current founding
         # default). quota_notice_month = the 'YYYY-MM' we last warned the owner,
         # so the approaching/over-limit email fires at most once per month.
         conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS plan TEXT")
-        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS monthly_msg_quota INTEGER")
-        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS quota_notice_month TEXT")
+        conn.execute(
+            "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS monthly_msg_quota INTEGER"
+        )
+        conn.execute(
+            "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS quota_notice_month TEXT"
+        )
         # When the weekly ROI digest last went out — the idempotency marker that
         # lets the scheduler re-check hourly without ever double-sending.
-        conn.execute("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS last_digest_at TIMESTAMPTZ")
+        conn.execute(
+            "ALTER TABLE businesses ADD COLUMN IF NOT EXISTS last_digest_at TIMESTAMPTZ"
+        )
         # Booking now captures mobile number + reason for visit (UAE clinics take both).
         conn.execute("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS phone TEXT")
         conn.execute("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reason TEXT")
         # Two-way reminders: confirmation state a caller sets by replying to the
         # reminder ('booked' | 'confirmed'; a cancel deletes the row entirely).
-        conn.execute("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'booked'")
+        conn.execute(
+            "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'booked'"
+        )
         # Conversations are DURABLE (were in-process RAM: every deploy wiped all
         # active chats mid-sentence, and it could never scale past one server).
         conn.execute(
@@ -256,8 +288,12 @@ def init_db() -> None:
         # Trakheesi/Madhmoun advertising permit + the agency's own reference —
         # the permit is the compliance key (a listing may only be advertised
         # WITH a valid one) and doubles as the dedup key across import sources.
-        conn.execute("ALTER TABLE listings ADD COLUMN IF NOT EXISTS permit_number TEXT DEFAULT ''")
-        conn.execute("ALTER TABLE listings ADD COLUMN IF NOT EXISTS reference TEXT DEFAULT ''")
+        conn.execute(
+            "ALTER TABLE listings ADD COLUMN IF NOT EXISTS permit_number TEXT DEFAULT ''"
+        )
+        conn.execute(
+            "ALTER TABLE listings ADD COLUMN IF NOT EXISTS reference TEXT DEFAULT ''"
+        )
         # Reminder log — one row per (booking, stage) actually sent. The UNIQUE
         # constraint is the send-once guarantee: the sweep INSERTs to CLAIM a
         # reminder, so two overlapping sweeps (or a restart mid-pass) can never
@@ -358,12 +394,22 @@ def init_db() -> None:
         )
         # Every hot query filters on these — without indexes each is a full
         # table scan that grows linearly with every tenant's data combined.
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_bookings_biz_date ON bookings (business_id, date)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_caller_memory_biz ON caller_memory (business_id, caller)")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_bookings_biz_date ON bookings (business_id, date)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_caller_memory_biz ON caller_memory (business_id, caller)"
+        )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_leads_biz ON leads (business_id)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_services_biz ON services (business_id)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_listings_biz ON listings (business_id)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages (business_id, conversation_id, id)")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_services_biz ON services (business_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_listings_biz ON listings (business_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages (business_id, conversation_id, id)"
+        )
         # One-time (idempotent) migration: hash any api_key still stored in
         # plaintext, so a DB dump never exposes a live tenant credential. New keys
         # are already stored hashed at the route layer; this catches rows that
@@ -371,6 +417,7 @@ def init_db() -> None:
         # this can run lazily without ever locking anyone out. Import is lazy to
         # avoid a security<->db import cycle at module load.
         from app.security import hash_key  # noqa: PLC0415
+
         legacy = conn.execute(
             "SELECT id, api_key FROM businesses "
             "WHERE api_key IS NOT NULL AND api_key <> '' AND api_key NOT LIKE 'sha256:%'"
@@ -398,13 +445,20 @@ def init_db() -> None:
         # (e.g. legacy duplicate rows), the app must still boot, but we can't let
         # the loss of the guarantee be invisible. Log LOUD so it's noticed and
         # the duplicates cleaned up; the tool-level check still applies meanwhile.
-        logger.exception("CRITICAL: could not create uq_booking_slot — double-booking guard is OFF")
+        logger.exception(
+            "CRITICAL: could not create uq_booking_slot — double-booking guard is OFF"
+        )
 
 
 # --- bookings ----------------------------------------------------------------
 def save_booking(
-    business_id: str, date: str, time: str, patient_name: str,
-    phone: str = "", reason: str = "",
+    business_id: str,
+    date: str,
+    time: str,
+    patient_name: str,
+    phone: str = "",
+    reason: str = "",
+    conflicts=None,
 ) -> int | None:
     """Insert one booking for a business and return its new id — or None if the
     slot was taken in the race window between the tool's check and this insert
@@ -413,9 +467,33 @@ def save_booking(
     Captures mobile number + reason for visit (what UAE front desks take), both
     optional. %s placeholders keep it injection-safe; RETURNING id hands back the
     new row's id.
+
+    `conflicts` is the duration/overlap path: a plain unique index only stops
+    TWO bookings with the SAME time label, but a 90-min colour at 2:00 and a
+    30-min trim at 2:30 overlap with DIFFERENT labels, so the caller's Python
+    overlap check (read the day, then insert) has a race — two overlapping slots
+    can both pass their own read and both insert. When given, `conflicts(active_
+    rows)` (returns True to refuse) is re-run HERE, inside the insert
+    transaction, under a per-(business, date) advisory lock — so the re-read
+    sees any booking a racing request just committed. We use the TRANSACTION-
+    scoped lock (not session-scoped) on purpose: Supabase's pooler runs
+    transaction-mode pgbouncer, where a session lock's connection isn't sticky
+    but an xact lock is held on one server connection for the whole txn.
     """
     try:
         with _connect() as conn:
+            if conflicts is not None:
+                conn.execute(
+                    "SELECT pg_advisory_xact_lock(hashtext(%s), hashtext(%s))",
+                    (business_id, date),
+                )
+                rows = conn.execute(
+                    "SELECT time, reason FROM bookings WHERE business_id = %s AND date = %s "
+                    "AND COALESCE(status, 'booked') <> 'cancelled'",
+                    (business_id, date),
+                ).fetchall()
+                if conflicts(rows):
+                    return None
             row = conn.execute(
                 "INSERT INTO bookings (business_id, date, time, patient_name, phone, reason) "
                 "VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
@@ -663,6 +741,7 @@ def forget_caller(business_id: str, phone: str = "", name: str = "") -> dict:
     `wa-<E.164>`, so those message rows are matched on that exact conversation_id.
     Returns per-table delete counts."""
     from app.phone import to_wa_number
+
     digits = _phone_digits(phone)
     counts: dict[str, int] = {}
     with _connect() as conn:
@@ -694,7 +773,8 @@ def booked_times(business_id: str, date: str) -> list[str]:
     double-booking)."""
     with _connect() as conn:
         rows = conn.execute(
-            "SELECT time FROM bookings WHERE business_id = %s AND date = %s",
+            "SELECT time FROM bookings WHERE business_id = %s AND date = %s "
+            "AND COALESCE(status, 'booked') <> 'cancelled'",
             (business_id, date),
         ).fetchall()
     return [r["time"] for r in rows]
@@ -742,6 +822,7 @@ def set_opt_out(business_id: str, phone: str) -> None:
     format the caller gave ('0501234567', '+971 50 123 4567') stops all their
     future outbound. Idempotent."""
     from app.phone import to_wa_number
+
     key = to_wa_number(phone)
     if not key:
         return
@@ -756,6 +837,7 @@ def set_opt_out(business_id: str, phone: str) -> None:
 def is_opted_out(business_id: str, phone: str) -> bool:
     """True if this caller asked not to be contacted — every sweep checks it."""
     from app.phone import to_wa_number
+
     key = to_wa_number(phone)
     if not key:
         return False
@@ -785,7 +867,9 @@ def leads_for_nurture(within_days: int = 45) -> list[dict]:
 # '0501234567', '+971 50 123 4567' and '971501234567' all end '501234567'.
 # This is what keeps phone matching consistent with the wa-<E.164> thread ids
 # and the to_wa_number()-based opt-out keys (the review found these had drifted).
-_PHONE_MATCH_SQL = "RIGHT(regexp_replace(COALESCE({col}, ''), '\\D', '', 'g'), 9) = RIGHT(%s, 9)"
+_PHONE_MATCH_SQL = (
+    "RIGHT(regexp_replace(COALESCE({col}, ''), '\\D', '', 'g'), 9) = RIGHT(%s, 9)"
+)
 
 
 def _phone_digits(phone: str) -> str:
@@ -801,6 +885,7 @@ def phone_has_booking(business_id: str, phone: str) -> bool:
     with _connect() as conn:
         row = conn.execute(
             "SELECT 1 FROM bookings WHERE business_id = %s "
+            "AND COALESCE(status, 'booked') <> 'cancelled' "
             "AND " + _PHONE_MATCH_SQL.format(col="phone") + " LIMIT 1",
             (business_id, digits),
         ).fetchone()
@@ -845,7 +930,9 @@ def claim_review_request(business_id: str, booking_id: int) -> bool:
     return row is not None
 
 
-def set_booking_status(business_id: str, patient_name: str, date: str, time: str, status: str) -> bool:
+def set_booking_status(
+    business_id: str, patient_name: str, date: str, time: str, status: str
+) -> bool:
     """Mark a caller's booking confirmed (the two-way reminder reply). Scoped by
     business_id + name + slot so it can only ever touch that caller's row."""
     with _connect() as conn:
@@ -863,7 +950,8 @@ def bookings_with_times(business_id: str, date: str) -> list[dict]:
     so overlap checks can block a new slot that would cut into it."""
     with _connect() as conn:
         rows = conn.execute(
-            "SELECT time, reason FROM bookings WHERE business_id = %s AND date = %s",
+            "SELECT time, reason FROM bookings WHERE business_id = %s AND date = %s "
+            "AND COALESCE(status, 'booked') <> 'cancelled'",
             (business_id, date),
         ).fetchall()
     return rows
@@ -874,36 +962,74 @@ def find_bookings(business_id: str, patient_name: str) -> list[dict]:
     with _connect() as conn:
         rows = conn.execute(
             "SELECT id, date, time, patient_name, phone FROM bookings "
-            "WHERE business_id = %s AND LOWER(patient_name) = LOWER(%s) ORDER BY date, time",
+            "WHERE business_id = %s AND LOWER(patient_name) = LOWER(%s) "
+            "AND COALESCE(status, 'booked') <> 'cancelled' ORDER BY date, time",
             (business_id, (patient_name or "").strip()),
         ).fetchall()
     return rows
 
 
 def cancel_booking(business_id: str, patient_name: str, date: str, time: str) -> bool:
-    """Delete a specific booking. Returns True if a row was actually removed."""
+    """SOFT-cancel a booking (status='cancelled') — not a hard delete. A deleted
+    row just vanishes from the .ics feed, and a subscribed Google Calendar keeps
+    the event it already imported, so the viewing stays on the agent's calendar as
+    a ghost. Keeping the row lets the feed emit STATUS:CANCELLED, which actually
+    removes it. Availability/overlap/nurture queries all exclude cancelled rows, so
+    the slot frees up as before. Returns True if a booked row was cancelled."""
     with _connect() as conn:
         cur = conn.execute(
-            "DELETE FROM bookings WHERE business_id = %s AND LOWER(patient_name) = LOWER(%s) "
-            "AND date = %s AND time = %s",
+            "UPDATE bookings SET status = 'cancelled' WHERE business_id = %s "
+            "AND LOWER(patient_name) = LOWER(%s) AND date = %s AND time = %s "
+            "AND COALESCE(status, 'booked') <> 'cancelled'",
             (business_id, (patient_name or "").strip(), date, time),
         )
-        removed = cur.rowcount
-    return removed > 0
+        changed = cur.rowcount
+    return changed > 0
 
 
 def reschedule_booking(
-    business_id: str, patient_name: str, old_date: str, old_time: str, new_date: str, new_time: str
+    business_id: str,
+    patient_name: str,
+    old_date: str,
+    old_time: str,
+    new_date: str,
+    new_time: str,
+    conflicts=None,
 ) -> bool | None:
     """Move a booking to a new date/time. Returns True if a row was updated,
     False if no matching booking exists, or None if the new slot was grabbed
-    in the race window (unique index)."""
+    in the race window (unique index) or would overlap an existing booking.
+
+    `conflicts` mirrors save_booking's duration/overlap guard: when given,
+    `conflicts(active_rows_on_new_date)` is re-checked here inside the UPDATE
+    transaction under a per-(business, new_date) advisory lock, closing the same
+    read-then-write race the move path would otherwise have with mixed-length
+    services."""
     try:
         with _connect() as conn:
+            if conflicts is not None:
+                conn.execute(
+                    "SELECT pg_advisory_xact_lock(hashtext(%s), hashtext(%s))",
+                    (business_id, new_date),
+                )
+                rows = conn.execute(
+                    "SELECT time, reason FROM bookings WHERE business_id = %s AND date = %s "
+                    "AND COALESCE(status, 'booked') <> 'cancelled'",
+                    (business_id, new_date),
+                ).fetchall()
+                if conflicts(rows):
+                    return None
             cur = conn.execute(
                 "UPDATE bookings SET date = %s, time = %s "
                 "WHERE business_id = %s AND LOWER(patient_name) = LOWER(%s) AND date = %s AND time = %s",
-                (new_date, new_time, business_id, (patient_name or "").strip(), old_date, old_time),
+                (
+                    new_date,
+                    new_time,
+                    business_id,
+                    (patient_name or "").strip(),
+                    old_date,
+                    old_time,
+                ),
             )
             updated = cur.rowcount
     except psycopg.errors.UniqueViolation:
@@ -980,8 +1106,14 @@ def replace_services(business_id: str, services: list[dict]) -> None:
             conn.execute(
                 "INSERT INTO services (business_id, name, duration_min, price, category, bookable) "
                 "VALUES (%s, %s, %s, %s, %s, %s)",
-                (business_id, s["name"], s["duration_min"], s.get("price", ""),
-                 s.get("category", ""), s.get("bookable", True)),
+                (
+                    business_id,
+                    s["name"],
+                    s["duration_min"],
+                    s.get("price", ""),
+                    s.get("category", ""),
+                    s.get("bookable", True),
+                ),
             )
 
 
@@ -1006,9 +1138,17 @@ def replace_listings(business_id: str, listings: list[dict]) -> None:
                 "INSERT INTO listings "
                 "(business_id, title, area, bedrooms, price, purpose, notes, permit_number, reference) "
                 "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
-                (business_id, row["title"], row.get("area", ""), row.get("bedrooms", ""),
-                 row.get("price", ""), row.get("purpose", ""), row.get("notes", ""),
-                 row.get("permit_number", ""), row.get("reference", "")),
+                (
+                    business_id,
+                    row["title"],
+                    row.get("area", ""),
+                    row.get("bedrooms", ""),
+                    row.get("price", ""),
+                    row.get("purpose", ""),
+                    row.get("notes", ""),
+                    row.get("permit_number", ""),
+                    row.get("reference", ""),
+                ),
             )
 
 
@@ -1036,7 +1176,9 @@ def get_business_by_whatsapp(phone_number_id: str) -> dict | None:
         ).fetchone()
 
 
-def upsert_qualification(business_id: str, phone: str, name: str, fields: dict, score: str) -> None:
+def upsert_qualification(
+    business_id: str, phone: str, name: str, fields: dict, score: str
+) -> None:
     """Store (or update) one caller's structured qualification + A/B/C score.
     Unique on (business_id, phone) so re-qualifying overwrites, never dupes."""
     with _connect() as conn:
@@ -1219,20 +1361,44 @@ def upsert_business(b: dict) -> None:
 
 
 _EDITABLE_BUSINESS_FIELDS = {
-    "name", "type", "hours", "services", "tone", "faq",
-    "open_hour", "close_hour", "slot_minutes", "vertical",
-    "staff", "location", "policies",
-    "areas_covered", "deal_focus", "languages", "orn",
-    "min_notice_hours", "max_advance_days", "buffer_min",
-    "notify_email", "transfer_number", "after_hours_mode", "whatsapp_phone_id",
-    "google_review_url", "crm_webhook_url", "crm_type",
+    "name",
+    "type",
+    "hours",
+    "services",
+    "tone",
+    "faq",
+    "open_hour",
+    "close_hour",
+    "slot_minutes",
+    "vertical",
+    "staff",
+    "location",
+    "policies",
+    "areas_covered",
+    "deal_focus",
+    "languages",
+    "orn",
+    "min_notice_hours",
+    "max_advance_days",
+    "buffer_min",
+    "notify_email",
+    "transfer_number",
+    "after_hours_mode",
+    "whatsapp_phone_id",
+    "google_review_url",
+    "crm_webhook_url",
+    "crm_type",
     # Admin-set only (no tenant-editable model exposes these) — the usage cap a
     # business must not raise on itself, plus its once-a-month notice marker.
-    "plan", "monthly_msg_quota", "quota_notice_month",
+    "plan",
+    "monthly_msg_quota",
+    "quota_notice_month",
 }
 
 
-def save_lead(business_id: str, name: str, phone: str, interest: str, notes: str = "") -> int:
+def save_lead(
+    business_id: str, name: str, phone: str, interest: str, notes: str = ""
+) -> int:
     """Insert a sales lead / enquiry for a business; return its new id."""
     with _connect() as conn:
         row = conn.execute(
@@ -1243,7 +1409,9 @@ def save_lead(business_id: str, name: str, phone: str, interest: str, notes: str
     return row["id"]
 
 
-def find_recent_lead(business_id: str, phone: str, within_hours: int = 48) -> dict | None:
+def find_recent_lead(
+    business_id: str, phone: str, within_hours: int = 48
+) -> dict | None:
     """The same caller re-captured within a couple of days is ONE lead, not two —
     matched on the number's significant digits so '050 123 4567', '+971 50 123
     4567' and '971501234567' are all the same person."""

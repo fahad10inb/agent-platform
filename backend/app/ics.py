@@ -41,15 +41,26 @@ def _escape(text: str) -> str:
 
 
 def _fold(line: str) -> str:
-    """RFC 5545 caps a line at 75 octets; longer lines continue with a leading
-    space. Strict parsers (Outlook) reject unfolded long lines."""
-    if len(line) <= 73:
+    """RFC 5545 caps a line at 75 OCTETS (not characters); longer lines continue
+    with a leading space, and a fold must never split a multi-byte character.
+    Measuring in bytes matters for non-ASCII (Arabic names, emoji): 73 characters
+    can be far more than 75 octets, so char-based slicing produced over-length
+    lines that strict parsers (Outlook) reject. For ASCII this is identical to the
+    old behaviour (1 char == 1 octet)."""
+    if len(line.encode("utf-8")) <= 73:
         return line
-    out, rest = [line[:73]], line[73:]
-    while rest:
-        out.append(" " + rest[:72])
-        rest = rest[72:]
-    return "\r\n".join(out)
+    segments: list[str] = []
+    cur, cur_bytes, limit = "", 0, 73  # first segment 73 octets; continuations 72
+    for ch in line:
+        cb = len(ch.encode("utf-8"))
+        if cur and cur_bytes + cb > limit:
+            segments.append(cur)
+            cur, cur_bytes, limit = "", 0, 72  # the leading space eats one octet
+        cur += ch
+        cur_bytes += cb
+    if cur:
+        segments.append(cur)
+    return "\r\n".join([segments[0]] + [" " + s for s in segments[1:]])
 
 
 def _start_utc(date: str, time_label: str) -> datetime.datetime | None:
@@ -102,7 +113,9 @@ def _event(business: dict, booking: dict, now: datetime.datetime) -> list[str]:
     # Plain ASCII hyphen, not an em-dash: a fancy dash renders as mojibake ("â")
     # in any calendar app that opens the downloaded file as Latin-1 instead of UTF-8.
     title = f"{who} - {reason}" if reason else who
-    desc_bits = [f"Booked by your AI receptionist ({business.get('name') or business.get('id')})."]
+    desc_bits = [
+        f"Booked by your AI receptionist ({business.get('name') or business.get('id')})."
+    ]
     if phone:
         desc_bits.append(f"Phone: {phone}")
     if reason:
@@ -127,7 +140,9 @@ def _event(business: dict, booking: dict, now: datetime.datetime) -> list[str]:
     return lines
 
 
-def build_ics(business: dict, bookings: list[dict], now: datetime.datetime | None = None) -> str:
+def build_ics(
+    business: dict, bookings: list[dict], now: datetime.datetime | None = None
+) -> str:
     """A complete VCALENDAR for these bookings. Used for both the single-booking
     invite (one row) and the subscribable feed (all rows)."""
     now = now or datetime.datetime.now(datetime.timezone.utc)

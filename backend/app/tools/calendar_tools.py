@@ -11,6 +11,7 @@ business's data without the AI ever handling the business_id.
 """
 
 import datetime
+import functools
 import re
 import zoneinfo
 
@@ -125,18 +126,26 @@ def make_calendar_tools(business: dict) -> list:
                 return s.get("duration_min") or slot_minutes
         return slot_minutes
 
-    def _overlaps_existing(date: str, time_label: str, duration: int, exclude_time: str = "") -> bool:
-        """True when [start, start+duration) would cut into ANY existing
-        booking's [start, start+its-duration). With mixed durations a plain
-        same-start check isn't enough: a new 90-min color starting 30 minutes
-        before someone's trim — or a quick trim dropped into the middle of a
-        color — must both be refused. `exclude_time` skips one booking (the one
-        being MOVED by a reschedule, so it doesn't collide with itself)."""
+    def _rows_overlap(
+        rows: list[dict], time_label: str, duration: int, exclude_time: str = ""
+    ) -> bool:
+        """True when [start, start+duration) cuts into ANY booking in `rows`
+        (each {time, reason}). With mixed durations a plain same-start check
+        isn't enough: a new 90-min color starting 30 minutes before someone's
+        trim — or a quick trim dropped into the middle of a color — must both be
+        refused. `exclude_time` skips one booking (the one being MOVED by a
+        reschedule, so it doesn't collide with itself).
+
+        Pure in `rows` on purpose: the SAME test runs as the pre-check below
+        (against a plain read) AND again inside save_booking / reschedule_booking
+        (against the advisory-locked re-read). That second, in-transaction run is
+        what makes the guard race-free — the pre-check alone can go stale between
+        its read and the write."""
         start = _label_to_minutes(time_label)
         if start is None:
             return False
         end = start + duration
-        for r in db.bookings_with_times(business_id, date):
+        for r in rows:
             if exclude_time and _norm_time(r.get("time") or "") == exclude_time:
                 continue
             b_start = _label_to_minutes(r.get("time") or "")
@@ -146,6 +155,20 @@ def make_calendar_tools(business: dict) -> list:
             if start < b_end and b_start < end:
                 return True
         return False
+
+    def _overlaps_existing(
+        date: str, time_label: str, duration: int, exclude_time: str = ""
+    ) -> bool:
+        """Fast pre-check for a nicer message + the DENIED log: read the day and
+        test overlap. Advisory: this read can go stale under concurrency, so the
+        authoritative check is _rows_overlap re-run inside the write transaction
+        (see save_booking / reschedule_booking `conflicts`)."""
+        return _rows_overlap(
+            db.bookings_with_times(business_id, date),
+            time_label,
+            duration,
+            exclude_time,
+        )
 
     def _date_check(date: str):
         """None if the date is bookable; else a human reason why not."""
@@ -187,7 +210,9 @@ def make_calendar_tools(business: dict) -> list:
         """
         why = _date_check(date)
         if why:
-            print(f"  TOOL -> check_availability(date={date!r}) [biz={business_id}] refused: {why}")
+            print(
+                f"  TOOL -> check_availability(date={date!r}) [biz={business_id}] refused: {why}"
+            )
             return {"date": date, "available_slots": [], "note": why}
         svc = _find_service(service)
         if services:
@@ -195,7 +220,8 @@ def make_calendar_tools(business: dict) -> list:
             # and the overlap window; slots that would run past closing go too.
             duration = (svc.get("duration_min") if svc else None) or slot_minutes
             free = [
-                s for s in _all_slots(open_hour, close_hour, duration + buffer_min)
+                s
+                for s in _all_slots(open_hour, close_hour, duration + buffer_min)
                 if (_label_to_minutes(s) or 0) + duration <= close_hour * 60
                 and not _overlaps_existing(date, s, duration)
                 and not _too_soon(date, s)
@@ -203,14 +229,18 @@ def make_calendar_tools(business: dict) -> list:
         else:
             taken = set(db.booked_times(business_id, date))
             free = [
-                s for s in _all_slots(open_hour, close_hour, step)
-                if s not in taken and not _too_soon(date, s)
+                s
+                for s in _all_slots(open_hour, close_hour, step)
+                if s not in taken
+                and not _too_soon(date, s)
                 # …and the slot must actually FINISH by closing: with a slot
                 # length that doesn't divide the day (e.g. 45-min in 9–5), the
                 # last start (4:30) would otherwise run 15 min past close.
                 and (_label_to_minutes(s) or 0) + slot_minutes <= close_hour * 60
             ]
-        print(f"  TOOL -> check_availability(date={date!r}) [biz={business_id}] free={len(free)}")
+        print(
+            f"  TOOL -> check_availability(date={date!r}) [biz={business_id}] free={len(free)}"
+        )
         out = {"date": date, "available_slots": free}
         if svc:
             out["service"] = svc["name"]
@@ -218,7 +248,11 @@ def make_calendar_tools(business: dict) -> list:
         return out
 
     def book_appointment(
-        date: str, time: str, patient_name: str, phone: str = "", reason: str = "",
+        date: str,
+        time: str,
+        patient_name: str,
+        phone: str = "",
+        reason: str = "",
         service: str = "",
     ) -> dict:
         """Book an appointment in a specific slot, if it's still free.
@@ -247,7 +281,8 @@ def make_calendar_tools(business: dict) -> list:
             return {
                 "status": "unavailable",
                 "reason": f"we need at least {min_notice_h} hour(s) notice for bookings",
-                "date": date, "time": time,
+                "date": date,
+                "time": time,
             }
         svc = _find_service(service)
         duration = (svc.get("duration_min") if svc else None) or slot_minutes
@@ -256,11 +291,16 @@ def make_calendar_tools(business: dict) -> list:
         # caller + a compliant model happily booked "6:00 PM" with hours 9–5).
         # Reject a start before open, or an appointment that would run past close.
         start_min = _label_to_minutes(time)
-        if start_min is None or start_min < open_hour * 60 or start_min + duration > close_hour * 60:
+        if (
+            start_min is None
+            or start_min < open_hour * 60
+            or start_min + duration > close_hour * 60
+        ):
             return {
                 "status": "unavailable",
                 "reason": "that time is outside our opening hours",
-                "date": date, "time": time,
+                "date": date,
+                "time": time,
             }
         if svc and (svc["name"] or "").strip().lower() not in (reason or "").lower():
             # The stored reason must name the menu service — that's how future
@@ -268,26 +308,61 @@ def make_calendar_tools(business: dict) -> list:
             reason = svc["name"] + (f" — {reason}" if (reason or "").strip() else "")
         if services:
             if _overlaps_existing(date, time, duration):
-                print(f"  TOOL -> book_appointment DENIED (overlap) date={date!r} time={time!r} [biz={business_id}]")
-                return {"status": "unavailable", "reason": f"{time} on {date} is already booked", "date": date, "time": time}
+                print(
+                    f"  TOOL -> book_appointment DENIED (overlap) date={date!r} time={time!r} [biz={business_id}]"
+                )
+                return {
+                    "status": "unavailable",
+                    "reason": f"{time} on {date} is already booked",
+                    "date": date,
+                    "time": time,
+                }
         elif time in set(db.booked_times(business_id, date)):
-            print(f"  TOOL -> book_appointment DENIED (taken) date={date!r} time={time!r} [biz={business_id}]")
-            return {"status": "unavailable", "reason": f"{time} on {date} is already booked", "date": date, "time": time}
+            print(
+                f"  TOOL -> book_appointment DENIED (taken) date={date!r} time={time!r} [biz={business_id}]"
+            )
+            return {
+                "status": "unavailable",
+                "reason": f"{time} on {date} is already booked",
+                "date": date,
+                "time": time,
+            }
 
         # No PII (name/phone) in server logs — Render keeps them.
-        print(f"  TOOL -> book_appointment(date={date!r}, time={time!r}) [biz={business_id}]")
-        booking_id = db.save_booking(business_id, date, time, patient_name, phone, reason)
+        print(
+            f"  TOOL -> book_appointment(date={date!r}, time={time!r}) [biz={business_id}]"
+        )
+        # Duration path: re-run the overlap check INSIDE the insert transaction
+        # (advisory-locked) so two overlapping slots at different start times
+        # can't both clear the pre-check above and both land. Exact-slot (no
+        # menu) needs no predicate — the unique index already makes it atomic.
+        conflicts = (
+            functools.partial(_rows_overlap, time_label=time, duration=duration)
+            if services
+            else None
+        )
+        booking_id = db.save_booking(
+            business_id, date, time, patient_name, phone, reason, conflicts=conflicts
+        )
         if booking_id is None:
-            # Two callers raced for the same slot; the DB's unique index kept
+            # Two callers raced for this slot: the unique index (same label) or
+            # the advisory-locked overlap re-check (mixed-length services) kept
             # exactly one. Tell this caller it's taken.
-            return {"status": "unavailable", "reason": f"{time} on {date} is already booked", "date": date, "time": time}
+            return {
+                "status": "unavailable",
+                "reason": f"{time} on {date} is already booked",
+                "date": date,
+                "time": time,
+            }
         # Automatic visit memory: the platform remembers every visit by itself,
         # so a returning caller is recognized even if the model never thought to
         # call remember_about_caller. Best-effort — a memory failure must never
         # break the booking that just succeeded.
         if reason:
             try:
-                db.save_caller_memory(business_id, patient_name, f"came in for {reason} ({date})")
+                db.save_caller_memory(
+                    business_id, patient_name, f"came in for {reason} ({date})"
+                )
             except Exception:
                 pass
         # The owner hears about it the moment it happens (fire-and-forget).
@@ -322,8 +397,12 @@ def make_calendar_tools(business: dict) -> list:
         """
         appts = db.find_bookings(business_id, patient_name)
         on_file = [(r.get("phone") or "") for r in appts if r.get("phone")]
-        verified = bool(phone_last4) and any(p.endswith(phone_last4[-4:]) for p in on_file)
-        print(f"  TOOL -> find_my_appointments [biz={business_id}] found={len(appts)} verified={verified}")
+        verified = bool(phone_last4) and any(
+            p.endswith(phone_last4[-4:]) for p in on_file
+        )
+        print(
+            f"  TOOL -> find_my_appointments [biz={business_id}] found={len(appts)} verified={verified}"
+        )
         if on_file and not verified:
             # Anti-IDOR: names are public knowledge; the number on file is not.
             return {
@@ -333,21 +412,29 @@ def make_calendar_tools(business: dict) -> list:
             }
         return {
             "patient_name": patient_name,
-            "appointments": [{"id": r["id"], "date": r["date"], "time": r["time"]} for r in appts],
+            "appointments": [
+                {"id": r["id"], "date": r["date"], "time": r["time"]} for r in appts
+            ],
         }
 
     def _verified(patient_name: str, phone_last4: str):
         """True = last-4 match; None = no phone on file (nothing to check);
         False = mismatch or not provided. Matching happens HERE — the stored
         number is never shown to the model or the caller."""
-        on_file = [(r.get("phone") or "") for r in db.find_bookings(business_id, patient_name) if r.get("phone")]
+        on_file = [
+            (r.get("phone") or "")
+            for r in db.find_bookings(business_id, patient_name)
+            if r.get("phone")
+        ]
         if not on_file:
             return None
         return bool(phone_last4) and any(p.endswith(phone_last4[-4:]) for p in on_file)
 
     _VERIFY_MSG = "Ask the caller for the mobile number they booked with, then retry with its last 4 digits."
 
-    def cancel_appointment(patient_name: str, date: str, time: str, phone_last4: str = "") -> dict:
+    def cancel_appointment(
+        patient_name: str, date: str, time: str, phone_last4: str = ""
+    ) -> dict:
         """Cancel a caller's appointment. Confirm the exact date and time first,
         and verify identity with the last 4 digits of their booking mobile number.
 
@@ -370,11 +457,21 @@ def make_calendar_tools(business: dict) -> list:
                 f"Booking cancelled: {patient_name} — {date} at {time}",
                 f"{patient_name} cancelled their {date} {time} appointment via the receptionist.",
             )
-        print(f"  TOOL -> cancel_appointment({date!r}, {time!r}) [biz={business_id}] ok={ok}")
-        return {"status": "cancelled" if ok else "not_found", "date": date, "time": time}
+        print(
+            f"  TOOL -> cancel_appointment({date!r}, {time!r}) [biz={business_id}] ok={ok}"
+        )
+        return {
+            "status": "cancelled" if ok else "not_found",
+            "date": date,
+            "time": time,
+        }
 
     def reschedule_appointment(
-        patient_name: str, old_date: str, old_time: str, new_date: str, new_time: str,
+        patient_name: str,
+        old_date: str,
+        old_time: str,
+        new_date: str,
+        new_time: str,
         phone_last4: str = "",
     ) -> dict:
         """Move a caller's appointment to a new slot (the new slot must be free).
@@ -399,7 +496,10 @@ def make_calendar_tools(business: dict) -> list:
         if why:
             return {"status": "unavailable", "reason": why}
         if _too_soon(new_date, new_time):
-            return {"status": "unavailable", "reason": f"we need at least {min_notice_h} hour(s) notice"}
+            return {
+                "status": "unavailable",
+                "reason": f"we need at least {min_notice_h} hour(s) notice",
+            }
         # Recover the moved booking's true length (menu duration or the global
         # slot) so BOTH the hours gate and the overlap check use the real span.
         duration = slot_minutes
@@ -410,28 +510,65 @@ def make_calendar_tools(business: dict) -> list:
                     break
         # Business-hours gate on the NEW slot — same as book_appointment.
         start_min = _label_to_minutes(new_time)
-        if start_min is None or start_min < open_hour * 60 or start_min + duration > close_hour * 60:
-            return {"status": "unavailable", "reason": "that time is outside our opening hours"}
+        if (
+            start_min is None
+            or start_min < open_hour * 60
+            or start_min + duration > close_hour * 60
+        ):
+            return {
+                "status": "unavailable",
+                "reason": "that time is outside our opening hours",
+            }
         # The new slot must be free — using the SAME duration-aware overlap check
         # book_appointment uses (a plain same-start check let a rescheduled trim
         # drop into the middle of a 90-min colour). Exclude the booking being
         # moved when it stays on the same day so it can't collide with itself.
+        conflicts = None
         if services:
             exclude = old_time if new_date == old_date else ""
             if _overlaps_existing(new_date, new_time, duration, exclude_time=exclude):
                 print(f"  TOOL -> reschedule DENIED (overlap) [biz={business_id}]")
-                return {"status": "unavailable", "reason": f"{new_time} on {new_date} is already booked"}
+                return {
+                    "status": "unavailable",
+                    "reason": f"{new_time} on {new_date} is already booked",
+                }
+            conflicts = functools.partial(
+                _rows_overlap,
+                time_label=new_time,
+                duration=duration,
+                exclude_time=exclude,
+            )
         elif new_time in set(db.booked_times(business_id, new_date)):
             print(f"  TOOL -> reschedule DENIED (new slot taken) [biz={business_id}]")
-            return {"status": "unavailable", "reason": f"{new_time} on {new_date} is already booked"}
-        ok = db.reschedule_booking(business_id, patient_name, old_date, old_time, new_date, new_time)
+            return {
+                "status": "unavailable",
+                "reason": f"{new_time} on {new_date} is already booked",
+            }
+        # Re-check overlap inside the UPDATE transaction (advisory-locked) — the
+        # pre-check above can go stale between its read and the write.
+        ok = db.reschedule_booking(
+            business_id,
+            patient_name,
+            old_date,
+            old_time,
+            new_date,
+            new_time,
+            conflicts=conflicts,
+        )
         print(
             f"  TOOL -> reschedule_appointment({old_date} {old_time} "
             f"-> {new_date} {new_time}) [biz={business_id}] ok={ok}"
         )
         if ok is None:  # new slot grabbed in the race window (unique index)
-            return {"status": "unavailable", "reason": f"{new_time} on {new_date} is already booked"}
-        return {"status": "rescheduled" if ok else "not_found", "new_date": new_date, "new_time": new_time}
+            return {
+                "status": "unavailable",
+                "reason": f"{new_time} on {new_date} is already booked",
+            }
+        return {
+            "status": "rescheduled" if ok else "not_found",
+            "new_date": new_date,
+            "new_time": new_time,
+        }
 
     def confirm_appointment(patient_name: str, date: str, time: str) -> dict:
         """Mark a caller's appointment as CONFIRMED — use when they reply to a
@@ -449,8 +586,14 @@ def make_calendar_tools(business: dict) -> list:
         """
         time = _norm_time(time)
         ok = db.set_booking_status(business_id, patient_name, date, time, "confirmed")
-        print(f"  TOOL -> confirm_appointment({date!r}, {time!r}) [biz={business_id}] ok={ok}")
-        return {"status": "confirmed" if ok else "not_found", "date": date, "time": time}
+        print(
+            f"  TOOL -> confirm_appointment({date!r}, {time!r}) [biz={business_id}] ok={ok}"
+        )
+        return {
+            "status": "confirmed" if ok else "not_found",
+            "date": date,
+            "time": time,
+        }
 
     return [
         check_availability,

@@ -876,6 +876,10 @@ DASHBOARD_HTML = """<!doctype html>
           <input id="s_whatsapp" value="${esc(b.whatsapp_phone_id)}" placeholder="123456789012345">
           <label for="s_review">Google review link <span class="soft">(clients get this after a visit — empty = off)</span></label>
           <input id="s_review" value="${esc(b.google_review_url)}" placeholder="https://g.page/r/…/review">
+          <label for="s_crm">CRM webhook URL <span class="soft">(qualified leads POST here automatically — empty = off)</span></label>
+          <input id="s_crm" value="${esc(b.crm_webhook_url)}" placeholder="https://your-crm.com/lead-webhook">
+          <label for="s_crm_type">CRM type</label>
+          <select id="s_crm_type"><option value="">Generic (raw JSON POST)</option><option value="bitrix24">Bitrix24</option></select>
         </div>
 
         <div class="fgroup">
@@ -907,6 +911,7 @@ DASHBOARD_HTML = """<!doctype html>
         <div style="margin-top:22px"><button class="btn" onclick="saveSettings()">Save changes</button></div>`;
       $("s_vertical").value = b.vertical || "general";
       $("s_afterhours").value = b.after_hours_mode || "take_message";
+      $("s_crm_type").value = b.crm_type || "";
       toggleSettingsRE();
     } else {
       const url = location.origin + "/widget?business_id=" + encodeURIComponent(CURRENT);
@@ -930,6 +935,7 @@ DASHBOARD_HTML = """<!doctype html>
       notify_email:val("s_notify").trim(),
       transfer_number:val("s_transfer").trim(), after_hours_mode:val("s_afterhours"),
       whatsapp_phone_id:val("s_whatsapp").trim(), google_review_url:val("s_review").trim(),
+      crm_webhook_url:val("s_crm").trim(), crm_type:val("s_crm_type"),
       areas_covered:val("s_areas").trim(), deal_focus:val("s_focus").trim(),
       languages:val("s_languages").trim(), orn:val("s_orn").trim() };
     // Validate the menu and listings BEFORE saving anything, so a typo'd line
