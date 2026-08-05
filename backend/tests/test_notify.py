@@ -1,17 +1,37 @@
 """Owner notifications: bookings/leads/cancellations reach the owner's inbox,
 delivery never blocks or breaks the booking, and no email set = silence."""
 
+import datetime
+import zoneinfo
+
+import pytest
+
 from app import notify_service
+from app.tools import calendar_tools as ct
 from app.tools.calendar_tools import make_calendar_tools
 from app.tools.leads_tools import make_lead_tools
+
+
+@pytest.fixture(autouse=True)
+def _frozen_now(monkeypatch):
+    """Freeze the calendar clock so the hardcoded 2026-08-01 booking dates below
+    stay a few days AHEAD of 'now' instead of silently going 'unavailable' once
+    the real date advances past them (the documented calendar-test gotcha)."""
+    frozen = datetime.datetime(
+        2026, 7, 30, 8, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Dubai")
+    )
+    monkeypatch.setattr(ct, "_now", lambda: frozen)
 
 
 def _capture(monkeypatch):
     """Swallow the thread + record what would have been delivered."""
     sent = []
     monkeypatch.setattr(
-        notify_service.threading, "Thread",
-        lambda target, args, daemon: type("T", (), {"start": lambda self: sent.append(args)})(),
+        notify_service.threading,
+        "Thread",
+        lambda target, args, daemon: type(
+            "T", (), {"start": lambda self: sent.append(args)}
+        )(),
     )
     return sent
 
@@ -19,8 +39,15 @@ def _capture(monkeypatch):
 def test_booking_notifies_the_owner(client, state, monkeypatch):
     sent = _capture(monkeypatch)
     state["businesses"]["bright-smile"]["notify_email"] = "owner@clinic.com"
-    tools = {f.__name__: f for f in make_calendar_tools({"id": "bright-smile", "open_hour": 9, "close_hour": 17, "slot_minutes": 30})}
-    out = tools["book_appointment"]("2026-08-01", "9:00 AM", "Mariam", "0501234567", "cleaning")
+    tools = {
+        f.__name__: f
+        for f in make_calendar_tools(
+            {"id": "bright-smile", "open_hour": 9, "close_hour": 17, "slot_minutes": 30}
+        )
+    }
+    out = tools["book_appointment"](
+        "2026-08-01", "9:00 AM", "Mariam", "0501234567", "cleaning"
+    )
     assert out["status"] == "confirmed"
     to, subject, body = sent[0]
     assert to == "owner@clinic.com"
@@ -38,8 +65,15 @@ def test_lead_notifies_the_owner(client, state, monkeypatch):
 
 def test_no_email_configured_means_no_send(client, state, monkeypatch):
     sent = _capture(monkeypatch)
-    state["businesses"]["bright-smile"].pop("notify_email", None)  # seeded biz persists across tests
-    tools = {f.__name__: f for f in make_calendar_tools({"id": "bright-smile", "open_hour": 9, "close_hour": 17, "slot_minutes": 30})}
+    state["businesses"]["bright-smile"].pop(
+        "notify_email", None
+    )  # seeded biz persists across tests
+    tools = {
+        f.__name__: f
+        for f in make_calendar_tools(
+            {"id": "bright-smile", "open_hour": 9, "close_hour": 17, "slot_minutes": 30}
+        )
+    }
     tools["book_appointment"]("2026-08-01", "10:00 AM", "Sara")
     assert sent == []
 
@@ -51,6 +85,13 @@ def test_notify_failure_never_breaks_the_booking(client, state, monkeypatch):
         raise RuntimeError("smtp on fire")
 
     monkeypatch.setattr(notify_service.threading, "Thread", _boom)
-    tools = {f.__name__: f for f in make_calendar_tools({"id": "bright-smile", "open_hour": 9, "close_hour": 17, "slot_minutes": 30})}
-    out = tools["book_appointment"]("2026-08-01", "11:00 AM", "Sara", "0509998888", "checkup")
+    tools = {
+        f.__name__: f
+        for f in make_calendar_tools(
+            {"id": "bright-smile", "open_hour": 9, "close_hour": 17, "slot_minutes": 30}
+        )
+    }
+    out = tools["book_appointment"](
+        "2026-08-01", "11:00 AM", "Sara", "0509998888", "checkup"
+    )
     assert out["status"] == "confirmed"  # the booking survives the inbox

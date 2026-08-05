@@ -258,7 +258,31 @@ def _fake_get_metrics(business_id):
             1 for b in _S["bookings"] if b["business_id"] == business_id
         ),
         "leads_30d": sum(1 for r in _S["leads"] if r["business_id"] == business_id),
+        "after_hours_leads_30d": _after_hours_leads(business_id),
     }
+
+
+def _after_hours_leads(business_id):
+    # Mirrors the real query: leads whose Dubai-local hour is outside the
+    # business's open→close window. Dubai is UTC+4 with no DST, so a fixed
+    # offset matches the SQL's AT TIME ZONE 'Asia/Dubai'.
+    biz = _S["businesses"].get(business_id) or {}
+    open_h = biz["open_hour"] if biz.get("open_hour") is not None else 9
+    close_h = biz["close_hour"] if biz.get("close_hour") is not None else 17
+    dubai = datetime.timezone(datetime.timedelta(hours=4))
+    n = 0
+    for r in _S["leads"]:
+        if r["business_id"] != business_id:
+            continue
+        ca = r.get("created_at")
+        if not isinstance(ca, datetime.datetime):
+            continue
+        if ca.tzinfo is None:
+            ca = ca.replace(tzinfo=datetime.timezone.utc)
+        hour = ca.astimezone(dubai).hour
+        if hour < open_h or hour >= close_h:
+            n += 1
+    return n
 
 
 def _fake_get_week_stats(business_id):

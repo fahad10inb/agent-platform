@@ -124,6 +124,14 @@ DASHBOARD_HTML = """<!doctype html>
   .kpi:first-child{border-left:0}
   .klabel{display:block;font-size:12.5px;font-weight:500;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .knum{display:block;font-size:26px;font-weight:600;letter-spacing:-.015em;font-variant-numeric:tabular-nums;margin-top:2px}
+  /* ROI callout — the "leads you'd have lost" money line, above the KPI band */
+  .roi{display:flex;align-items:center;gap:16px;background:var(--accent-soft);
+    border:1px solid #e7d3ad;border-left:3px solid var(--gold);border-radius:12px;
+    padding:15px 20px;margin-bottom:16px}
+  .roi-num{font-size:32px;font-weight:700;color:var(--gold-deep);
+    font-variant-numeric:tabular-nums;letter-spacing:-.02em;line-height:1;flex:none}
+  .roi-txt{font-size:13.5px;color:var(--body);line-height:1.45}
+  .roi-txt b{color:var(--ink);font-weight:650}
   /* calendar view — the owner reads bookings as a diary, not a spreadsheet */
   .calsub{display:flex;align-items:center;gap:16px;flex-wrap:wrap;background:var(--card);
     border:1px solid var(--hairline);border-radius:12px;padding:16px 18px;margin-bottom:18px;
@@ -272,6 +280,10 @@ DASHBOARD_HTML = """<!doctype html>
       <button class="btn ghost" onclick="signOut()">Sign out</button>
     </div>
     <div id="bizPanel" class="hidden">
+      <div class="roi" id="roiBand" hidden>
+        <span class="roi-num" id="mAfterHours">–</span>
+        <span class="roi-txt"><b>leads caught after&#8209;hours</b> in the last 30 days — enquiries that arrived while you were closed, that a front desk would most likely have missed.</span>
+      </div>
       <div class="stats">
         <div class="kpi"><span class="klabel">Chats today</span><span class="knum" id="mToday">–</span></div>
         <div class="kpi"><span class="klabel">Chats · 30 days</span><span class="knum" id="mChats">–</span></div>
@@ -344,6 +356,7 @@ DASHBOARD_HTML = """<!doctype html>
   async function loadStats(){
     const biz = CURRENT;
     ["mToday","mChats","mMsgs","mBookings","mLeads","mHours"].forEach(id => $(id).textContent="–");
+    $("roiBand").hidden = true;
     try{
       const r = await api("/metrics?business_id="+encodeURIComponent(biz));
       if(biz !== CURRENT || !r.ok) return;
@@ -354,6 +367,9 @@ DASHBOARD_HTML = """<!doctype html>
       $("mBookings").textContent = m.bookings_30d;
       $("mLeads").textContent = m.leads_30d;
       $("mHours").textContent = "~" + m.hours_saved_30d_estimate + "h";
+      // The ROI money line: only show it when there's a real number to brag about.
+      const ah = m.after_hours_leads_30d || 0;
+      if(ah > 0){ $("mAfterHours").textContent = ah; $("roiBand").hidden = false; }
     }catch(e){}
   }
 

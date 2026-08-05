@@ -646,12 +646,30 @@ def get_metrics(business_id: str) -> dict:
             "AND created_at > now() - interval '30 days'",
             (business_id,),
         ).fetchone()
+        # The ROI headline: how many of those leads landed while the business was
+        # CLOSED (outside its Dubai-local open→close hours) — the ones a human
+        # would most likely have missed. This is the "leads you'd have lost"
+        # number the owner renews for. Falls back to 9–17 like the calendar.
+        biz = conn.execute(
+            "SELECT open_hour, close_hour FROM businesses WHERE id = %s",
+            (business_id,),
+        ).fetchone()
+        open_h = biz["open_hour"] if biz and biz["open_hour"] is not None else 9
+        close_h = biz["close_hour"] if biz and biz["close_hour"] is not None else 17
+        after = conn.execute(
+            "SELECT COUNT(*) AS n FROM leads WHERE business_id = %s "
+            "AND created_at > now() - interval '30 days' "
+            "AND (EXTRACT(hour FROM created_at AT TIME ZONE 'Asia/Dubai')::int < %s "
+            "     OR EXTRACT(hour FROM created_at AT TIME ZONE 'Asia/Dubai')::int >= %s)",
+            (business_id, open_h, close_h),
+        ).fetchone()
     return {
         "conversations_today": m["convs_today"],
         "conversations_30d": m["convs_30d"],
         "messages_30d": m["msgs_30d"],
         "bookings_30d": b["n"],
         "leads_30d": led["n"],
+        "after_hours_leads_30d": after["n"],
     }
 
 

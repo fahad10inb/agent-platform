@@ -21,8 +21,22 @@ def fake_llm(monkeypatch):
 
 
 def test_same_conversation_id_never_bleeds_across_businesses(client, fake_llm):
-    client.post("/chat", json={"message": "my dental secret", "conversation_id": "shared", "business_id": "bright-smile"})
-    client.post("/chat", json={"message": "hello salon", "conversation_id": "shared", "business_id": "velvet-hair"})
+    client.post(
+        "/chat",
+        json={
+            "message": "my dental secret",
+            "conversation_id": "shared",
+            "business_id": "bright-smile",
+        },
+    )
+    client.post(
+        "/chat",
+        json={
+            "message": "hello salon",
+            "conversation_id": "shared",
+            "business_id": "velvet-hair",
+        },
+    )
     # The salon's model call must contain ONLY the salon's message.
     salon_history = fake_llm[1]
     texts = " ".join(t["text"] for t in salon_history)
@@ -46,7 +60,14 @@ def test_history_survives_and_is_capped(client, fake_llm):
     # A marathon conversation persisted in the DB (100 turns)...
     for i in range(100):
         db.save_message("bright-smile", "long", "user", f"t{i}")
-    r = client.post("/chat", json={"message": "latest", "conversation_id": "long", "business_id": "bright-smile"})
+    r = client.post(
+        "/chat",
+        json={
+            "message": "latest",
+            "conversation_id": "long",
+            "business_id": "bright-smile",
+        },
+    )
     assert r.status_code == 200
     # ...reaches the model trimmed to the cap: 40 stored turns + the new message.
     assert len(fake_llm[0]) <= 41
@@ -63,7 +84,10 @@ def test_failed_turn_is_rolled_back(client, monkeypatch):
         raise RuntimeError("gemini down")
 
     monkeypatch.setattr(chat_core, "generate_reply", _boom)
-    r = client.post("/chat", json={"message": "hi", "conversation_id": "c1", "business_id": "bright-smile"})
+    r = client.post(
+        "/chat",
+        json={"message": "hi", "conversation_id": "c1", "business_id": "bright-smile"},
+    )
     assert r.status_code == 500
     # The unanswered user turn must not haunt the next request's context —
     # nothing is persisted unless the reply succeeded.
@@ -73,7 +97,10 @@ def test_failed_turn_is_rolled_back(client, monkeypatch):
 def test_usage_is_metered_and_readable(client, fake_llm):
     client.post("/chat", json={"message": "hi", "business_id": "bright-smile"})
     client.post("/chat", json={"message": "hello again", "business_id": "bright-smile"})
-    r = client.get("/usage?business_id=bright-smile", headers={"X-API-Key": "bizkey_bright_smile_demo"})
+    r = client.get(
+        "/usage?business_id=bright-smile",
+        headers={"X-API-Key": "bizkey_bright_smile_demo"},
+    )
     assert r.status_code == 200
     assert r.json()[0]["messages"] == 2
     # And it's tenant-protected like everything else.
@@ -86,10 +113,30 @@ def test_owner_metrics_roll_up(client, fake_llm):
     Fair-billing rule: c1 (two caller messages) counts as a conversation; c2's
     single hello is a drive-by and must NOT — the landing page pledges that in
     writing. messages_30d stays raw (it measures workload, not billing)."""
-    client.post("/chat", json={"message": "hi", "conversation_id": "c1", "business_id": "bright-smile"})
-    client.post("/chat", json={"message": "prices?", "conversation_id": "c1", "business_id": "bright-smile"})
-    client.post("/chat", json={"message": "hello", "conversation_id": "c2", "business_id": "bright-smile"})
-    r = client.get("/metrics?business_id=bright-smile", headers={"X-API-Key": "bizkey_bright_smile_demo"})
+    client.post(
+        "/chat",
+        json={"message": "hi", "conversation_id": "c1", "business_id": "bright-smile"},
+    )
+    client.post(
+        "/chat",
+        json={
+            "message": "prices?",
+            "conversation_id": "c1",
+            "business_id": "bright-smile",
+        },
+    )
+    client.post(
+        "/chat",
+        json={
+            "message": "hello",
+            "conversation_id": "c2",
+            "business_id": "bright-smile",
+        },
+    )
+    r = client.get(
+        "/metrics?business_id=bright-smile",
+        headers={"X-API-Key": "bizkey_bright_smile_demo"},
+    )
     assert r.status_code == 200
     m = r.json()
     assert m["conversations_30d"] == 1 and m["messages_30d"] == 3
@@ -97,18 +144,65 @@ def test_owner_metrics_roll_up(client, fake_llm):
     assert client.get("/metrics?business_id=bright-smile").status_code == 401
 
 
+def test_after_hours_leads_are_counted(client, state):
+    """The ROI number: leads that arrive while the business is CLOSED (outside its
+    Dubai-local open->close hours) are counted separately — the 'leads you'd have
+    lost' figure the owner renews for."""
+    import datetime
+
+    biz = "bright-smile"
+    state["businesses"][biz]["open_hour"] = 9
+    state["businesses"][biz]["close_hour"] = 17
+    utc = datetime.timezone.utc
+    # Dubai = UTC+4: 19:00 UTC = 23:00 Dubai (after hours); 08:00 UTC = 12:00 Dubai (open).
+    after = datetime.datetime(2026, 8, 1, 19, 0, tzinfo=utc)
+    during = datetime.datetime(2026, 8, 1, 8, 0, tzinfo=utc)
+    state["leads"].extend(
+        {
+            "id": i,
+            "business_id": biz,
+            "name": "x",
+            "phone": str(i),
+            "interest": "2BR",
+            "notes": "",
+            "created_at": ca,
+        }
+        for i, ca in [(9001, after), (9002, after), (9003, during)]
+    )
+    m = client.get(
+        "/metrics?business_id=bright-smile",
+        headers={"X-API-Key": "bizkey_bright_smile_demo"},
+    ).json()
+    assert m["leads_30d"] == 3
+    assert m["after_hours_leads_30d"] == 2  # the two that landed at 23:00 Dubai
+
+
 def test_drive_by_conversations_never_count(client, fake_llm):
     """Pledge #1 as behavior: any number of one-message threads roll up to ZERO
     conversations, and a thread starts counting the moment its second caller
     message lands."""
     for i in range(3):
-        client.post("/chat", json={"message": "spam", "conversation_id": f"drive-{i}", "business_id": "bright-smile"})
+        client.post(
+            "/chat",
+            json={
+                "message": "spam",
+                "conversation_id": f"drive-{i}",
+                "business_id": "bright-smile",
+            },
+        )
     headers = {"X-API-Key": "bizkey_bright_smile_demo"}
     m = client.get("/metrics?business_id=bright-smile", headers=headers).json()
     assert m["conversations_30d"] == 0 and m["conversations_today"] == 0
     assert m["messages_30d"] == 3  # the workload number stays honest too — raw
 
-    client.post("/chat", json={"message": "actually, a question", "conversation_id": "drive-0", "business_id": "bright-smile"})
+    client.post(
+        "/chat",
+        json={
+            "message": "actually, a question",
+            "conversation_id": "drive-0",
+            "business_id": "bright-smile",
+        },
+    )
     m = client.get("/metrics?business_id=bright-smile", headers=headers).json()
     assert m["conversations_30d"] == 1  # drive-0 graduated; the other two never count
 
@@ -117,17 +211,22 @@ def test_bookings_pagination(client):
     from app import db
 
     for i in range(7):
-        db.save_booking("bright-smile", "2026-08-01", f"{i + 1}:00 PM", f"P{i}", "050", "x")
+        db.save_booking(
+            "bright-smile", "2026-08-01", f"{i + 1}:00 PM", f"P{i}", "050", "x"
+        )
     page = client.get(
         "/bookings?business_id=bright-smile&limit=3&offset=3",
         headers={"X-API-Key": "bizkey_bright_smile_demo"},
     )
     assert page.status_code == 200
     assert len(page.json()) == 3
-    assert client.get(
-        "/bookings?business_id=bright-smile&limit=9999",
-        headers={"X-API-Key": "bizkey_bright_smile_demo"},
-    ).status_code == 422  # limit is bounded
+    assert (
+        client.get(
+            "/bookings?business_id=bright-smile&limit=9999",
+            headers={"X-API-Key": "bizkey_bright_smile_demo"},
+        ).status_code
+        == 422
+    )  # limit is bounded
 
 
 def test_production_errors_hide_internals(client, monkeypatch):
