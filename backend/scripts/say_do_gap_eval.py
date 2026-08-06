@@ -82,7 +82,9 @@ async def _run_one(i: int) -> dict:
             fn(*args)
 
     lead = db.find_recent_lead(BUSINESS_ID, phone)
-    net_caught = bool(lead) and lead.get("notes") == "auto-captured by the lead safety net"
+    net_caught = (
+        bool(lead) and lead.get("notes") == "auto-captured by the lead safety net"
+    )
     return {
         "conv": conv,
         "phone": phone,
@@ -120,7 +122,7 @@ def _cleanup(results: list[dict]) -> None:
         print(f"  (cleanup skipped: {str(e)[:120]})")
 
 
-async def main(trials: int) -> None:
+async def main(trials: int, keep: bool = False) -> None:
     # Read the key the SAME way the app does (pydantic-settings loads backend/.env);
     # os.getenv alone would miss it. Run this from the backend/ folder.
     if not (get_settings().gemini_api_key or "").strip():
@@ -135,9 +137,15 @@ async def main(trials: int) -> None:
         r = await _run_one(i)
         results.append(r)
         verdict = (
-            "SAY-DO GAP" if r["say_do_gap"] else ("tool ok" if r["tool_fired"] else "no claim")
+            "SAY-DO GAP"
+            if r["say_do_gap"]
+            else ("tool ok" if r["tool_fired"] else "no claim")
         )
-        landed = "recovered" if r["net_caught"] else ("tool" if r["lead_in_db"] else "LOST ✗")
+        landed = (
+            "recovered"
+            if r["net_caught"]
+            else ("tool" if r["lead_in_db"] else "LOST ✗")
+        )
         print(
             f"  {i + 1:2d}. tool={'Y' if r['tool_fired'] else 'N'} "
             f"claim={'Y' if r['claimed'] else 'N'}  {verdict:11s}  lead→ {landed}"
@@ -154,10 +162,18 @@ async def main(trials: int) -> None:
 
     print("\n" + "=" * 60)
     print(f"  conversations run ................ {n}")
-    print(f"  model called the tool itself ..... {sum(r['tool_fired'] for r in results)}")
-    print(f"  SAY-DO GAP (claimed, no tool) .... {len(gaps)}   ({pct(len(gaps), n)} of conversations)")
-    print(f"  ↳ recovered by the net ........... {len(recovered)}/{len(gaps)}   ({pct(len(recovered), len(gaps))})")
-    print(f"  leads captured (tool OR net) ..... {len(landed)}/{n}   ({pct(len(landed), n)})")
+    print(
+        f"  model called the tool itself ..... {sum(r['tool_fired'] for r in results)}"
+    )
+    print(
+        f"  SAY-DO GAP (claimed, no tool) .... {len(gaps)}   ({pct(len(gaps), n)} of conversations)"
+    )
+    print(
+        f"  ↳ recovered by the net ........... {len(recovered)}/{len(gaps)}   ({pct(len(recovered), len(gaps))})"
+    )
+    print(
+        f"  leads captured (tool OR net) ..... {len(landed)}/{n}   ({pct(len(landed), n)})"
+    )
     print(f"    · via the tool ................. {len(via_tool)}")
     print(f"    · via the deterministic net .... {len(recovered)}")
     print(f"  leads LOST ....................... {n - len(landed)}")
@@ -175,12 +191,26 @@ async def main(trials: int) -> None:
         f"\n      Net result: {len(landed)}/{n} leads captured — {n - len(landed)} lost."
     )
 
-    _cleanup(results)
-    print("\n  (throwaway test leads cleaned up)")
+    if keep:
+        print(
+            "\n  (--keep: test leads LEFT in the DB — your live proof query will show them)"
+        )
+    else:
+        _cleanup(results)
+        print(
+            "\n  (throwaway test leads cleaned up — pass --keep to leave them for a demo)"
+        )
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Measure the say-do gap + net recovery.")
-    ap.add_argument("--trials", type=int, default=12, help="how many lead conversations to run")
+    ap.add_argument(
+        "--trials", type=int, default=12, help="how many lead conversations to run"
+    )
+    ap.add_argument(
+        "--keep",
+        action="store_true",
+        help="don't delete the test leads — leave them so a live demo DB query shows them",
+    )
     args = ap.parse_args()
-    asyncio.run(main(args.trials))
+    asyncio.run(main(args.trials, keep=args.keep))
