@@ -9,11 +9,13 @@ HTTP error shapes, WhatsApp send calls — stays in the routes.
 
 import asyncio
 import datetime
+import inspect
 import logging
 import zoneinfo
 from collections.abc import Callable
+from functools import lru_cache
 
-from app import db, distill_service, lead_safety, notify_service
+from app import db, distill_service, lead_safety, notify_service, say_do_verifier
 from app.llm_service import generate_reply
 from app.prompt_service import build_system_prompt
 from app.tools.calendar_tools import make_calendar_tools
@@ -24,6 +26,20 @@ from app.tools.memory_tools import make_memory_tools
 logger = logging.getLogger("agent-platform.core")
 
 _DUBAI_TZ = zoneinfo.ZoneInfo("Asia/Dubai")
+
+
+@lru_cache(maxsize=8)
+def _accepts_activity_sink(fn: Callable) -> bool:
+    """Does this generate_reply implementation take the activity_sink kwarg? The
+    real one does; a plain 3-arg test double doesn't. Feature-detected (rather than
+    always-passing it) so those doubles keep working untouched — see test_demo's
+    'normal chat route is untouched by the activity sink'. Cached; the binding
+    rarely changes."""
+    try:
+        return "activity_sink" in inspect.signature(fn).parameters
+    except (TypeError, ValueError):
+        return False
+
 
 # One lock per (business, conversation) so rapid-fire messages in the SAME thread
 # run one-at-a-time — without it, message B reads history before A has saved, so
@@ -121,7 +137,9 @@ async def run_turn(
     # webhook not to send, and the web route to show a brief holding line.
     if db.is_ai_paused(business_id, conversation_id):
         db.save_message(business_id, conversation_id, "user", message)
-        logger.info("conversation %s is human-handled — AI staying silent", conversation_id)
+        logger.info(
+            "conversation %s is human-handled — AI staying silent", conversation_id
+        )
         return ""
 
     # Monthly quota = the founding plan's fair-use fuse and the cost cap that
@@ -159,13 +177,17 @@ async def run_turn(
         # CRM write-back — the core of the real-estate operator.
         if (business.get("vertical") or "").strip().lower() == "real_estate":
             from app.tools.qualify_tools import make_qualify_tools
+
             tools = tools + make_qualify_tools(business)
-        # `activity` (the demo's live "what the AI did" feed) is opt-in: pass the
-        # sink ONLY when a caller asked for it, so every other caller — and every
-        # test that stubs generate_reply — keeps its existing signature.
-        if activity is not None:
+        # `activity` (the demo's live "what the AI did" feed) is opt-in: callers
+        # like the demo pass a list to fill; everyone else passes nothing. We ALSO
+        # keep an internal sink on every turn so the say-do verifier below can
+        # reconcile the reply against the tools that actually ran. generate_reply
+        # is feature-detected for the sink so a 3-arg test double still works.
+        tool_activity = activity if activity is not None else []
+        if _accepts_activity_sink(generate_reply):
             reply = await generate_reply(
-                system_prompt, history, tools=tools, activity_sink=activity
+                system_prompt, history, tools=tools, activity_sink=tool_activity
             )
         else:
             reply = await generate_reply(system_prompt, history, tools=tools)
@@ -177,6 +199,25 @@ async def run_turn(
                 "Sorry — I lost my words for a second there. Could you say that "
                 "again? I'll double-check everything before confirming."
             )
+
+        # Say-do verifier (observability only): reconcile what the reply CLAIMED it
+        # did against the tools that actually fired, and log any gap. This never
+        # changes the reply — the deterministic nets below do the recovering; this
+        # is the always-on signal for when, and on which action, the model said it
+        # acted without acting. Wrapped so a verifier bug can never break a turn.
+        try:
+            for gap in say_do_verifier.detect(reply, tool_activity):
+                logger.warning(
+                    "SAY-DO GAP [business=%s conv=%s]: reply claimed '%s' (%r) but "
+                    "no backing tool (%s) fired this turn",
+                    business_id,
+                    conversation_id,
+                    gap["action"],
+                    gap["claim"],
+                    gap["expected_tool"],
+                )
+        except Exception:  # noqa: BLE001 — observability must never break a turn
+            logger.debug("say-do verifier skipped", exc_info=True)
 
         # Persist BOTH turns only now that the reply succeeded, and meter the
         # turn against the business's daily usage (the future billing data).
