@@ -35,6 +35,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app import db, lead_safety  # noqa: E402
 from app.chat_core import run_turn  # noqa: E402
+from app.config import get_settings  # noqa: E402
 
 BUSINESS_ID = "skyline-realty"  # the seeded real-estate tenant
 
@@ -120,8 +121,13 @@ def _cleanup(results: list[dict]) -> None:
 
 
 async def main(trials: int) -> None:
-    if not os.getenv("GEMINI_API_KEY"):
-        sys.exit("GEMINI_API_KEY not set — this eval calls the real model.")
+    # Read the key the SAME way the app does (pydantic-settings loads backend/.env);
+    # os.getenv alone would miss it. Run this from the backend/ folder.
+    if not (get_settings().gemini_api_key or "").strip():
+        sys.exit(
+            "No Gemini key found. This eval calls the real model — set gemini_api_key "
+            "in backend/.env and run from the backend/ folder."
+        )
     print(f"Running {trials} real lead conversations through '{BUSINESS_ID}'…\n")
 
     results = []
