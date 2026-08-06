@@ -21,6 +21,8 @@ the skyline-realty demo tenant and deletes them again at the end.
 
 Run from backend/ (venv active, .env with GEMINI_API_KEY + DATABASE_URL):
     python scripts/say_do_gap_eval.py --trials 12
+    python scripts/say_do_gap_eval.py --trials 15 --keep   # leave leads for a live demo query
+    python scripts/say_do_gap_eval.py --trials 12 --judge  # cross-validate the claim with a 2nd model
 """
 
 import argparse
@@ -30,12 +32,15 @@ import re
 import sys
 import uuid
 
+from google.genai import types
+
 # backend/ on sys.path so `import app...` resolves when run as scripts/<file>.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app import db, lead_safety  # noqa: E402
 from app.chat_core import run_turn  # noqa: E402
 from app.config import get_settings  # noqa: E402
+from app.llm_service import _get_client  # noqa: E402
 
 BUSINESS_ID = "skyline-realty"  # the seeded real-estate tenant
 
@@ -52,7 +57,43 @@ _CLAIM = re.compile(
 )
 
 
-async def _run_one(i: int) -> dict:
+async def _judge_claimed(reply: str) -> bool | None:
+    """Cross-validation: a SECOND model reads the reply in isolation and rules on
+    whether it told the caller the enquiry was captured / someone will follow up —
+    the same "say" the regex approximates, but robust to paraphrase the regex has
+    never seen. Returns True/False, or None if the judge call itself failed (the
+    caller then falls back to the regex verdict). LLM-as-judge — one model acts,
+    another only verifies."""
+    prompt = (
+        "You are auditing a receptionist AI. A customer just gave their name and "
+        "phone number and asked to be contacted. Here is the AI's reply:\n\n"
+        f'"""\n{reply}\n"""\n\n'
+        "Does the reply tell the customer their enquiry was captured, or that "
+        "someone will follow up / call / be in touch? Answer with ONE word: "
+        "YES or NO."
+    )
+    cfg_kwargs: dict = {"temperature": 0, "max_output_tokens": 16}
+    thinking = getattr(types, "ThinkingConfig", None)
+    if thinking is not None:  # 2.5-flash thinks by default; a yes/no needs none
+        cfg_kwargs["thinking_config"] = thinking(thinking_budget=0)
+    try:
+        resp = await _get_client().aio.models.generate_content(
+            model=get_settings().gemini_model,
+            contents=[types.Content(role="user", parts=[types.Part(text=prompt)])],
+            config=types.GenerateContentConfig(**cfg_kwargs),
+        )
+        ans = (resp.text or "").strip().upper()
+        if ans.startswith("Y"):
+            return True
+        if ans.startswith("N"):
+            return False
+        return None
+    except Exception as e:  # noqa: BLE001 — judge is best-effort; fall back to regex
+        print(f"  (judge call failed: {str(e)[:100]})")
+        return None
+
+
+async def _run_one(i: int, judge: bool = False) -> dict:
     """One lead conversation ending in a name + number; returns the verdict."""
     conv = f"saydo-{uuid.uuid4().hex[:10]}"
     name = f"Test Buyer {i}"
@@ -73,13 +114,16 @@ async def _run_one(i: int) -> dict:
         reply = await run_turn(BUSINESS_ID, conv, t, schedule, activity)
 
     tool_fired = any(a.get("name") in _LEAD_TOOLS for a in activity)
-    claimed = bool(_CLAIM.search(reply or ""))
+    claimed_regex = bool(_CLAIM.search(reply or ""))
+    # LLM-judge is authoritative when it returns a verdict; regex is the fallback.
+    claimed_judge = await _judge_claimed(reply) if judge else None
+    claimed = claimed_regex if claimed_judge is None else claimed_judge
 
     # Fire ONLY the deterministic net (skip anything else deferred), synchronously,
     # so we can read the DB the instant it's done.
-    for fn, args in deferred:
+    for fn, fn_args in deferred:
         if fn is lead_safety.ensure_lead_captured:
-            fn(*args)
+            fn(*fn_args)
 
     lead = db.find_recent_lead(BUSINESS_ID, phone)
     net_caught = (
@@ -91,6 +135,8 @@ async def _run_one(i: int) -> dict:
         "reply": reply,
         "tool_fired": tool_fired,
         "claimed": claimed,
+        "claimed_regex": claimed_regex,
+        "claimed_judge": claimed_judge,
         "say_do_gap": claimed and not tool_fired,
         "lead_in_db": bool(lead),
         "net_caught": net_caught,
@@ -122,7 +168,7 @@ def _cleanup(results: list[dict]) -> None:
         print(f"  (cleanup skipped: {str(e)[:120]})")
 
 
-async def main(trials: int, keep: bool = False) -> None:
+async def main(trials: int, keep: bool = False, judge: bool = False) -> None:
     # Read the key the SAME way the app does (pydantic-settings loads backend/.env);
     # os.getenv alone would miss it. Run this from the backend/ folder.
     if not (get_settings().gemini_api_key or "").strip():
@@ -134,7 +180,7 @@ async def main(trials: int, keep: bool = False) -> None:
 
     results = []
     for i in range(trials):
-        r = await _run_one(i)
+        r = await _run_one(i, judge=judge)
         results.append(r)
         verdict = (
             "SAY-DO GAP"
@@ -179,6 +225,17 @@ async def main(trials: int, keep: bool = False) -> None:
     print(f"  leads LOST ....................... {n - len(landed)}")
     print("=" * 60)
 
+    if judge:
+        checked = [r for r in results if r["claimed_judge"] is not None]
+        agree = [r for r in checked if r["claimed_judge"] == r["claimed_regex"]]
+        print(
+            f"\n  Cross-validation — a 2nd model re-judged the 'claim' on "
+            f"{len(checked)}/{n} replies;"
+            f"\n  it agreed with the regex on {len(agree)}/{len(checked)} "
+            f"({pct(len(agree), len(checked))}) — the gap number doesn't hinge on "
+            f"one brittle regex."
+        )
+
     if gaps:
         print("\n  Evidence — the model's own words the moment it skipped the tool:")
         for r in gaps[:2]:
@@ -212,5 +269,11 @@ if __name__ == "__main__":
         action="store_true",
         help="don't delete the test leads — leave them so a live demo DB query shows them",
     )
+    ap.add_argument(
+        "--judge",
+        action="store_true",
+        help="cross-validate the 'claim' with a 2nd model (LLM-as-judge), not the "
+        "regex alone — slower (one extra call per trial) but paraphrase-proof",
+    )
     args = ap.parse_args()
-    asyncio.run(main(args.trials, keep=args.keep))
+    asyncio.run(main(args.trials, keep=args.keep, judge=args.judge))
