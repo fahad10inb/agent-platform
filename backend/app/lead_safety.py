@@ -25,9 +25,12 @@ _LEAD_VERTICALS = ("real_estate", "general")
 # A UAE mobile in free text: optional +971/00971/0 prefix, then a 9-digit national
 # number starting with 5, with spaces/dashes allowed between digits.
 _UAE_MOBILE = re.compile(r"(?:\+?971|00971|0)?[\s\-]?5\d(?:[\s\-]?\d){7}")
+# (?i:...) makes ONLY the lead-in phrase case-insensitive; the captured name stays
+# case-sensitive so a trailing lowercase word ("in", "and") can't be swept into it.
+# With re.I on the whole pattern, [A-Z] also matched lowercase, so "I'm interested
+# in a 2BR" was captured as the name "Interested In".
 _NAME = re.compile(
-    r"(?:i'?m|my name is|name'?s|this is|it'?s)\s+([A-Za-z][a-z]+(?:\s[A-Z][a-z]+)?)",
-    re.I,
+    r"(?i:i'?m|my name is|name'?s|this is|it'?s)\s+([A-Za-z][a-z]+(?:\s[A-Z][a-z]+)?)"
 )
 _NOT_NAMES = {"interested", "looking", "just", "not", "here", "trying", "keen", "ready"}
 
@@ -42,13 +45,15 @@ def _find_phone(text: str) -> str:
 
 
 def _guess_name(text: str) -> str:
-    """Best-effort first/full name from 'I'm X' / 'my name is X' (bonus — the
-    phone is what actually matters). '' when we can't tell."""
-    m = _NAME.search(text or "")
-    if not m:
-        return ""
-    name = m.group(1).strip()
-    return "" if name.lower() in _NOT_NAMES else name.title()
+    """Best-effort first/full name from 'I'm X' / 'my name is X' (bonus — the phone
+    is what actually matters). A caller usually says "I'm interested in…" (intent,
+    not a name) BEFORE giving "I'm <name>", so scan ALL such phrases and take the
+    first whose leading word isn't a lead-intent stopword — not just re.search's
+    first hit. '' when we can't tell."""
+    for cand in _NAME.findall(text or ""):
+        if cand.split()[0].lower() not in _NOT_NAMES:
+            return cand.title()
+    return ""
 
 
 def ensure_lead_captured(business: dict, conversation_id: str) -> bool:

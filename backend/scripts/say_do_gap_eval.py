@@ -93,10 +93,31 @@ async def _judge_claimed(reply: str) -> bool | None:
         return None
 
 
+# Realistic UAE buyer names so the auto-captured rows read like a real lead board
+# in the demo (kept to two words — the net's name extractor stores at most two).
+_DEMO_NAMES = (
+    "Omar Haddad",
+    "Fatima Nasser",
+    "Rashid Khan",
+    "Layla Mansour",
+    "Yusuf Rahman",
+    "Aisha Siddiqui",
+    "Karim Darwish",
+    "Noor Farooqi",
+    "Hassan Ali",
+    "Mariam Saleh",
+    "Bilal Ahmed",
+    "Zainab Hussain",
+    "Tariq Aziz",
+    "Hind Sultan",
+    "Faisal Habib",
+)
+
+
 async def _run_one(i: int, judge: bool = False) -> dict:
     """One lead conversation ending in a name + number; returns the verdict."""
     conv = f"saydo-{uuid.uuid4().hex[:10]}"
-    name = f"Test Buyer {i}"
+    name = _DEMO_NAMES[i % len(_DEMO_NAMES)]
     phone = f"0501{i:06d}"  # unique UAE-shaped mobile per trial (e.g. 0501000007)
     deferred: list = []
 
