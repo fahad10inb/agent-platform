@@ -11,6 +11,7 @@ import asyncio
 import datetime
 import inspect
 import logging
+import re
 import zoneinfo
 from collections.abc import Callable
 from functools import lru_cache
@@ -79,10 +80,43 @@ def _quota_state(business: dict) -> tuple[bool, str]:
     return (False, "")
 
 
-def _decline_message(business: dict) -> str:
+# The model mirrors the caller's language on its own; these DETERMINISTIC lines
+# (quota decline, empty-reply catch) can't ask the model to translate, so we keep
+# an Arabic copy and pick it when the caller is writing Arabic. Any Arabic letter
+# in their message is enough of a signal.
+_ARABIC_RE = re.compile(r"[؀-ۿ]")
+
+_EMPTY_REPLY_EN = (
+    "Sorry — I lost my words for a second there. Could you say that again? "
+    "I'll double-check everything before confirming."
+)
+_EMPTY_REPLY_AR = (
+    "المعذرة، ضاعت مني الكلمات للحظة. ممكن تعيد كلامك؟ سأتأكد من كل التفاصيل "
+    "قبل التأكيد."
+)
+
+
+def _is_arabic(text: str) -> bool:
+    """Is the caller writing in Arabic? A cheap script check that keeps our
+    hardcoded fallback lines in their language."""
+    return bool(_ARABIC_RE.search(text or ""))
+
+
+def _decline_message(business: dict, message: str = "") -> str:
     """What a caller hears when the business is over its monthly quota — never a
-    500 or a raw error. Steers to a human where one is on file."""
+    500 or a raw error. Steers to a human where one is on file, and answers in the
+    caller's language."""
     transfer = (business.get("transfer_number") or "").strip()
+    if _is_arabic(message):
+        if transfer:
+            return (
+                "شكراً لتواصلك معنا! لا أستطيع استقبال رسائل جديدة حالياً، لكن "
+                f"يمكنك التواصل مع الفريق مباشرة على {transfer} وسيسعدهم مساعدتك."
+            )
+        return (
+            "شكراً لتواصلك معنا! لا أستطيع استقبال رسائل جديدة حالياً — يرجى "
+            "المحاولة بعد قليل، أو التواصل خلال ساعات العمل وسيسعد الفريق بمساعدتك."
+        )
     if transfer:
         return (
             "Thanks for reaching out! I can't take new messages at the moment, "
@@ -158,7 +192,7 @@ async def run_turn(
         _notify_quota(business, reason, schedule)
     if over:
         logger.info("quota reached for business=%s — declining turn", business_id)
-        return _decline_message(business)
+        return _decline_message(business, message)
 
     system_prompt = build_system_prompt(business)
 
@@ -202,10 +236,7 @@ async def run_turn(
         # Last-resort guard: llm_service already retries/recovers empty and
         # leaked replies; if EVERYTHING came back blank the caller still gets words.
         if not reply.strip():
-            reply = (
-                "Sorry — I lost my words for a second there. Could you say that "
-                "again? I'll double-check everything before confirming."
-            )
+            reply = _EMPTY_REPLY_AR if _is_arabic(message) else _EMPTY_REPLY_EN
 
         # Say-do verifier (observability only): reconcile what the reply CLAIMED it
         # did against the tools that actually fired, and log any gap. This never

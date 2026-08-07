@@ -177,6 +177,34 @@ def test_after_hours_leads_are_counted(client, state):
     assert m["after_hours_leads_30d"] == 2  # the two that landed at 23:00 Dubai
 
 
+def test_deterministic_fallbacks_match_the_callers_language(client, monkeypatch):
+    """The hardcoded lines (quota decline, empty-reply catch) can't ask the model
+    to translate — so an Arabic caller must still get Arabic, never a jarring
+    English line mid-conversation."""
+    from app.chat_core import _decline_message, _is_arabic
+
+    assert _is_arabic("مرحبا عندكم شقق؟") and not _is_arabic("hi, any flats?")
+    assert "شكراً" in _decline_message({"transfer_number": ""}, "مرحبا")
+    assert "Thanks" in _decline_message({"transfer_number": ""}, "hello")
+
+    # The empty-reply catch, end to end: a blank model reply to an Arabic caller
+    # comes back in Arabic.
+    async def _blank(system_prompt, history, tools=None):
+        return ""
+
+    monkeypatch.setattr(chat_core, "generate_reply", _blank)
+    r = client.post(
+        "/chat",
+        json={
+            "message": "مرحبا، عندكم شقق غرفتين؟",
+            "conversation_id": "ar-fallback",
+            "business_id": "skyline-realty",
+        },
+    )
+    assert r.status_code == 200
+    assert "المعذرة" in r.json()["reply"]  # Arabic fallback, not the English one
+
+
 def test_say_do_gap_is_recorded_as_a_live_metric(client, monkeypatch):
     """When a reply CLAIMS it captured the lead but no tool fired, the gap is
     persisted — turning the log-only signal into a live production reliability
