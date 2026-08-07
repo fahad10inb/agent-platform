@@ -10,6 +10,9 @@ venv/
 # Local database file (data, not code)
 *.db
 
+# Generated eval reports (a demo artifact, not code)
+backend/reports/
+
 # Editor / OS
 .DS_Store
 .idea/
