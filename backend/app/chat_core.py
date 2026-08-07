@@ -15,7 +15,14 @@ import zoneinfo
 from collections.abc import Callable
 from functools import lru_cache
 
-from app import db, distill_service, lead_safety, notify_service, say_do_verifier
+from app import (
+    db,
+    distill_service,
+    lead_safety,
+    notify_service,
+    postconditions,
+    say_do_verifier,
+)
 from app.llm_service import generate_reply
 from app.prompt_service import build_system_prompt
 from app.tools.calendar_tools import make_calendar_tools
@@ -205,6 +212,7 @@ async def run_turn(
         # changes the reply — the deterministic nets below do the recovering; this
         # is the always-on signal for when, and on which action, the model said it
         # acted without acting. Wrapped so a verifier bug can never break a turn.
+        claimed_actions: list[str] = []
         try:
             for gap in say_do_verifier.detect(reply, tool_activity):
                 logger.warning(
@@ -219,6 +227,7 @@ async def run_turn(
                 # Persist it (deferred, off the reply path) so the log-only signal
                 # becomes a live production reliability metric — see get_metrics.
                 schedule(db.record_say_do_gap, business_id, gap["action"])
+                claimed_actions.append(gap["action"])
         except Exception:  # noqa: BLE001 — observability must never break a turn
             logger.debug("say-do verifier skipped", exc_info=True)
 
@@ -233,6 +242,14 @@ async def run_turn(
         # number must never be silently lost. Runs in the background; no-ops when
         # the tool already captured them or they've booked.
         schedule(lead_safety.ensure_lead_captured, business, conversation_id)
+
+        # Post-condition ledger: for every action the reply CLAIMED, enforce its
+        # required effect — verify it exists, else repair it (lead, handoff) or
+        # escalate to a human (booking/reschedule/cancel, which we must not guess
+        # at). Generalizes the lead net to every action; deferred + best-effort.
+        schedule(
+            postconditions.reconcile_claims, business, conversation_id, claimed_actions
+        )
 
         # Every 6th caller message, distill the conversation into durable caller
         # memory — deferred so the caller never waits on it. Count the DURABLE
