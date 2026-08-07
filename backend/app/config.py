@@ -35,8 +35,10 @@ class Settings(BaseSettings):
     gemini_background_model: str = "gemini-2.5-flash-lite"
     gemini_temperature: float = 0.7
     # A receptionist answers in a couple of sentences; this cap stops a runaway
-    # generation from producing (and billing) an essay.
-    gemini_max_output_tokens: int = 1024
+    # generation from producing (and billing) an essay. Headroom kept generous
+    # because gemini-2.5-flash spends part of this budget on hidden "thinking" —
+    # too low and a token-heavy reply (Arabic especially) gets truncated mid-sentence.
+    gemini_max_output_tokens: int = 2048
     # Hard ceiling on one model call (seconds), including its tool round-trips.
     llm_timeout_seconds: float = 45.0
 
