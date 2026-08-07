@@ -12,14 +12,33 @@ import datetime
 import logging
 import zoneinfo
 
-from fastapi import (BackgroundTasks, FastAPI, Header, HTTPException, Query,
-                     Request, Response)
+from fastapi import (
+    BackgroundTasks,
+    FastAPI,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+)
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
-from app import (chat_core, db, demo_events, digest_service, ics, import_service,
-                 lead_intake, listing_import, matcher_service, nurture_service,
-                 reminder_service, review_service, security)
+from app import (
+    chat_core,
+    db,
+    demo_events,
+    digest_service,
+    ics,
+    import_service,
+    lead_intake,
+    listing_import,
+    matcher_service,
+    nurture_service,
+    reminder_service,
+    review_service,
+    security,
+)
 from app.businesses import SEED_BUSINESSES
 from app.config import get_settings
 import secrets
@@ -27,6 +46,7 @@ import secrets
 from app.dashboard_html import DASHBOARD_HTML
 from app.demo_html import DEMO_HTML
 from app.landing_html import LANDING_HTML
+from app.pipeline_html import PIPELINE_HTML
 from app.story_html import STORY_HTML
 from app.voice import router as voice_router
 from app.whatsapp import router as whatsapp_router
@@ -50,7 +70,9 @@ if settings.sentry_dsn:
             send_default_pii=False,  # never ship request bodies / headers to Sentry
         )
     except Exception:  # noqa: BLE001 — monitoring must never break boot
-        logging.getLogger("agent-platform").warning("sentry init failed — continuing without it")
+        logging.getLogger("agent-platform").warning(
+            "sentry init failed — continuing without it"
+        )
 
 # Without this, the root logger sits at WARNING with a last-resort handler, so
 # every logger.info() breadcrumb (notify sent, digest counts, distilled, empty-
@@ -130,8 +152,12 @@ async def _lifespan(_app: FastAPI):
     tasks = []
     if settings.digest_enabled:
         tasks.append(asyncio.create_task(_digest_scheduler()))
-    if (settings.reminders_enabled or settings.nurture_enabled
-            or settings.review_requests_enabled or settings.match_alerts_enabled):
+    if (
+        settings.reminders_enabled
+        or settings.nurture_enabled
+        or settings.review_requests_enabled
+        or settings.match_alerts_enabled
+    ):
         tasks.append(asyncio.create_task(_sweep_scheduler()))
     yield
     for task in tasks:
@@ -175,9 +201,20 @@ async def _hardening(request: Request, call_next):
     try:
         response = await call_next(request)
     except Exception:  # noqa: BLE001 — the whole point is catching everything
-        logger.exception("[%s] unhandled error on %s %s", req_id, request.method, request.url.path)
-        response = JSONResponse(status_code=500, content={"detail": "Something went wrong on our side. Please try again."})
-    logger.info("[%s] %s %s -> %s", req_id, request.method, request.url.path, response.status_code)
+        logger.exception(
+            "[%s] unhandled error on %s %s", req_id, request.method, request.url.path
+        )
+        response = JSONResponse(
+            status_code=500,
+            content={"detail": "Something went wrong on our side. Please try again."},
+        )
+    logger.info(
+        "[%s] %s %s -> %s",
+        req_id,
+        request.method,
+        request.url.path,
+        response.status_code,
+    )
     response.headers["X-Request-ID"] = req_id
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
@@ -403,7 +440,9 @@ async def chat(req: ChatRequest, request: Request, background_tasks: BackgroundT
         # to attackers in production.
         logger.exception("chat failed for business=%s", req.business_id)
         if settings.environment == "development":
-            raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}") from e
+            raise HTTPException(
+                status_code=500, detail=f"{type(e).__name__}: {e}"
+            ) from e
         raise HTTPException(
             status_code=500, detail="Sorry — something went wrong. Please try again."
         ) from e
@@ -463,6 +502,15 @@ def watch():
     return STORY_HTML
 
 
+@app.get("/pipeline", response_class=HTMLResponse)
+def pipeline():
+    """The reliability pipeline page — a self-contained, interactive node-graph of
+    one turn: where the model can claim without acting (the say-do gap) and where
+    the deterministic net guarantees the lead. A "Safety net ON/OFF" toggle makes
+    leads visibly vanish when it's off. Static + API-free, like /watch."""
+    return PIPELINE_HTML
+
+
 @app.get("/demo", response_class=HTMLResponse)
 def demo():
     """The LIVE DEMO page — the thing that actually sells this.
@@ -504,7 +552,9 @@ class DemoChatResponse(BaseModel):
 
 
 @app.post("/demo/chat", response_model=DemoChatResponse)
-async def demo_chat(req: ChatRequest, request: Request, background_tasks: BackgroundTasks):
+async def demo_chat(
+    req: ChatRequest, request: Request, background_tasks: BackgroundTasks
+):
     """A demo turn: the SAME run_turn every real channel uses, but it also returns
     the tools the model actually executed, so the page can show the work. Nothing
     here is scripted — an empty feed means the agent genuinely ran no tools."""
@@ -512,8 +562,11 @@ async def demo_chat(req: ChatRequest, request: Request, background_tasks: Backgr
     activity: list[dict] = []
     try:
         reply = await chat_core.run_turn(
-            req.business_id, req.conversation_id, req.message,
-            background_tasks.add_task, activity=activity,
+            req.business_id,
+            req.conversation_id,
+            req.message,
+            background_tasks.add_task,
+            activity=activity,
         )
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
@@ -528,7 +581,9 @@ async def demo_chat(req: ChatRequest, request: Request, background_tasks: Backgr
 
 
 @app.get("/manage/{business_id}")
-def manage_get(business_id: str, request: Request, x_api_key: str | None = Header(default=None)):
+def manage_get(
+    business_id: str, request: Request, x_api_key: str | None = Header(default=None)
+):
     """Return a business's EDITABLE config (no secrets). Requires that business's
     key or the admin key — used to pre-fill the settings form."""
     # Sign-in attempts hit this first — throttle so keys can't be brute-forced.
@@ -537,13 +592,37 @@ def manage_get(business_id: str, request: Request, x_api_key: str | None = Heade
     biz = db.get_business(business_id)
     if biz is None:
         raise HTTPException(status_code=404, detail="Unknown business.")
-    fields = ["id", "name", "type", "hours", "services", "tone", "faq",
-              "open_hour", "close_hour", "slot_minutes", "vertical",
-              "staff", "location", "policies",
-              "areas_covered", "deal_focus", "languages", "orn",
-              "min_notice_hours", "max_advance_days", "buffer_min", "notify_email",
-              "transfer_number", "after_hours_mode", "whatsapp_phone_id",
-              "google_review_url", "lead_ingest_token", "crm_webhook_url", "crm_type"]
+    fields = [
+        "id",
+        "name",
+        "type",
+        "hours",
+        "services",
+        "tone",
+        "faq",
+        "open_hour",
+        "close_hour",
+        "slot_minutes",
+        "vertical",
+        "staff",
+        "location",
+        "policies",
+        "areas_covered",
+        "deal_focus",
+        "languages",
+        "orn",
+        "min_notice_hours",
+        "max_advance_days",
+        "buffer_min",
+        "notify_email",
+        "transfer_number",
+        "after_hours_mode",
+        "whatsapp_phone_id",
+        "google_review_url",
+        "lead_ingest_token",
+        "crm_webhook_url",
+        "crm_type",
+    ]
     out = {k: biz.get(k) for k in fields}
     # The structured service menu rides along so the dashboard can prefill its
     # "name | minutes | price" textarea from what's actually stored.
@@ -649,7 +728,11 @@ def booking_invite(
     if business is None:
         raise HTTPException(status_code=404, detail="Unknown business.")
     booking = next(
-        (b for b in db.list_bookings(business_id, limit=500) if b.get("id") == booking_id),
+        (
+            b
+            for b in db.list_bookings(business_id, limit=500)
+            if b.get("id") == booking_id
+        ),
         None,
     )
     if booking is None:
@@ -724,8 +807,13 @@ async def manage_conversation_reply(
     phone_id = biz.get("whatsapp_phone_id")
     # WhatsApp threads carry the caller's number as the conversation id (wa-<e164>);
     # deliver there when the channel is configured. Web threads store-only.
-    if conversation_id.startswith("wa-") and phone_id and settings.whatsapp_access_token:
+    if (
+        conversation_id.startswith("wa-")
+        and phone_id
+        and settings.whatsapp_access_token
+    ):
         from app import whatsapp
+
         try:
             await whatsapp._send_text(phone_id, conversation_id[3:], text)
             delivered = True
@@ -783,7 +871,11 @@ def manage_services(
         # unknown id) — refuse rows for a business that doesn't exist.
         raise HTTPException(status_code=404, detail="Unknown business.")
     db.replace_services(business_id, [s.model_dump() for s in payload.services])
-    return {"status": "saved", "business_id": business_id, "count": len(payload.services)}
+    return {
+        "status": "saved",
+        "business_id": business_id,
+        "count": len(payload.services),
+    }
 
 
 class ListingRow(BaseModel):
@@ -820,7 +912,11 @@ def manage_listings(
     if db.get_business(business_id) is None:
         raise HTTPException(status_code=404, detail="Unknown business.")
     db.replace_listings(business_id, [r.model_dump() for r in payload.listings])
-    return {"status": "saved", "business_id": business_id, "count": len(payload.listings)}
+    return {
+        "status": "saved",
+        "business_id": business_id,
+        "count": len(payload.listings),
+    }
 
 
 class ListingsImport(BaseModel):
@@ -855,18 +951,24 @@ def manage_listings_import(
         raise HTTPException(status_code=422, detail=str(e)) from e
     except Exception as e:  # SSRF guard / fetch / parse failure
         logger.warning("listings import failed for %s: %s", business_id, e)
-        raise HTTPException(status_code=422, detail="Couldn't read that listings source.") from e
+        raise HTTPException(
+            status_code=422, detail="Couldn't read that listings source."
+        ) from e
     db.replace_listings(business_id, rows)
     permitted = sum(1 for r in rows if r.get("permit_number"))
     return {"status": "imported", "count": len(rows), "with_permit": permitted}
 
 
 @app.post("/admin/businesses")
-def admin_create_business(payload: NewBusiness, x_api_key: str | None = Header(default=None)):
+def admin_create_business(
+    payload: NewBusiness, x_api_key: str | None = Header(default=None)
+):
     """Onboard a new business (ADMIN ONLY) — generates and returns its api_key."""
     security.check_admin(x_api_key)
     if db.get_business(payload.id) is not None:
-        raise HTTPException(status_code=409, detail="A business with that id already exists.")
+        raise HTTPException(
+            status_code=409, detail="A business with that id already exists."
+        )
     api_key = "bizkey_" + secrets.token_urlsafe(24)
     data = payload.model_dump()
     # Store only the HASH; the plaintext is shown to the owner once, here, and is
@@ -903,7 +1005,9 @@ class PlanUpdate(BaseModel):
 
 
 @app.post("/admin/businesses/{business_id}/plan")
-def admin_set_plan(business_id: str, payload: PlanUpdate, x_api_key: str | None = Header(default=None)):
+def admin_set_plan(
+    business_id: str, payload: PlanUpdate, x_api_key: str | None = Header(default=None)
+):
     """Set a business's plan + monthly quota (ADMIN ONLY) — the usage cap a
     tenant must not be able to raise on itself, so it lives here, not in
     /manage. Setting it clears any stale quota-notice marker so the new plan's
@@ -911,13 +1015,20 @@ def admin_set_plan(business_id: str, payload: PlanUpdate, x_api_key: str | None 
     security.check_admin(x_api_key)
     if db.get_business(business_id) is None:
         raise HTTPException(status_code=404, detail="Unknown business.")
-    db.update_business_settings(business_id, {
+    db.update_business_settings(
+        business_id,
+        {
+            "plan": payload.plan,
+            "monthly_msg_quota": payload.monthly_msg_quota or None,
+            "quota_notice_month": None,
+        },
+    )
+    return {
+        "status": "saved",
+        "id": business_id,
         "plan": payload.plan,
-        "monthly_msg_quota": payload.monthly_msg_quota or None,
-        "quota_notice_month": None,
-    })
-    return {"status": "saved", "id": business_id,
-            "plan": payload.plan, "monthly_msg_quota": payload.monthly_msg_quota}
+        "monthly_msg_quota": payload.monthly_msg_quota,
+    }
 
 
 class ForgetCaller(BaseModel):
@@ -931,7 +1042,9 @@ class ForgetCaller(BaseModel):
 
 
 @app.post("/admin/forget-caller")
-def admin_forget_caller(payload: ForgetCaller, x_api_key: str | None = Header(default=None)):
+def admin_forget_caller(
+    payload: ForgetCaller, x_api_key: str | None = Header(default=None)
+):
     """Delete every trace of one caller across bookings, leads, caller memory
     and WhatsApp history (ADMIN ONLY) — the erasure right UAE PDPL grants, which
     was impossible before. Returns per-table delete counts."""
@@ -940,7 +1053,9 @@ def admin_forget_caller(payload: ForgetCaller, x_api_key: str | None = Header(de
         raise HTTPException(status_code=422, detail="Provide a phone and/or a name.")
     if db.get_business(payload.business_id) is None:
         raise HTTPException(status_code=404, detail="Unknown business.")
-    counts = db.forget_caller(payload.business_id, payload.phone.strip(), payload.name.strip())
+    counts = db.forget_caller(
+        payload.business_id, payload.phone.strip(), payload.name.strip()
+    )
     logger.info("forget-caller ran for business=%s -> %s", payload.business_id, counts)
     return {"status": "erased", "deleted": counts}
 
@@ -987,7 +1102,9 @@ def leads_ingest(payload: PortalLead, request: Request):
     business = db.get_business_by_ingest_token(payload.token.strip())
     if business is None:
         raise HTTPException(status_code=404, detail="Not found.")
-    parsed = lead_intake.parse_portal_lead(payload.subject, payload.body, payload.from_email)
+    parsed = lead_intake.parse_portal_lead(
+        payload.subject, payload.body, payload.from_email
+    )
     if parsed is None:
         # A forward with no usable contact isn't a lead — accept it quietly so the
         # provider doesn't retry, but do nothing.
@@ -1046,8 +1163,11 @@ async def admin_whatsapp_status(
     if not token:
         return {"error": "WHATSAPP_ACCESS_TOKEN is not set on the server."}
     if not waba_id:
-        return {"hint": "pass ?waba_id=<WhatsApp Business Account id> to check its app subscription"}
+        return {
+            "hint": "pass ?waba_id=<WhatsApp Business Account id> to check its app subscription"
+        }
     import httpx
+
     async with httpx.AsyncClient(timeout=15) as client:
         r = await client.get(
             f"https://graph.facebook.com/v20.0/{waba_id}/subscribed_apps",
@@ -1058,7 +1178,12 @@ async def admin_whatsapp_status(
     except Exception:  # noqa: BLE001
         body = {"raw": r.text[:500]}
     subscribed = bool(isinstance(body, dict) and body.get("data"))
-    return {"waba_id": waba_id, "http": r.status_code, "subscribed": subscribed, "body": body}
+    return {
+        "waba_id": waba_id,
+        "http": r.status_code,
+        "subscribed": subscribed,
+        "body": body,
+    }
 
 
 @app.post("/admin/whatsapp-subscribe")
@@ -1073,6 +1198,7 @@ async def admin_whatsapp_subscribe(
     if not token:
         return {"error": "WHATSAPP_ACCESS_TOKEN is not set on the server."}
     import httpx
+
     async with httpx.AsyncClient(timeout=15) as client:
         r = await client.post(
             f"https://graph.facebook.com/v20.0/{waba_id}/subscribed_apps",
@@ -1094,17 +1220,28 @@ class ImportRequest(BaseModel):
 
 
 @app.post("/onboarding/import")
-async def onboarding_import(payload: ImportRequest, request: Request, x_api_key: str | None = Header(default=None)):
+async def onboarding_import(
+    payload: ImportRequest,
+    request: Request,
+    x_api_key: str | None = Header(default=None),
+):
     """'Give us your website' — fetch + extract a review-ready onboarding
     prefill (ADMIN ONLY: it spends LLM tokens and fetches arbitrary URLs)."""
     security.check_admin(x_api_key)
     security.rate_limit(request, limit=10, window=60, bucket="import")
     if not payload.url.strip() and not payload.description.strip():
-        raise HTTPException(status_code=422, detail="Give me a website URL or a short description of the business.")
+        raise HTTPException(
+            status_code=422,
+            detail="Give me a website URL or a short description of the business.",
+        )
     try:
-        return await import_service.import_from_website(url=payload.url, description=payload.description)
+        return await import_service.import_from_website(
+            url=payload.url, description=payload.description
+        )
     except Exception as exc:  # noqa: BLE001 — any failure = one friendly message
-        logger.warning("onboarding import failed for %r: %s", payload.url, str(exc)[:150])
+        logger.warning(
+            "onboarding import failed for %r: %s", payload.url, str(exc)[:150]
+        )
         raise HTTPException(
             status_code=422,
             detail="Couldn't read that website — double-check the URL, or fill the form manually.",
@@ -1158,7 +1295,9 @@ def leads(
 
 
 @app.get("/metrics")
-def metrics(business_id: str = "bright-smile", x_api_key: str | None = Header(default=None)):
+def metrics(
+    business_id: str = "bright-smile", x_api_key: str | None = Header(default=None)
+):
     """The owner's dashboard numbers (today + 30 days) incl. an ESTIMATED
     staff-hours-saved figure: each handled conversation ≈ 4 minutes a human
     would have spent on the phone or front desk. Clearly labeled an estimate."""
