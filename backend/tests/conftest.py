@@ -36,6 +36,7 @@ _S = {
     "ai_pauses": set(),
     "review_requests": set(),
     "match_alerts": [],
+    "say_do_gaps": [],
     "next_id": 1,
 }
 
@@ -244,6 +245,10 @@ def _user_msgs_per_conversation(business_id):
     return per_conv
 
 
+def _fake_record_say_do_gap(business_id, action):
+    _S["say_do_gaps"].append({"business_id": business_id, "action": action})
+
+
 def _fake_get_metrics(business_id):
     # Mirrors the real layer's fair-billing rule: a conversation counts only
     # once the caller sent a SECOND message; messages stay raw. The fake has no
@@ -259,6 +264,15 @@ def _fake_get_metrics(business_id):
         ),
         "leads_30d": sum(1 for r in _S["leads"] if r["business_id"] == business_id),
         "after_hours_leads_30d": _after_hours_leads(business_id),
+        "say_do_gaps_30d": sum(
+            1 for g in _S["say_do_gaps"] if g["business_id"] == business_id
+        ),
+        "leads_recovered_30d": sum(
+            1
+            for r in _S["leads"]
+            if r["business_id"] == business_id
+            and r.get("notes") == "auto-captured by the lead safety net"
+        ),
     }
 
 
@@ -738,6 +752,7 @@ db.recent_past_bookings = _fake_recent_past_bookings
 db.claim_review_request = _fake_claim_review_request
 db.set_booking_status = _fake_set_booking_status
 db.save_lead = _fake_save_lead
+db.record_say_do_gap = _fake_record_say_do_gap
 db.list_leads = _fake_list_leads
 db.find_recent_lead = _fake_find_recent_lead
 db.update_lead = _fake_update_lead
@@ -801,6 +816,7 @@ def _clean_state():
     _S["ai_pauses"].clear()
     _S["review_requests"].clear()
     _S["match_alerts"].clear()
+    _S["say_do_gaps"].clear()
     # Reset each SEEDED business to its pristine seed values, so no per-test
     # mutation leaks into the next test — a changed name, a set notify_email, a
     # rotated api_key, a quota cap, a digest stamp all vanish. (Businesses a test

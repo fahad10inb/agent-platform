@@ -290,6 +290,7 @@ DASHBOARD_HTML = """<!doctype html>
         <div class="kpi"><span class="klabel">Questions answered</span><span class="knum" id="mMsgs">–</span></div>
         <div class="kpi"><span class="klabel">Bookings · 30 days</span><span class="knum" id="mBookings">–</span></div>
         <div class="kpi"><span class="klabel">Leads · 30 days</span><span class="knum" id="mLeads">–</span></div>
+        <div class="kpi"><span class="klabel">Leads rescued <span class="soft">(net)</span></span><span class="knum" id="mRescued">–</span></div>
         <div class="kpi"><span class="klabel">Staff hours saved <span class="soft">(est.)</span></span><span class="knum" id="mHours">–</span></div>
       </div>
       <div id="profileCard" class="card panel profile-card hidden"></div>
@@ -366,6 +367,7 @@ DASHBOARD_HTML = """<!doctype html>
       $("mMsgs").textContent = m.messages_30d;
       $("mBookings").textContent = m.bookings_30d;
       $("mLeads").textContent = m.leads_30d;
+      $("mRescued").textContent = m.leads_recovered_30d || 0;
       $("mHours").textContent = "~" + m.hours_saved_30d_estimate + "h";
       // The ROI money line: only show it when there's a real number to brag about.
       const ah = m.after_hours_leads_30d || 0;

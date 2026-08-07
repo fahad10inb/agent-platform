@@ -392,6 +392,20 @@ def init_db() -> None:
             )
             """
         )
+        # Production say-do-gap ledger: one row each time a reply CLAIMED an action
+        # the tools didn't perform (see say_do_verifier). Turns the log-only signal
+        # into a live, aggregatable reliability metric — the real-traffic companion
+        # to the offline eval.
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS say_do_gaps (
+                id           SERIAL PRIMARY KEY,
+                business_id  TEXT NOT NULL,
+                action       TEXT NOT NULL,
+                created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+            """
+        )
         # Every hot query filters on these — without indexes each is a full
         # table scan that grows linearly with every tenant's data combined.
         conn.execute(
@@ -401,6 +415,10 @@ def init_db() -> None:
             "CREATE INDEX IF NOT EXISTS idx_caller_memory_biz ON caller_memory (business_id, caller)"
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_leads_biz ON leads (business_id)")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_say_do_gaps_biz "
+            "ON say_do_gaps (business_id, created_at)"
+        )
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_services_biz ON services (business_id)"
         )
@@ -663,6 +681,20 @@ def get_metrics(business_id: str) -> dict:
             "     OR EXTRACT(hour FROM created_at AT TIME ZONE 'Asia/Dubai')::int >= %s)",
             (business_id, open_h, close_h),
         ).fetchone()
+        # Reliability, measured on real traffic (not just the offline eval): how
+        # many times the model claimed an action it didn't perform (say-do gaps),
+        # and how many leads the deterministic net rescued because of it.
+        gaps = conn.execute(
+            "SELECT COUNT(*) AS n FROM say_do_gaps WHERE business_id = %s "
+            "AND created_at > now() - interval '30 days'",
+            (business_id,),
+        ).fetchone()
+        recovered = conn.execute(
+            "SELECT COUNT(*) AS n FROM leads WHERE business_id = %s "
+            "AND notes = 'auto-captured by the lead safety net' "
+            "AND created_at > now() - interval '30 days'",
+            (business_id,),
+        ).fetchone()
     return {
         "conversations_today": m["convs_today"],
         "conversations_30d": m["convs_30d"],
@@ -670,6 +702,8 @@ def get_metrics(business_id: str) -> dict:
         "bookings_30d": b["n"],
         "leads_30d": led["n"],
         "after_hours_leads_30d": after["n"],
+        "say_do_gaps_30d": gaps["n"],
+        "leads_recovered_30d": recovered["n"],
     }
 
 
@@ -1425,6 +1459,17 @@ def save_lead(
             (business_id, name, phone, interest, notes),
         ).fetchone()
     return row["id"]
+
+
+def record_say_do_gap(business_id: str, action: str) -> None:
+    """Persist one production say-do gap: a reply CLAIMED `action` but no tool
+    performed it. Best-effort telemetry — the caller defers this to the background,
+    so it never sits in the reply path."""
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO say_do_gaps (business_id, action) VALUES (%s, %s)",
+            (business_id, action),
+        )
 
 
 def find_recent_lead(

@@ -216,6 +216,9 @@ async def run_turn(
                     gap["claim"],
                     gap["expected_tool"],
                 )
+                # Persist it (deferred, off the reply path) so the log-only signal
+                # becomes a live production reliability metric — see get_metrics.
+                schedule(db.record_say_do_gap, business_id, gap["action"])
         except Exception:  # noqa: BLE001 — observability must never break a turn
             logger.debug("say-do verifier skipped", exc_info=True)
 

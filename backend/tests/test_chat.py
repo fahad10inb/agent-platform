@@ -177,6 +177,31 @@ def test_after_hours_leads_are_counted(client, state):
     assert m["after_hours_leads_30d"] == 2  # the two that landed at 23:00 Dubai
 
 
+def test_say_do_gap_is_recorded_as_a_live_metric(client, monkeypatch):
+    """When a reply CLAIMS it captured the lead but no tool fired, the gap is
+    persisted — turning the log-only signal into a live production reliability
+    number, not just an offline eval figure."""
+
+    async def _claims(system_prompt, history, tools=None):
+        return "Got it — I've saved your details, an agent will call you."
+
+    monkeypatch.setattr(chat_core, "generate_reply", _claims)
+    client.post(
+        "/chat",
+        json={
+            "message": "I'm Sara, 0501234567",
+            "conversation_id": "gap-1",
+            "business_id": "bright-smile",
+        },
+    )
+    m = client.get(
+        "/metrics?business_id=bright-smile",
+        headers={"X-API-Key": "bizkey_bright_smile_demo"},
+    ).json()
+    assert m["say_do_gaps_30d"] >= 1  # the claim-without-tool was recorded
+    assert "leads_recovered_30d" in m  # the net's rescue count is exposed too
+
+
 def test_drive_by_conversations_never_count(client, fake_llm):
     """Pledge #1 as behavior: any number of one-message threads roll up to ZERO
     conversations, and a thread starts counting the moment its second caller
