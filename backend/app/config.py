@@ -110,7 +110,7 @@ class Settings(BaseSettings):
     # The webhook + relay play dead (404 / immediate close) until voice_enabled
     # is true. Twilio does all the real-time audio (STT/TTS/barge-in); the STT/TTS
     # providers + language below are stamped into the TwiML for the pilot. See
-    # VOICE-PLAN-2026-07.md. Requires a Twilio number/relay + Deepgram + ElevenLabs
+    # docs/VOICE-PLAN-2026-07.md. Requires a Twilio number/relay + Deepgram + ElevenLabs
     # accounts and a LIVE call to verify — not exercised by the unit tests.
     voice_enabled: bool = False
     # Gulf-Arabic first; ConversationRelay can switch per-turn if the caller does.

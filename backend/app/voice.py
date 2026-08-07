@@ -16,7 +16,7 @@ Status: SCAFFOLD. Plays dead (404 / immediate close) unless settings.voice_enabl
 is true. The message shapes below follow Twilio's documented ConversationRelay
 protocol, but this has NOT been exercised against a live call — finishing the
 channel needs a Twilio number/relay + Deepgram + ElevenLabs and a real call to
-verify audio, latency and Gulf-Arabic quality. See VOICE-PLAN-2026-07.md.
+verify audio, latency and Gulf-Arabic quality. See docs/VOICE-PLAN-2026-07.md.
 """
 
 import base64

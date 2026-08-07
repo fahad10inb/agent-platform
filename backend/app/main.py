@@ -157,7 +157,7 @@ app = FastAPI(
 app.include_router(whatsapp_router)
 
 # The inbound voice channel (Twilio ConversationRelay → run_turn). Plays dead
-# (404 / immediate ws close) until voice_enabled is set. See VOICE-PLAN.
+# (404 / immediate ws close) until voice_enabled is set. See docs/VOICE-PLAN-2026-07.md.
 app.include_router(voice_router)
 
 

@@ -216,7 +216,7 @@ async def _send_text(phone_id: str, to: str, text: str) -> None:
 #   body    — the EXACT body text to submit to Meta for approval. The variable
 #             positions here define the param order the sender sends, so code and
 #             the approved template can't drift. Copy-paste version + Meta steps
-#             live in WHATSAPP-TEMPLATES.md. Meta rejects a body that is only a
+#             live in docs/WHATSAPP-TEMPLATES.md. Meta rejects a body that is only a
 #             variable, so each has real fixed text around the {{n}} slots.
 _TEMPLATE_SPECS = {
     "reminder": {
@@ -308,7 +308,7 @@ async def send_business_message(
     template name is set.
 
     `params` MUST be the kind's template variables in order (see _TEMPLATE_SPECS
-    / WHATSAPP-TEMPLATES.md). If the count doesn't match the spec, we log and fall
+    / docs/WHATSAPP-TEMPLATES.md). If the count doesn't match the spec, we log and fall
     back to free-form text rather than let Meta bounce the send (error 132000,
     "number of parameters does not match") with a cryptic message."""
     settings = get_settings()
