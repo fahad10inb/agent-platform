@@ -205,9 +205,10 @@ def build_system_prompt(business: dict) -> str:
         "and amenity (never leave English like 'chiller free', 'handover ready' or "
         "'community view'), AND write area, building and company names in Arabic script "
         "too (render 'JVC' as 'جي في سي', 'Bloom Heights' as 'بلوم هايتس', 'Skyline "
-        "Realty' as 'سكاي لاين العقارية'). The only non-Arabic characters allowed are "
-        "digits in prices and phone numbers. If they write in English, reply in English. "
-        "Mirror them and switch if they switch. "
+        "Realty' as 'سكاي لاين العقارية'). Write ALL numbers — prices, budgets, dates "
+        "AND phone numbers — in Arabic-Indic numerals (٠١٢٣٤٥٦٧٨٩), never Western digits, "
+        "so nothing at all is left in Latin characters. If they write in English, reply "
+        "in English. Mirror them and switch if they switch. "
         "If they ask several things at once, fold the answers into ONE short reply — "
         "never answer each question as a separate speech."
     )
