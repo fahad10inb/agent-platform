@@ -16,3 +16,4 @@ backend/reports/
 # Editor / OS
 .DS_Store
 .idea/
+.vscode/
